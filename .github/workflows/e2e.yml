@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
@@ -46,3 +49,17 @@ jobs:
         with:
           name: e2e-capturas
           path: e2e-out
+
+      # Las capturas también quedan en una pre-release para verlas sin iniciar sesión.
+      - name: Publicar capturas
+        if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: capturas
+          name: Capturas de la prueba en emulador
+          prerelease: true
+          make_latest: false
+          files: e2e-out/*.png
+          body: |
+            Capturas automáticas de la última prueba en un emulador Android 15 (commit ${{ github.sha }}).
+            Para instalar la app usa la versión más reciente, no esta.

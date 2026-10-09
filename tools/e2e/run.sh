@@ -11,6 +11,7 @@ SERVER="${SERVER:-https://ntfy.sh}"
 OUT="$ROOT/e2e-out"
 UI="python3 $HERE/ui.py"
 INBOX="python3 $HERE/inbox.py"
+TONE="$HERE/tono_20s.ogg"
 mkdir -p "$OUT"
 FAILS=0
 STEP=0
@@ -41,6 +42,8 @@ publish_file() {
   msg=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$3")
   curl -s -o /dev/null -w '%{http_code}' -T "$2" "$SERVER/fgame-$1?filename=sonido.ogg&message=$msg"
 }
+sound_json() { echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"}"; }
+stop_json() { echo "{\"fg\":1,\"t\":\"stop\",\"from\":\"$1\",\"id\":\"$2\"}"; }
 
 echo "== Instalando $APK"
 adb install -r -g "$APK" || { echo "No se pudo instalar"; exit 1; }
@@ -79,74 +82,88 @@ $UI top
 shot "amigos"
 
 echo "== 3. Ana manda un sonido integrado"
-echo "publicar snd: $(publish "$MYCODE" "{\"fg\":1,\"t\":\"snd\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"p1\",\"s\":\"sirena\",\"label\":\"Sirena\"}")"
-check "Suena la sirena de Ana" $UI wait "Ana te mandó «Sirena»" 20
-shot "sonando"
-check "Llega la notificación del sonido" sh -c "adb shell dumpsys notification --noredact | grep -q 'te mandó un sonido'"
-check "Termina sola" $UI absent "Ana te mandó «Sirena»" 15
+echo "publicar snd: $(publish "$MYCODE" "$(sound_json "$ANA" Ana p1 sirena Sirena)")"
+check "Suena la sirena de Ana" $UI playing 20
+check "Termina sola" $UI silent 10
 
-echo "== 4. Ana manda un audio propio de 7,5 s y lo detiene ella"
-echo "publicar adjunto: $(publish_file "$MYCODE" "$HERE/tono_largo.ogg" "{\"fg\":1,\"t\":\"snd\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"p2\",\"s\":\"custom\",\"label\":\"Tono largo\"}")"
-check "Suena el audio propio de Ana" $UI wait "Ana te mandó «Tono largo»" 25
-shot "audio-propio"
-publish "$MYCODE" "{\"fg\":1,\"t\":\"stop\",\"from\":\"$ANA\",\"id\":\"otro\"}" >/dev/null
+echo "== 4. Ana manda un audio propio largo y lo detiene ella"
+echo "publicar adjunto: $(publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p2 custom 'Tono largo')")"
+check "Suena el audio propio de Ana" $UI playing 25
+START=$(date +%s)
+check "Llega la notificación con botón Detener" sh -c "adb shell dumpsys notification --noredact | grep -q 'te mandó un sonido'"
+publish "$MYCODE" "$(stop_json "$ANA" otro)" >/dev/null
 sleep 1
-check "Un detener con otro id no lo corta" $UI wait "Ana te mandó «Tono largo»" 2
-publish "$MYCODE" "{\"fg\":1,\"t\":\"stop\",\"from\":\"$ANA\",\"id\":\"p2\"}" >/dev/null
-check "El detener de Ana lo corta antes de terminar" $UI absent "Ana te mandó «Tono largo»" 3
+check "Un detener con otro id no lo corta" $UI playing 1
+publish "$MYCODE" "$(stop_json "$ANA" p2)" >/dev/null
+check "El detener de Ana lo corta" $UI silent 4
+ELAPSED=$(( $(date +%s) - START ))
+check "…antes del límite de 10 s ($ELAPSED s después de empezar)" test "$ELAPSED" -lt 8
+check "Se quita el aviso de 'sonando'" $UI absent "Ana te mandó «Tono largo»" 8
 
 echo "== 5. El robot detiene un sonido desde su propio celular"
-publish_file "$MYCODE" "$HERE/tono_largo.ogg" "{\"fg\":1,\"t\":\"snd\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"p3\",\"s\":\"custom\",\"label\":\"Otra vez\"}" >/dev/null
-check "Suena otra vez" $UI wait "Ana te mandó «Otra vez»" 25
+publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p3 custom 'Otra vez')" >/dev/null
+check "Suena otra vez" $UI playing 25
+check "Muestra quién lo mandó" $UI wait "Ana te mandó «Otra vez»" 6
+shot "sonando"
 check "Botón Detener" $UI tap "⏹ Detener"
-check "Se detiene al tocar Detener" $UI absent "Ana te mandó «Otra vez»" 3
+check "Se detiene al tocar Detener" $UI silent 3
 
-echo "== 6. Un desconocido no puede hacer sonar el celular"
+echo "== 6. Ningún sonido dura más de 10 segundos"
+publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p4 custom 'Muy largo')" >/dev/null
+check "Suena el audio de 20 s" $UI playing 25
+START=$(date +%s)
+$UI silent 15
+ELAPSED=$(( $(date +%s) - START ))
+check "Se corta solo a los 10 s ($ELAPSED s)" test "$ELAPSED" -ge 7 -a "$ELAPSED" -le 12
+
+echo "== 7. Un desconocido no puede hacer sonar el celular"
 EXTRANO=$(new_code)
-publish "$MYCODE" "{\"fg\":1,\"t\":\"snd\",\"from\":\"$EXTRANO\",\"name\":\"Extraño\",\"id\":\"x1\",\"s\":\"bocina\",\"label\":\"Bocina\"}" >/dev/null
-sleep 6
-check "No suena el sonido del desconocido" $UI absent "Extraño" 1
+publish "$MYCODE" "$(sound_json "$EXTRANO" Extraño x1 bocina Bocina)" >/dev/null
+check "No suena el sonido del desconocido" $UI never 8
 
-echo "== 7. El robot le manda un sonido a Ana y lo detiene"
+echo "== 8. El robot le manda un sonido a Ana y lo detiene"
+$UI top
 check "Toca la Bocina" $UI tap "Bocina"
 SENT=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina --wait 20)
 check "A Ana le llega la bocina" test -n "$SENT"
 SENT_ID=$(echo "$SENT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)
-$UI top
-check "Aparece el botón para detener mi sonido" $UI wait "Detener mi sonido" 10
+check "Aparece el botón para detener mi sonido" $UI wait "Detener mi sonido" 8
 shot "enviado"
 check "Toca Detener mi sonido" $UI tap "Detener mi sonido"
 check "A Ana le llega el detener" $INBOX "$OUT/inbox-ana.jsonl" stop from="$MYCODE" id="$SENT_ID" --wait 20
 
-echo "== 8. El robot agrega a Beto con su código"
+echo "== 9. El robot agrega a Beto con su código"
 BETO=$(new_code)
 BETO_PRETTY=$(echo "$BETO" | tr 'a-z' 'A-Z' | sed 's/.\{4\}/&-/g; s/-$//')
 curl -s -N "$SERVER/fgame-$BETO/json" > "$OUT/inbox-beto.jsonl" &
 BETO_SUB=$!
 sleep 2
 check "Botón Agregar amigo" $UI tap "Agregar amigo"
+shot "agregar"
 $UI tapclass android.widget.EditText
 adb shell input text "$BETO_PRETTY"
 check "Botón Mandar solicitud" $UI tap "Mandar solicitud"
 check "A Beto le llega la solicitud" $INBOX "$OUT/inbox-beto.jsonl" req from="$MYCODE" --wait 20
-publish "$MYCODE" "{\"fg\":1,\"t\":\"acc\",\"from\":\"$BETO\",\"name\":\"Beto\"}" >/dev/null
 $UI top
-check "Beto aparece como amigo con su nombre" $UI wait "Beto" 20
+check "Beto aparece como pendiente" $UI wait "Amigo nuevo" 10
+publish "$MYCODE" "{\"fg\":1,\"t\":\"acc\",\"from\":\"$BETO\",\"name\":\"Beto\"}" >/dev/null
+check "Al aceptar, Beto aparece con su nombre" $UI wait "Beto" 20
 shot "beto"
 
-echo "== 9. Pausar la recepción"
+echo "== 10. Pausar la recepción"
+$UI top
 check "Toca el interruptor" $UI tapclass android.widget.Switch
 check "Queda en pausa" $UI wait "En pausa" 10
-publish "$MYCODE" "{\"fg\":1,\"t\":\"snd\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"p4\",\"s\":\"bocina\",\"label\":\"En pausa\"}" >/dev/null
-sleep 6
-check "En pausa no suena nada" $UI absent "Ana te mandó «En pausa»" 1
+check "El servicio se detiene" sh -c "sleep 2; ! adb shell dumpsys activity services $PKG | grep -q ListenService"
+shot "pausa"
+publish "$MYCODE" "$(sound_json "$ANA" Ana p5 bocina 'En pausa')" >/dev/null
+check "En pausa no suena nada" $UI never 6
 check "Vuelve a activar" $UI tapclass android.widget.Switch
 check "Se reconecta" $UI wait "Listo para recibir sonidos" 60
-sleep 4
-check "Lo mandado durante la pausa no suena al reactivar" $UI absent "Ana te mandó «En pausa»" 1
+check "Lo mandado durante la pausa no suena al reactivar" $UI never 5
 shot "final"
 
-echo "== 10. Sin cierres inesperados"
+echo "== 11. Sin cierres inesperados"
 adb logcat -d > "$OUT/logcat.txt"
 if grep -q "Process: $PKG" "$OUT/logcat.txt"; then
   bad "La app se cerró por un error"
@@ -161,6 +178,6 @@ if [ "$FAILS" -eq 0 ]; then
   echo "🎉 Todas las pruebas pasaron"
 else
   echo "⚠️  Fallaron $FAILS comprobaciones"
-  grep -E "friendgame|AndroidRuntime" "$OUT/logcat.txt" | tail -60
+  grep -E "com\.friendgame|friendgame" "$OUT/logcat.txt" | tail -60
 fi
 exit "$FAILS"

@@ -8,6 +8,9 @@
   ui.py find REGEX                imprime el primer texto que coincide
   ui.py top                       vuelve al inicio de la pantalla
   ui.py dump                      imprime todos los textos visibles
+  ui.py playing [segundos]        espera a que la app esté reproduciendo audio
+  ui.py silent [segundos]         espera a que la app deje de reproducir audio
+  ui.py never [segundos]          comprueba que la app NO reproduce nada durante ese tiempo
 """
 import re
 import subprocess
@@ -102,13 +105,28 @@ def locate(predicate):
     return None
 
 
+def app_uid():
+    out = adb("shell", "pm", "list", "packages", "-U", "com.friendgame.app")
+    m = re.search(r"uid:(\d+)", out)
+    return m.group(1) if m else None
+
+
+def is_playing(uid):
+    """Lee el estado de los reproductores de audio de Android (rápido, sin tocar la pantalla)."""
+    out = adb("shell", "dumpsys", "audio", check=False)
+    for line in out.splitlines():
+        if "AudioPlaybackConfiguration" in line and f"u/pid:{uid}/" in line and "state:started" in line:
+            return True
+    return False
+
+
 def main():
     cmd = sys.argv[1]
     if cmd == "wait":
         text, timeout = sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 30
         end = time.time() + timeout
         while time.time() < end:
-            if find(text):
+            if find(text) is not None:
                 return 0
             time.sleep(1.5)
         return 1
@@ -116,7 +134,7 @@ def main():
         text, timeout = sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 15
         end = time.time() + timeout
         while time.time() < end:
-            if not find(text):
+            if find(text) is None:
                 return 0
             time.sleep(1)
         return 1
@@ -140,6 +158,21 @@ def main():
                 print(m.group(0))
                 return 0
         return 1
+    if cmd in ("playing", "silent", "never"):
+        uid = app_uid()
+        timeout = float(sys.argv[2]) if len(sys.argv) > 2 else 15
+        end = time.time() + timeout
+        while True:
+            playing = is_playing(uid)
+            if cmd == "playing" and playing:
+                return 0
+            if cmd == "silent" and not playing:
+                return 0
+            if cmd == "never" and playing:
+                return 1
+            if time.time() >= end:
+                return 0 if cmd == "never" else 1
+            time.sleep(0.3)
     if cmd == "top":
         top()
         return 0

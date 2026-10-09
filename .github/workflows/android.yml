@@ -2,6 +2,11 @@ name: Compilar APK
 
 on:
   push:
+    paths-ignore:
+      - "tools/e2e/**"
+      - ".github/workflows/e2e.yml"
+      - "README.md"
+      - ".gitignore"
   workflow_dispatch:
 
 permissions:
