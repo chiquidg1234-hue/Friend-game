@@ -114,6 +114,13 @@ object Store {
             prefs.edit().putLong("last_event_time", value).apply()
         }
 
+    /** Cuándo se buscó por última vez una versión nueva de la app. */
+    var lastUpdateCheck: Long
+        get() = prefs.getLong("last_update_check", 0)
+        set(value) {
+            prefs.edit().putLong("last_update_check", value).apply()
+        }
+
     /** Devuelve false si el mensaje ya se había procesado (evita repetir sonidos). */
     @Synchronized
     fun markProcessed(id: String): Boolean {

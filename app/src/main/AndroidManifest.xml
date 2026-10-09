@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Para actualizarse sola desde GitHub sin pasar por el navegador. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application
         android:allowBackup="true"
@@ -50,5 +53,16 @@
         <receiver
             android:name=".ActionReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".InstallReceiver"
+            android:exported="false" />
+
+        <!-- Comparte el propio APK (Quick Share, Bluetooth, WhatsApp) para pasar la app sin navegador. -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.friendgame.app.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

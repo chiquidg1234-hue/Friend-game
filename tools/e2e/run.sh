@@ -163,8 +163,36 @@ check "Se reconecta" $UI wait "Listo para recibir sonidos" 60
 check "Lo mandado durante la pausa no suena al reactivar" $UI never 5
 shot "final"
 
-echo "== 11. Sin cierres inesperados"
-adb logcat -d > "$OUT/logcat.txt"
+echo "== 11. Pasar la app a un amigo (Quick Share)"
+check "Botón Pasar la app" $UI tap "Pasar la app a un amigo"
+check "Se abre el menú de compartir con el APK" sh -c "sleep 3; adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | grep -qiE 'chooser|intentresolver'"
+shot "pasar-app"
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+
+echo "== 12. Se actualiza sola desde la app"
+LATEST=$(curl -s -o /dev/null -D - "https://github.com/chiquidg1234-hue/Friend-game/releases/latest" | tr -d '\r' | sed -n 's#^[Ll]ocation: .*/tag/v1\.0\.\([0-9]*\)$#\1#p')
+echo "Última versión publicada: $LATEST"
+adb logcat -d > "$OUT/logcat-1.txt"
+adb uninstall "$PKG" >/dev/null
+adb install -g "$ROOT/app-debug-v1.apk" >/dev/null
+adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow
+adb shell am start -n "$PKG/.MainActivity" >/dev/null
+check "La versión vieja pide el nombre" $UI wait "bienvenida" 40
+$UI tapclass android.widget.EditText
+adb shell input text "Robot"
+$UI tap "Listo"
+check "Avisa que hay una versión nueva" $UI wait "Actualizar ahora" 90
+shot "actualizacion"
+check "Toca Actualizar ahora" $UI tap "Actualizar ahora"
+check "Android pregunta si actualizar la app" $UI wait "update" 40
+shot "confirmar-actualizacion"
+check "Confirma la actualización" $UI tapexact "Update"
+check "Queda instalada la versión $LATEST" sh -c "for i in \$(seq 1 40); do adb shell dumpsys package $PKG | grep -q 'versionCode=$LATEST ' && exit 0; sleep 2; done; exit 1"
+
+echo "== 13. Sin cierres inesperados"
+adb logcat -d > "$OUT/logcat-2.txt"
+cat "$OUT/logcat-1.txt" "$OUT/logcat-2.txt" > "$OUT/logcat.txt"
 if grep -q "Process: $PKG" "$OUT/logcat.txt"; then
   bad "La app se cerró por un error"
   grep -B 2 -A 25 "Process: $PKG" "$OUT/logcat.txt" | head -80

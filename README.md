@@ -2,21 +2,25 @@
 
 Una app Android para mandarle sonidos al celular de tus amigos: una bocina, una sirena, un pato o tus propios audios. Solo te pueden mandar sonidos las personas que tú aceptaste, y siempre puedes detenerlos.
 
-## 📲 Descargar e instalar
+## 📲 Instalar
 
-**Descarga directa (desde el celular):**
-https://github.com/chiquidg1234-hue/Friend-game/releases/latest/download/FriendGame.apk
+**Abre esta página en Chrome, desde tu celular:**
+https://github.com/chiquidg1234-hue/Friend-game/releases/latest
 
-1. Abre el enlace en tu celular Android (versión 8.0 o más nueva).
-2. Cuando termine de bajar, toca el archivo `FriendGame.apk`.
-3. Si Android avisa que no permite instalar apps de esa fuente, toca **Configuración** y activa **Permitir de esta fuente**. Vuelve y toca **Instalar**.
-4. Abre Friend Game, escribe tu nombre y acepta las notificaciones.
+1. Si la abriste desde WhatsApp, un código QR u otra app y arriba ves una **✕**, estás en una ventanita dentro de esa app. Toca **⋮** (arriba a la derecha) → **Abrir en Chrome**. En esa ventanita el archivo se descarga, pero el instalador nunca aparece.
+2. Toca **⬇️ Descargar FriendGame.apk**.
+3. Toca **Abrir** y luego **Instalar**. La primera vez Android pide permiso: **Configuración** → activa **Permitir de esta fuente** → vuelve atrás.
 
-Las versiones nuevas se instalan encima de la anterior sin perder tus amigos ni tus audios.
+Después de la primera vez ya no hace falta el navegador:
+
+- **Para pasársela a un amigo:** en la app, **📲 Pasar la app a un amigo** la manda por Quick Share o Bluetooth y se instala directo.
+- **Para actualizar:** la app busca versiones nuevas, las descarga sola y muestra **⬆️ Actualizar ahora**. Tus amigos y audios se conservan.
+
+Funciona en Android 8 o más nuevo. Si algo falla al instalar, lee [docs/INSTALACION.md](docs/INSTALACION.md).
 
 ## 🎮 Cómo se juega
 
-1. **Comparte tu código.** En la pantalla principal tienes un código tipo `ABCD-EFGH-JKMN-PQRS`. El botón **Compartir** lo manda por WhatsApp junto con el enlace de descarga.
+1. **Comparte tu código.** En la pantalla principal tienes un código tipo `ABCD-EFGH-JKMN-PQRS`. El botón **Compartir** lo manda por WhatsApp junto con el enlace para instalar.
 2. **Agrega a un amigo.** Toca **➕ Agregar amigo** y pega su código. Le llega una solicitud.
 3. **Tu amigo acepta.** Desde ese momento se pueden mandar sonidos entre ustedes.
 4. **Manda sonidos.** Elige al amigo y toca un sonido. Si lo mantienes presionado, lo escuchas tú primero.
@@ -67,10 +71,12 @@ La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha. Algun
 | `Player.kt` | Reproduce un sonido a la vez, con detener y límite de 10 s |
 | `Store.kt` | Guarda en el celular tu código, tus amigos y tus audios |
 | `CustomAudio.kt` | Revisa formato, tamaño y duración de los audios propios |
+| `Updater.kt` | Busca la versión nueva en GitHub, la descarga y la instala |
+| `ApkProvider.kt` | Entrega el propio APK para pasarlo por Quick Share |
 
 ## 🛠️ Compilar
 
-Cada `push` a la rama principal compila el APK en GitHub Actions (`.github/workflows/android.yml`) y lo publica en **Releases**. El enlace de descarga de arriba siempre apunta a la última versión.
+Cada `push` a la rama principal compila el APK en GitHub Actions (`.github/workflows/android.yml`) y lo publica en **Releases** con la etiqueta `v1.0.N`. N es el número de versión de la app, y así la app sabe cuándo hay una nueva. La página de instalación de arriba siempre apunta a la última versión.
 
 Cada `push` también corre una prueba de punta a punta (`.github/workflows/e2e.yml`, script en `tools/e2e/`). La prueba instala la app en un emulador Android 15, la usa tocando la pantalla y simula a dos amigos que mandan solicitudes, sonidos y señales de detener por ntfy.sh.
 

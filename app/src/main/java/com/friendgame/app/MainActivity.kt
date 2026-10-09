@@ -41,8 +41,12 @@ class MainActivity : Activity(), Store.Listener {
         /** Tiempo durante el que se muestra el botón para detener el sonido que mandaste. */
         const val STOP_WINDOW_MS = 15_000L
         const val SEND_COOLDOWN_MS = 1_200L
-        const val DOWNLOAD_URL =
-            "https://github.com/chiquidg1234-hue/Friend-game/releases/latest/download/FriendGame.apk"
+        /**
+         * Página para instalar, no el .apk directo: abierto desde WhatsApp o un lector de QR, el
+         * .apk se descarga en una ventanita del navegador y no aparece el instalador. La página
+         * explica cómo pasar a Chrome y ahí tiene el enlace de descarga.
+         */
+        const val INSTALL_PAGE = "https://github.com/chiquidg1234-hue/Friend-game/releases/latest"
     }
 
     private class Sent(val toCode: String, val toName: String, val playbackId: String, val label: String)
@@ -86,6 +90,7 @@ class MainActivity : Activity(), Store.Listener {
         super.onStart()
         Store.addListener(this)
         render()
+        Updater.check(this)
     }
 
     override fun onResume() {
@@ -118,6 +123,7 @@ class MainActivity : Activity(), Store.Listener {
         content.removeAllViews()
         val friends = Store.friends()
         addHeader()
+        addUpdateCard()
         addReceivingCard()
         Player.now?.let { addPlayingCard(it) }
         lastSent?.let { addSentCard(it) }
@@ -159,6 +165,26 @@ class MainActivity : Activity(), Store.Listener {
             buttons.addView(View(context), lp(dp(10), 1))
             buttons.addView(pill("📤 Compartir") { shareCode() }, lp(0, WRAP, weight = 1f))
             addView(buttons, lp(topDp = 12))
+        }
+    }
+
+    private fun addUpdateCard() {
+        val release = Updater.release ?: return
+        val state = Updater.state
+        if (state == Updater.State.IDLE || state == Updater.State.CHECKING) return
+        section("🆕 Versión nueva: ${release.versionName}", Palette.CARD_HIGHLIGHT) {
+            addView(label(Updater.message, 14f, Palette.SUB), lp(topDp = 4))
+            when (state) {
+                Updater.State.READY -> addView(
+                    pill("⬆️ Actualizar ahora", Palette.OK) { Updater.install(this@MainActivity) },
+                    lp(topDp = 10),
+                )
+                Updater.State.FAILED -> addView(
+                    pill("Reintentar", Palette.MUTED) { Updater.check(this@MainActivity, force = true) },
+                    lp(topDp = 10),
+                )
+                else -> Unit
+            }
         }
     }
 
@@ -332,6 +358,12 @@ class MainActivity : Activity(), Store.Listener {
                 addView(item, lp(topDp = 8))
             }
             addView(pill("➕ Agregar amigo", Palette.ACCENT) { showAddFriend() }, lp(topDp = 12))
+            addView(pill("📲 Pasar la app a un amigo", Palette.MUTED) { shareApp() }, lp(topDp = 8))
+            addView(
+                label("Se la mandas por Quick Share o Bluetooth y la instala sin navegador.", 12f, Palette.SUB)
+                    .apply { gravity = Gravity.CENTER },
+                lp(topDp = 4),
+            )
         }
     }
 
@@ -371,6 +403,12 @@ class MainActivity : Activity(), Store.Listener {
             } else {
                 addView(label("🔋 Ahorro de batería desactivado para Friend Game ✅", 13f, Palette.SUB), lp(topDp = 10))
             }
+            option("🔄 Buscar actualizaciones (versión ${Updater.currentVersionName(context)})") {
+                Updater.check(this@MainActivity, force = true)
+            }
+            if (Updater.message.isNotEmpty() && Updater.release == null) {
+                addView(label(Updater.message, 13f, Palette.SUB), lp(topDp = 4))
+            }
             option("🌐 Servidor: ${Store.server}") { editServer() }
             option("♻️ Cambiar mi código (borra tus amigos)") { confirmResetCode() }
         }
@@ -400,9 +438,24 @@ class MainActivity : Activity(), Store.Listener {
         toast("Código copiado")
     }
 
+    /** Comparte el propio APK: con Quick Share llega al otro celular y se instala sin navegador. */
+    private fun shareApp() {
+        val intent = Intent(Intent.ACTION_SEND)
+            .setType(ApkProvider.MIME)
+            .putExtra(Intent.EXTRA_STREAM, ApkProvider.URI)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.clipData = ClipData.newRawUri(ApkProvider.FILE_NAME, ApkProvider.URI)
+        toast("Elige Quick Share y el celular de tu amigo")
+        try {
+            startActivity(Intent.createChooser(intent, "Pasar Friend Game"))
+        } catch (_: ActivityNotFoundException) {
+            toast("No encontré cómo compartir archivos en este celular.")
+        }
+    }
+
     private fun shareCode() {
         val text = "¡Juguemos Friend Game! 🔊 Agrégame con mi código: ${Codes.pretty(Store.myCode)}\n" +
-            "Descarga la app (Android): $DOWNLOAD_URL"
+            "Instala la app (Android, ábrelo en Chrome): $INSTALL_PAGE"
         val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         startActivity(Intent.createChooser(intent, "Compartir mi código"))
     }

@@ -6,6 +6,7 @@ on:
       - "tools/e2e/**"
       - ".github/workflows/e2e.yml"
       - "README.md"
+      - "docs/**"
       - ".gitignore"
   workflow_dispatch:
 
@@ -51,6 +52,18 @@ jobs:
           make_latest: true
           files: FriendGame.apk
           body: |
-            📲 **Descarga `FriendGame.apk` abajo (en "Assets") desde tu celular Android y ábrelo para instalar.**
+            ## 📲 Cómo instalar Friend Game
 
-            Si Android pregunta, permite "instalar apps de esta fuente". Si ya tenías una versión anterior, esta se instala encima y conservas tus amigos y audios.
+            **1. Abre esta página en Chrome.** Si llegaste desde WhatsApp, un código QR u otra app y arriba ves una **✕**, estás en una ventanita dentro de esa app: toca **⋮** (arriba a la derecha) → **Abrir en Chrome**. En esa ventanita el archivo se descarga, pero el instalador nunca aparece.
+
+            **2. Ya en Chrome, toca aquí:**
+
+            ### [⬇️ Descargar FriendGame.apk](https://github.com/${{ github.repository }}/releases/download/v1.0.${{ github.run_number }}/FriendGame.apk)
+
+            **3.** Cuando termine, toca **Abrir** (o busca `FriendGame.apk` en **Archivos → Descargas**) y luego **Instalar**. La primera vez Android pide permiso: toca **Configuración**, activa **Permitir de esta fuente** y vuelve atrás.
+
+            ---
+
+            - **¿Un amigo ya la tiene?** Que te la pase desde la app con **📲 Pasar la app a un amigo** (Quick Share o Bluetooth): se instala sin navegador.
+            - **¿Ya la tienes?** No hace falta volver aquí: la app avisa cuando hay una versión nueva y se actualiza desde dentro.
+            - Funciona en Android 8 o más nuevo.

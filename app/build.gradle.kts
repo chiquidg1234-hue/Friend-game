@@ -6,8 +6,10 @@ plugins {
 }
 
 // En GitHub Actions cada compilación sube el número de versión, así el APK nuevo
-// se instala encima del anterior sin perder tus amigos ni tus audios.
-val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+// se instala encima del anterior sin perder tus amigos ni tus audios. La etiqueta de la
+// versión publicada (v1.0.N) lleva ese mismo número: la app la usa para saber si hay una nueva.
+// FG_VERSION_CODE permite fijarlo a mano (la prueba en emulador lo usa).
+val buildNumber = (System.getenv("FG_VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 
 android {
     namespace = "com.friendgame.app"
