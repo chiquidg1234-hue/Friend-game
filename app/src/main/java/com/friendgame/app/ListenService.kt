@@ -65,6 +65,12 @@ class ListenService : Service() {
 
     /** Hora actual según el servidor (llega en cada evento), para detectar sonidos viejos. */
     private var serverNow = 0L
+
+    /**
+     * Hora del servidor al conectar por primera vez en esta sesión. Lo mandado antes (con la
+     * recepción en pausa o el celular apagado) no suena; las solicitudes sí se recuperan.
+     */
+    private var sessionStart = 0L
     private val recentSounds = HashMap<String, ArrayDeque<Long>>()
     private var lastNetwork: Network? = null
 
@@ -167,6 +173,7 @@ class ListenService : Service() {
                     if (time > serverNow) serverNow = time
                     when (event.optString("event")) {
                         "open" -> {
+                            if (sessionStart == 0L) sessionStart = time
                             setConnected(true)
                             onOpen()
                         }
@@ -240,7 +247,8 @@ class ListenService : Service() {
     private fun onSound(from: String, payload: JSONObject, event: JSONObject) {
         val friend = Store.friend(from) ?: return
         if (friend.state != Friend.FRIEND || friend.muted) return
-        if (serverNow - event.optLong("time") > MAX_SOUND_AGE_S) return
+        val sentAt = event.optLong("time")
+        if (sentAt < sessionStart || serverNow - sentAt > MAX_SOUND_AGE_S) return
         if (!allowSound(from)) return
 
         val wakeLock = getSystemService(PowerManager::class.java)
