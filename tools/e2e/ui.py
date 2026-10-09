@@ -4,6 +4,7 @@
   ui.py wait TEXTO [segundos]     espera a que aparezca un texto
   ui.py absent TEXTO [segundos]   espera a que desaparezca un texto
   ui.py tap TEXTO                 toca el elemento con ese texto (hace scroll si hace falta)
+  ui.py see TEXTO                 busca un texto en toda la pantalla, haciendo scroll
   ui.py tapclass CLASE            toca el primer elemento de esa clase (ej. android.widget.Switch)
   ui.py find REGEX                imprime el primer texto que coincide
   ui.py top                       vuelve al inicio de la pantalla
@@ -144,6 +145,10 @@ def main():
             return 1
         tap_node(node)
         return 0
+    if cmd == "see":
+        node = locate(lambda n: matches(n, sys.argv[2]))
+        top()
+        return 0 if node is not None else 1
     if cmd == "tapclass":
         node = locate(lambda n: n.get("class") == sys.argv[2])
         if node is None:

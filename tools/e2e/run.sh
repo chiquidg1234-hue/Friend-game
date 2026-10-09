@@ -145,7 +145,7 @@ adb shell input text "$BETO_PRETTY"
 check "Botón Mandar solicitud" $UI tap "Mandar solicitud"
 check "A Beto le llega la solicitud" $INBOX "$OUT/inbox-beto.jsonl" req from="$MYCODE" --wait 20
 $UI top
-check "Beto aparece como pendiente" $UI wait "Amigo nuevo" 10
+check "Beto aparece como pendiente" $UI see "Esperando que acepte"
 publish "$MYCODE" "{\"fg\":1,\"t\":\"acc\",\"from\":\"$BETO\",\"name\":\"Beto\"}" >/dev/null
 check "Al aceptar, Beto aparece con su nombre" $UI wait "Beto" 20
 shot "beto"
