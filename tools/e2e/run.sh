@@ -185,10 +185,17 @@ $UI tap "Listo"
 check "Avisa que hay una versión nueva" $UI wait "Actualizar ahora" 90
 shot "actualizacion"
 check "Toca Actualizar ahora" $UI tap "Actualizar ahora"
-check "Android pregunta si actualizar la app" $UI wait "update" 40
-shot "confirmar-actualizacion"
-check "Confirma la actualización" $UI tapexact "Update"
-check "Queda instalada la versión $LATEST" sh -c "for i in \$(seq 1 40); do adb shell dumpsys package $PKG | grep -q 'versionCode=$LATEST ' && exit 0; sleep 2; done; exit 1"
+# Desde Android 12 una app puede actualizarse a sí misma sin preguntar; en versiones viejas
+# aparece la pantalla "¿Actualizar esta app?" y hay que confirmar.
+UPDATED=no
+for i in $(seq 1 30); do
+  if adb shell dumpsys package "$PKG" | grep -q "versionCode=$LATEST "; then UPDATED=yes; break; fi
+  if $UI tapexact "Update" 2>/dev/null; then echo "(Android pidió confirmar la actualización)"; fi
+  sleep 2
+done
+check "Queda instalada la versión $LATEST" test "$UPDATED" = yes
+check "Avisa con una notificación que se actualizó" sh -c "adb shell dumpsys notification --noredact | grep -q 'se actualizó a la versión'"
+shot "actualizada"
 
 echo "== 13. Sin cierres inesperados"
 adb logcat -d > "$OUT/logcat-2.txt"

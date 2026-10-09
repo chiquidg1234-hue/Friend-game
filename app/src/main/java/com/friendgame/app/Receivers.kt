@@ -10,7 +10,12 @@ import android.os.Build
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> ListenService.start(context)
+            Intent.ACTION_BOOT_COMPLETED -> ListenService.start(context)
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                ListenService.start(context)
+                Notifs.createChannels(context)
+                Notifs.appUpdated(context, Updater.currentVersionName(context))
+            }
         }
     }
 }

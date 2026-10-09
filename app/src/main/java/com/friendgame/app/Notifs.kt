@@ -94,6 +94,11 @@ object Notifs {
         social(context, code, "🎉 $name aceptó tu solicitud", "Ya se pueden mandar sonidos.")
     }
 
+    /** Tras actualizarse sola, Android cierra la app: este aviso permite volver a abrirla. */
+    fun appUpdated(context: Context, versionName: String) {
+        social(context, "update", "✅ Friend Game se actualizó a la versión $versionName", "Toca para abrirla.")
+    }
+
     private fun social(context: Context, code: String, title: String, text: String) {
         val n = Notification.Builder(context, CH_SOCIAL)
             .setSmallIcon(R.drawable.ic_stat_sound)
