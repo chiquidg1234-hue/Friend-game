@@ -72,6 +72,8 @@ La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha. Algun
 
 Cada `push` a la rama principal compila el APK en GitHub Actions (`.github/workflows/android.yml`) y lo publica en **Releases**. El enlace de descarga de arriba siempre apunta a la última versión.
 
+Cada `push` también corre una prueba de punta a punta (`.github/workflows/e2e.yml`, script en `tools/e2e/`). La prueba instala la app en un emulador Android 15, la usa tocando la pantalla y simula a dos amigos que mandan solicitudes, sonidos y señales de detener por ntfy.sh.
+
 Para compilar en tu computadora necesitas JDK 17 y el Android SDK:
 
 ```bash

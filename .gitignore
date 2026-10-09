@@ -7,3 +7,5 @@ local.properties
 .DS_Store
 captures/
 .kotlin/
+__pycache__/
+e2e-out/
