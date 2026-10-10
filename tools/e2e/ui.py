@@ -35,7 +35,7 @@ def screen_size():
 W, H = screen_size()
 
 
-def nodes():
+def dump():
     for _ in range(4):
         adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", check=False)
         raw = adb("shell", "cat", "/sdcard/ui.xml", check=False)
@@ -48,6 +48,22 @@ def nodes():
                 pass
         time.sleep(1)
     return []
+
+
+def nodes():
+    """Lee la pantalla. Si el emulador muestra "X isn't responding" (de otra app), lo cierra con Wait."""
+    for _ in range(3):
+        found = dump()
+        if not any("isn't responding" in (n.get("text") or "") for n in found):
+            return found
+        wait = next((n for n in found if (n.get("text") or "").strip().lower() == "wait"), None)
+        if wait is None:
+            return found
+        print("(el emulador mostró un aviso de app sin respuesta: se cierra)", file=sys.stderr)
+        x1, y1, x2, y2 = bounds(wait)
+        adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
+        time.sleep(1.5)
+    return dump()
 
 
 def bounds(node):
