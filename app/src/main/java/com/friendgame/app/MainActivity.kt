@@ -1049,6 +1049,7 @@ class MainActivity : Activity(), Store.Listener {
                 nameNewAudio(CustomAudio.Imported(sound, "Mi grabación"))
             } else {
                 file.delete()
+                if (keep) toast("No se grabó nada. Revisa que el micrófono funcione y vuelve a intentarlo.")
             }
         }
         recorder.setOnInfoListener { _, what, _ ->

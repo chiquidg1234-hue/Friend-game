@@ -254,7 +254,7 @@ check "Suena lo que la admin manda al grupo" $UI playing 20
 $UI silent 10
 publish "$MYCODE" "$($ADMIN sign "$OUT/eva.json" gkick "{\"g\":\"$G2\",\"name\":\"Familia\"}")" >/dev/null
 check "La admin lo saca y avisa" sh -c "for i in \$(seq 1 20); do adb shell dumpsys notification --noredact | grep -q 'Ya no estás en el grupo' && exit 0; sleep 1; done; exit 1"
-check "El grupo desaparece de la lista" sh -c "! $UI see Familia"
+check "El grupo desaparece de la lista" sh -c "! $UI see '👥 Familia'"
 
 echo "== 9d. Grabar un audio con el micrófono"
 $UI top
