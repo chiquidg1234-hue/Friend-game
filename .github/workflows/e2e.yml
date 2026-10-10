@@ -50,7 +50,9 @@ jobs:
           pactl load-module module-null-sink sink_name=virtual
           pactl set-default-sink virtual
           pactl set-default-source virtual.monitor
-          pactl info | grep -i default
+          pactl info | grep -iE "default|server string"
+          # El emulador busca el audio en esta dirección.
+          echo "PULSE_SERVER=$(pactl info | sed -n 's/^Server String: //p')" >> "$GITHUB_ENV"
 
       - name: Habilitar aceleración del emulador
         run: |

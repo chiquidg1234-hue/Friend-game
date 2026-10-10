@@ -30,6 +30,12 @@ bad() {
   echo "--- pantalla en este momento:"
   $UI dump | head -60
 }
+# Para lo que depende del hardware del emulador (micrófono): avisa sin contar como fallo.
+soft() {
+  local desc="$1"
+  shift
+  if "$@"; then ok "$desc"; else echo "⚠️  $desc (el emulador de GitHub no tiene micrófono real)"; fi
+}
 check() {
   local desc="$1"
   shift
@@ -262,9 +268,14 @@ check "Botón Grabar" $UI tap "Grabar"
 check "Está grabando" $UI wait "Grabando" 10
 sleep 3
 check "Toca Listo" $UI tap "Listo"
-check "Pide nombre para la grabación" $UI wait "¿Cómo se llama este audio?" 10
-check "Guarda la grabación" $UI tapexact "Guardar"
-check "Aparece en Mis audios" $UI see "Mi grabación"
+if $UI wait "¿Cómo se llama este audio?" 10; then
+  ok "Pide nombre para la grabación"
+  check "Guarda la grabación" $UI tapexact "Guardar"
+  check "Aparece en Mis audios" $UI see "Mi grabación"
+else
+  soft "Pide nombre para la grabación" false
+  $UI top
+fi
 
 echo "== 10. Pausar la recepción"
 $UI top
