@@ -232,7 +232,11 @@ sleep 2
 $UI top
 check "Botón Pegar enlace" $UI tap "Pegar enlace"
 $UI tapclass android.widget.EditText
-adb shell "input text '$INVITE2'"
+# Se escribe por partes: un texto muy largo de una vez satura el teclado del emulador.
+for part in $(echo "$INVITE2" | fold -w 40); do
+  adb shell "input text '$part'"
+done
+check "El enlace quedó completo en el campo" $UI wait "$EVAKEY" 5
 check "Botón Unirme" $UI tapexact "Unirme"
 check "Pide confirmar antes de unirse" $UI wait "¿Unirte a «Familia»?" 10
 check "Confirma" $UI tapexact "Sí"
@@ -306,7 +310,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 check "Queda instalada la versión $LATEST" test "$UPDATED" = yes
-check "Avisa con una notificación que se actualizó" sh -c "adb shell dumpsys notification --noredact | grep -q 'se actualizó a la versión'"
+check "Avisa con una notificación que se actualizó" sh -c "for i in \$(seq 1 20); do adb shell dumpsys notification --noredact | grep -q 'se actualizó a la versión' && exit 0; sleep 1; done; exit 1"
 shot "actualizada"
 
 echo "== 13. Sin cierres inesperados"

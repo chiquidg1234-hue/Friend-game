@@ -671,6 +671,9 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun pasteInvite() {
         val input = editText(clipboardText()?.takeIf { "#g=" in it } ?: "", "Pega aquí el enlace de invitación").apply {
+            // Es un enlace: sin autocorrector, que lo rompería.
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             filters = arrayOf<InputFilter>(InputFilter.LengthFilter(600))
         }
         val dialog = AlertDialog.Builder(this)
