@@ -61,6 +61,11 @@ android {
     }
 }
 
+dependencies {
+    // Generar y leer los códigos QR de invitación a grupos (sin servicios de Google).
+    implementation("com.google.zxing:core:3.5.3")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)

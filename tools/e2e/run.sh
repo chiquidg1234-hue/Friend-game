@@ -12,6 +12,7 @@ OUT="$ROOT/e2e-out"
 UI="python3 $HERE/ui.py"
 INBOX="python3 $HERE/inbox.py"
 TONE="$HERE/tono_20s.ogg"
+ADMIN="python3 $HERE/fake_admin.py"
 mkdir -p "$OUT"
 FAILS=0
 STEP=0
@@ -116,6 +117,24 @@ $UI silent 15
 ELAPSED=$(( $(date +%s) - START ))
 check "Se corta solo a los 10 s ($ELAPSED s)" test "$ELAPSED" -ge 7 -a "$ELAPSED" -le 12
 
+echo "== 6b. Suena con la pantalla apagada, en reposo profundo y en silencio"
+adb shell input keyevent KEYCODE_SLEEP
+sleep 2
+adb shell dumpsys deviceidle force-idle >/dev/null
+adb shell cmd audio set-ringer-mode SILENT >/dev/null 2>&1 || true
+publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p6 custom 'Pantalla apagada')" >/dev/null
+check "Suena con la pantalla apagada y el celular en reposo (Doze)" $UI playing 30
+check "Usa el volumen de alarma, que suena aunque esté en silencio" sh -c "adb shell dumpsys audio | grep AudioPlaybackConfiguration | grep 'state:started' | grep -q USAGE_ALARM"
+$UI silent 15
+adb shell cmd audio set-ringer-mode NORMAL >/dev/null 2>&1 || true
+adb shell dumpsys deviceidle unforce >/dev/null
+adb shell input keyevent KEYCODE_WAKEUP
+sleep 1
+adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+adb shell am start -n "$PKG/.MainActivity" >/dev/null
+sleep 2
+check "Queda en el historial de sonidos" $UI see "Pantalla apagada"
+
 echo "== 7. Un desconocido no puede hacer sonar el celular"
 EXTRANO=$(new_code)
 publish "$MYCODE" "$(sound_json "$EXTRANO" Extraño x1 bocina Bocina)" >/dev/null
@@ -149,6 +168,99 @@ check "Beto aparece como pendiente" $UI see "Esperando que acepte"
 publish "$MYCODE" "{\"fg\":1,\"t\":\"acc\",\"from\":\"$BETO\",\"name\":\"Beto\"}" >/dev/null
 check "Al aceptar, Beto aparece con su nombre" $UI wait "Beto" 20
 shot "beto"
+
+echo "== 9b. Grupos: crear, invitar con QR, sonidos y sacar a alguien"
+$UI top
+check "Botón Crear grupo" $UI tap "Crear grupo"
+$UI tapclass android.widget.EditText
+adb shell input text "Primos"
+check "Botón Crear" $UI tapexact "Crear"
+check "Muestra el QR de invitación" $UI wait "Invitar a «Primos»" 10
+shot "grupo-qr"
+INVITE=$($UI find 'https://github\.com/\S*#g=\S*')
+GID=$(echo "$INVITE" | sed -n 's/.*#g=\([a-z0-9]*\).*/\1/p')
+echo "Invitación: $INVITE"
+check "El QR lleva al grupo ($GID)" test "${#GID}" -eq 16
+$UI tapexact "Cerrar"
+CARLA=$(new_code)
+DANI=$(new_code)
+curl -s -N "$SERVER/fgame-g-$GID/json" > "$OUT/inbox-grupo.jsonl" &
+G_SUB=$!
+curl -s -N "$SERVER/fgame-$CARLA/json" > "$OUT/inbox-carla.jsonl" &
+CARLA_SUB=$!
+curl -s -N "$SERVER/fgame-$DANI/json" > "$OUT/inbox-dani.jsonl" &
+DANI_SUB=$!
+sleep 2
+publish "g-$GID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$CARLA\",\"name\":\"Carla\",\"g\":\"$GID\"}" >/dev/null
+publish "g-$GID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$DANI\",\"name\":\"Dani\",\"g\":\"$GID\"}" >/dev/null
+check "El admin manda a todos la lista de miembros firmada" $INBOX "$OUT/inbox-grupo.jsonl" groster from="$MYCODE" --wait 20
+check "El grupo muestra 3 miembros" $UI see "3 miembros"
+check "Avisa que alguien se unió" sh -c "adb shell dumpsys notification --noredact | grep -q 'se unió a'"
+publish "g-$GID" "$(sound_json "$CARLA" Carla gp1 sirena Sirena)" >/dev/null
+check "Suena lo que Carla manda al grupo" $UI playing 20
+$UI silent 10
+$UI top
+check "Elige el grupo como destino" $UI tap "👥 Primos"
+check "Toca la Bocina para el grupo" $UI tap "Bocina"
+check "Al grupo le llega la bocina" $INBOX "$OUT/inbox-grupo.jsonl" snd from="$MYCODE" s=bocina g="$GID" --wait 20
+check "Opciones del grupo" $UI longtap "Lo administras tú"
+check "Ver miembros" $UI tap "Ver miembros"
+shot "grupo-miembros"
+check "Elige a Carla" $UI tap "Carla"
+check "Confirma sacarla" $UI tapexact "Sí"
+check "A Carla le llega que ya no está (firmado)" $INBOX "$OUT/inbox-carla.jsonl" gkick from="$MYCODE" --wait 20
+MOVE=$($INBOX "$OUT/inbox-dani.jsonl" gmove from="$MYCODE" --wait 20)
+check "A Dani le llega el canal nuevo del grupo" test -n "$MOVE"
+NEWGID=$(echo "$MOVE" | python3 -c 'import json,sys; print(json.loads(json.load(sys.stdin)["body"])["ng"])' 2>/dev/null)
+check "El grupo muestra 2 miembros" $UI see "2 miembros"
+sleep 3
+publish_file "g-$GID" "$TONE" "$(sound_json "$CARLA" Carla gp2 custom 'Carla expulsada')" >/dev/null
+check "Lo que manda Carla al canal viejo ya no suena" $UI never 8
+publish "g-$NEWGID" "$(sound_json "$DANI" Dani gp3 sirena Sirena)" >/dev/null
+check "Dani sigue en el grupo y su sonido suena" $UI playing 20
+$UI silent 10
+
+echo "== 9c. Unirse al grupo de otra persona con su enlace"
+$ADMIN new "$OUT/eva.json" > "$OUT/eva-pub.json"
+EVA=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["code"])' "$OUT/eva-pub.json")
+G2=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["group"])' "$OUT/eva-pub.json")
+EVAKEY=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["key"])' "$OUT/eva-pub.json")
+INVITE2="https://github.com/chiquidg1234-hue/Friend-game/releases/latest#g=$G2&n=Familia&a=$EVA&k=$EVAKEY"
+curl -s -N "$SERVER/fgame-g-$G2/json" > "$OUT/inbox-familia.jsonl" &
+FAM_SUB=$!
+sleep 2
+$UI top
+check "Botón Pegar enlace" $UI tap "Pegar enlace"
+$UI tapclass android.widget.EditText
+adb shell "input text '$INVITE2'"
+check "Botón Unirme" $UI tapexact "Unirme"
+check "Pide confirmar antes de unirse" $UI wait "¿Unirte a «Familia»?" 10
+check "Confirma" $UI tapexact "Sí"
+check "Avisa al grupo que se unió" $INBOX "$OUT/inbox-familia.jsonl" gjoin from="$MYCODE" --wait 20
+ROSTER="{\"g\":\"$G2\",\"name\":\"Familia\",\"members\":[{\"code\":\"$EVA\",\"name\":\"Eva\"},{\"code\":\"$MYCODE\",\"name\":\"Robot\"},{\"code\":\"$DANI\",\"name\":\"Fede\"}]}"
+publish "g-$G2" "$($ADMIN sign "$OUT/eva.json" groster "$ROSTER")" >/dev/null
+check "Toma la lista de miembros firmada por la admin" $UI see "3 miembros · Mantén"
+$ADMIN new "$OUT/falsa.json" >/dev/null
+FAKE=$($ADMIN sign "$OUT/falsa.json" groster "{\"g\":\"$G2\",\"name\":\"Hackeado\",\"members\":[]}" | python3 -c "import json,sys; d=json.load(sys.stdin); d['from']='$EVA'; print(json.dumps(d))")
+publish "g-$G2" "$FAKE" >/dev/null
+sleep 5
+check "Ignora una lista con firma falsa" sh -c "! $UI see Hackeado"
+publish "g-$G2" "$(sound_json "$EVA" Eva fm1 sirena Sirena)" >/dev/null
+check "Suena lo que la admin manda al grupo" $UI playing 20
+$UI silent 10
+publish "$MYCODE" "$($ADMIN sign "$OUT/eva.json" gkick "{\"g\":\"$G2\",\"name\":\"Familia\"}")" >/dev/null
+check "La admin lo saca y avisa" sh -c "for i in \$(seq 1 20); do adb shell dumpsys notification --noredact | grep -q 'Ya no estás en el grupo' && exit 0; sleep 1; done; exit 1"
+check "El grupo desaparece de la lista" sh -c "! $UI see Familia"
+
+echo "== 9d. Grabar un audio con el micrófono"
+$UI top
+check "Botón Grabar" $UI tap "Grabar"
+check "Está grabando" $UI wait "Grabando" 10
+sleep 3
+check "Toca Listo" $UI tap "Listo"
+check "Pide nombre para la grabación" $UI wait "¿Cómo se llama este audio?" 10
+check "Guarda la grabación" $UI tapexact "Guardar"
+check "Aparece en Mis audios" $UI see "Mi grabación"
 
 echo "== 10. Pausar la recepción"
 $UI top
@@ -207,7 +319,7 @@ else
   ok "Ningún cierre inesperado"
 fi
 
-kill "$ANA_SUB" "$BETO_SUB" 2>/dev/null
+kill "$ANA_SUB" "$BETO_SUB" "$G_SUB" "$CARLA_SUB" "$DANI_SUB" "$FAM_SUB" 2>/dev/null
 echo
 if [ "$FAILS" -eq 0 ]; then
   echo "🎉 Todas las pruebas pasaron"

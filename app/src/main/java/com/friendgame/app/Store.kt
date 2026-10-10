@@ -29,6 +29,27 @@ data class Friend(
     }
 }
 
+data class Member(val code: String, val name: String)
+
+/**
+ * Grupo: todos sus miembros escuchan en el mismo canal secreto. Quien lo crea (el admin) tiene la
+ * clave privada con la que firma los cambios (lista de miembros, sacar a alguien, cerrarlo).
+ */
+data class Group(
+    val id: String,
+    val name: String,
+    val adminCode: String,
+    val adminKey: String,
+    val adminSecret: String = "",
+    val members: List<Member> = emptyList(),
+    val muted: Boolean = false,
+) {
+    val isAdmin: Boolean get() = adminSecret.isNotEmpty()
+}
+
+/** Un sonido recibido, para el historial. */
+data class HistoryEntry(val time: Long, val text: String)
+
 data class CustomSound(val id: String, val label: String, val ext: String) {
     fun file(context: Context) = CustomAudio.fileFor(context, this)
 }
@@ -37,6 +58,7 @@ data class CustomSound(val id: String, val label: String, val ext: String) {
 object Store {
     const val DEFAULT_SERVER = "https://ntfy.sh"
     private const val MAX_SEEN_IDS = 60
+    private const val MAX_HISTORY = 15
 
     fun interface Listener {
         fun onStoreChanged()
@@ -78,6 +100,7 @@ object Store {
         prefs.edit()
             .putString("code", Codes.newCode())
             .putString("friends", "[]")
+            .putString("groups", "[]")
             .putLong("last_event_time", 0)
             .putString("seen_ids", "")
             .apply()
@@ -104,6 +127,17 @@ object Store {
         get() = prefs.getBoolean("receiving", true)
         set(value) {
             prefs.edit().putBoolean("receiving", value).apply()
+            notifyChanged()
+        }
+
+    /**
+     * Si está activado, los sonidos usan el volumen de alarma: suenan aunque el celular esté en
+     * silencio o vibración. Lo decide quien recibe, en su propio celular.
+     */
+    var ringInSilent: Boolean
+        get() = prefs.getBoolean("ring_in_silent", true)
+        set(value) {
+            prefs.edit().putBoolean("ring_in_silent", value).apply()
             notifyChanged()
         }
 
@@ -172,6 +206,94 @@ object Store {
             )
         }
         prefs.edit().putString("friends", array.toString()).apply()
+        notifyChanged()
+    }
+
+    // ---- Grupos ----
+
+    @Synchronized
+    fun groups(): List<Group> {
+        val array = JSONArray(prefs.getString("groups", "[]") ?: "[]")
+        return (0 until array.length()).mapNotNull { i ->
+            val o = array.optJSONObject(i) ?: return@mapNotNull null
+            val members = o.optJSONArray("members") ?: JSONArray()
+            Group(
+                id = o.optString("id"),
+                name = o.optString("name"),
+                adminCode = o.optString("admin"),
+                adminKey = o.optString("key"),
+                adminSecret = o.optString("secret"),
+                members = membersFrom(members),
+                muted = o.optBoolean("muted", false),
+            )
+        }
+    }
+
+    fun group(id: String): Group? = groups().firstOrNull { it.id == id }
+
+    @Synchronized
+    fun putGroup(group: Group) {
+        saveGroups(groups().filter { it.id != group.id } + group)
+    }
+
+    /** Cambia el canal del grupo (al sacar a alguien) conservando el resto de los datos. */
+    @Synchronized
+    fun moveGroup(oldId: String, group: Group) {
+        saveGroups(groups().filter { it.id != oldId && it.id != group.id } + group)
+    }
+
+    @Synchronized
+    fun removeGroup(id: String) {
+        saveGroups(groups().filter { it.id != id })
+    }
+
+    fun membersFrom(array: JSONArray): List<Member> = (0 until array.length()).mapNotNull { i ->
+        val m = array.optJSONObject(i) ?: return@mapNotNull null
+        val code = Codes.normalize(m.optString("code")) ?: return@mapNotNull null
+        Member(code, m.optString("name").trim().take(24).ifEmpty { "Alguien" })
+    }.distinctBy { it.code }
+
+    fun membersJson(members: List<Member>): JSONArray {
+        val array = JSONArray()
+        members.forEach { array.put(JSONObject().put("code", it.code).put("name", it.name)) }
+        return array
+    }
+
+    private fun saveGroups(list: List<Group>) {
+        val array = JSONArray()
+        list.forEach {
+            array.put(
+                JSONObject()
+                    .put("id", it.id)
+                    .put("name", it.name)
+                    .put("admin", it.adminCode)
+                    .put("key", it.adminKey)
+                    .put("secret", it.adminSecret)
+                    .put("members", membersJson(it.members))
+                    .put("muted", it.muted)
+            )
+        }
+        prefs.edit().putString("groups", array.toString()).apply()
+        notifyChanged()
+    }
+
+    // ---- Historial de sonidos recibidos ----
+
+    @Synchronized
+    fun history(): List<HistoryEntry> {
+        val array = JSONArray(prefs.getString("history", "[]") ?: "[]")
+        return (0 until array.length()).mapNotNull { i ->
+            val o = array.optJSONObject(i) ?: return@mapNotNull null
+            HistoryEntry(o.optLong("time"), o.optString("text"))
+        }
+    }
+
+    @Synchronized
+    fun addHistory(text: String) {
+        val updated = (listOf(HistoryEntry(System.currentTimeMillis(), text)) + history()).take(MAX_HISTORY)
+        val array = JSONArray()
+        updated.forEach { array.put(JSONObject().put("time", it.time).put("text", it.text)) }
+        prefs.edit().putString("history", array.toString()).apply()
         notifyChanged()
     }
 

@@ -20,13 +20,18 @@ object Relay {
 
     class HttpError(val code: Int) : IOException("HTTP $code")
 
+    const val GROUP_PREFIX = "fgame-g-"
+
     fun topicFor(code: String) = "fgame-$code"
+
+    fun groupTopic(groupId: String) = "$GROUP_PREFIX$groupId"
 
     fun baseUrl(): String = Store.server.trimEnd('/')
 
-    fun subscribeUrl(code: String, since: Long): URL {
+    /** Una sola conexión escucha el canal personal y los de todos los grupos. */
+    fun subscribeUrl(topics: List<String>, since: Long): URL {
         val query = if (since > 0) "?since=$since" else ""
-        return URL("${baseUrl()}/${topicFor(code)}/json$query")
+        return URL("${baseUrl()}/${topics.joinToString(",")}/json$query")
     }
 
     /** Mensaje base: siempre lleva quién lo manda, para que el otro pueda contestar. */
@@ -36,8 +41,21 @@ object Relay {
         .put("from", Store.myCode)
         .put("name", Store.myName)
 
-    fun publish(toCode: String, payload: JSONObject) {
-        val conn = URL("${baseUrl()}/${topicFor(toCode)}").openConnection() as HttpURLConnection
+    /**
+     * Mensaje firmado por el admin de un grupo: los datos van como texto en "body" y la firma en
+     * "sig", para que se verifiquen exactamente los mismos bytes que se firmaron.
+     */
+    fun signed(type: String, body: JSONObject, secret: String): JSONObject {
+        val text = body.toString()
+        return payload(type).put("body", text).put("sig", GroupKeys.sign(secret, text))
+    }
+
+    fun publish(toCode: String, payload: JSONObject) = publishTopic(topicFor(toCode), payload)
+
+    fun publishFile(toCode: String, payload: JSONObject, file: File) = publishFileTopic(topicFor(toCode), payload, file)
+
+    fun publishTopic(topic: String, payload: JSONObject) {
+        val conn = URL("${baseUrl()}/$topic").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 15_000
@@ -55,10 +73,10 @@ object Relay {
     }
 
     /** Para audios propios: el archivo viaja como adjunto y los datos en el parámetro "message". */
-    fun publishFile(toCode: String, payload: JSONObject, file: File) {
+    fun publishFileTopic(topic: String, payload: JSONObject, file: File) {
         val message = URLEncoder.encode(payload.toString(), "UTF-8")
         val filename = "sonido." + file.extension.ifEmpty { "mp3" }
-        val url = URL("${baseUrl()}/${topicFor(toCode)}?filename=$filename&message=$message")
+        val url = URL("${baseUrl()}/$topic?filename=$filename&message=$message")
         val conn = url.openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "PUT"

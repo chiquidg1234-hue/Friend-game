@@ -42,8 +42,15 @@ object Player {
     private var appContext: Context? = null
     private val timeout = Runnable { stopOnMain() }
 
-    private val attributes: AudioAttributes = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_MEDIA)
+    private var attributes: AudioAttributes = attributesFor(alarm = false)
+
+    /**
+     * Con "sonar aunque esté en silencio", los sonidos de amigos usan el volumen de alarma, que
+     * Android no silencia en modo silencio ni vibración. Escuchar tus propios sonidos usa siempre
+     * el volumen multimedia.
+     */
+    private fun attributesFor(alarm: Boolean): AudioAttributes = AudioAttributes.Builder()
+        .setUsage(if (alarm) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
@@ -79,6 +86,7 @@ object Player {
         stopOnMain()
         appContext = app
         val mp = MediaPlayer()
+        attributes = attributesFor(alarm = !info.isPreview && Store.ringInSilent)
         try {
             mp.setAudioAttributes(attributes)
             mp.setWakeMode(app, PowerManager.PARTIAL_WAKE_LOCK)

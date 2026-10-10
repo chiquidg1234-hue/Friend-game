@@ -94,6 +94,14 @@ object Notifs {
         social(context, code, "🎉 $name aceptó tu solicitud", "Ya se pueden mandar sonidos.")
     }
 
+    fun groupJoined(context: Context, name: String, groupName: String) {
+        social(context, "join-$groupName", "👥 $name se unió a «$groupName»", "Desde Grupos puedes ver a los miembros o sacar a alguien.")
+    }
+
+    fun groupGone(context: Context, groupId: String, title: String) {
+        social(context, "gone-$groupId", "👥 $title", "Ya no recibirás sonidos de ese grupo.")
+    }
+
     /** Tras actualizarse sola, Android cierra la app: este aviso permite volver a abrirla. */
     fun appUpdated(context: Context, versionName: String) {
         social(context, "update", "✅ Friend Game se actualizó a la versión $versionName", "Toca para abrirla.")

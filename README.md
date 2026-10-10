@@ -26,14 +26,35 @@ Funciona en Android 8 o más nuevo. Si algo falla al instalar, lee [docs/INSTALA
 4. **Manda sonidos.** Elige al amigo y toca un sonido. Si lo mantienes presionado, lo escuchas tú primero.
 5. **¿Te pasaste?** Después de mandar un sonido aparece **⏹ Detener mi sonido** durante unos segundos y lo corta en el celular de tu amigo.
 
+### Grupos
+
+Un sonido mandado a un grupo le llega a todos a la vez.
+
+1. En **Grupos**, toca **➕ Crear grupo** y ponle nombre. Aparece un **código QR**.
+2. Tus amigos lo escanean desde su app con **📷 Unirme con QR**. También puedes mandarles el enlace con **Compartir enlace**, y ellos lo pegan en **🔗 Pegar enlace**. Si alguien no tiene la app y escanea el QR con la cámara, llega a la página para instalarla.
+3. En **Mandar un sonido**, elige el grupo (👥) y toca un sonido.
+
+Si mantienes presionado un grupo, aparecen sus opciones: **Invitar con QR**, **Ver miembros**, **Silenciar** y **Salir**.
+
+Quien crea el grupo lo administra:
+
+- **Sacar a alguien:** en **Ver miembros**, toca a la persona. El grupo pasa a un canal nuevo que solo reciben los que se quedan, así que quien sale ya no puede mandar ni escuchar nada del grupo. El QR anterior deja de servir; para invitar a más gente, muestra el nuevo.
+- **Cambiar el nombre** o **cerrar el grupo** para todos.
+
+Estos cambios van firmados con una clave que solo tiene el celular de quien administra, así que nadie más puede hacerlos.
+
 ### Tus propios audios
 
-En **Mis audios**, toca **⬆️ Subir audio** y elige un archivo:
+En **Mis audios** puedes:
 
-- Formatos: **MP3, OGG, WAV o M4A** (las notas de voz de WhatsApp también sirven).
-- Máximo **8 segundos** y **2 MB**.
+- **🎙️ Grabar** un audio con el micrófono (se detiene solo a los 8 segundos).
+- **⬆️ Subir archivo**: MP3, OGG, WAV o M4A (las notas de voz de WhatsApp también sirven), máximo **8 segundos** y **2 MB**.
 
-Tus audios solo los puedes mandar tú, y solo a amigos que ya te aceptaron.
+Tus audios solo los puedes mandar tú, a amigos que te aceptaron o a tus grupos.
+
+### Historial
+
+En **🕑 Últimos sonidos recibidos** ves quién te mandó cada sonido y hace cuánto.
 
 ## 🛡️ Reglas del juego (consentimiento)
 
@@ -46,13 +67,15 @@ Cada quien manda en su propio celular:
 - Si mantienes presionado a un amigo puedes **silenciarlo**, **eliminarlo** o **bloquearlo**.
 - Si alguien manda más de 4 sonidos en 20 segundos, los demás se ignoran.
 - Si estás en una llamada, el sonido no se reproduce: solo te llega el aviso.
-- El volumen es el **multimedia** de tu celular. Si lo bajas a cero, no suena.
+- **🔔 Sonar aunque esté en silencio** viene activado: los sonidos usan el volumen de **alarma**, que suena aunque el celular esté en silencio o en vibración. Si lo desactivas, usan el volumen multimedia. Lo decide cada quien en su celular.
+- Al llegar un sonido, el celular también vibra.
+- De un grupo puedes salirte o silenciarlo cuando quieras.
 
-## 🔋 Para que los sonidos lleguen siempre
+## 🔋 Para que suene con la pantalla apagada
 
-La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha. Algunos celulares cierran las apps en segundo plano para ahorrar batería. Si los sonidos te llegan tarde:
+La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha, y suena aunque la pantalla esté apagada o el celular en reposo. Algunos celulares cierran las apps en segundo plano para ahorrar batería. Si es tu caso:
 
-- En la app, entra en **Ajustes → 🔋 Que los sonidos lleguen siempre** y acepta.
+- La app muestra arriba la tarjeta **🔋 Para que suene con la pantalla apagada**. Toca **Permitir**.
 - En Xiaomi, Huawei, Samsung u otras marcas, busca también **Ajustes → Batería → Friend Game → Sin restricciones** o activa el **Inicio automático**.
 
 ## ⚙️ Cómo funciona por dentro
@@ -73,12 +96,14 @@ La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha. Algun
 | `CustomAudio.kt` | Revisa formato, tamaño y duración de los audios propios |
 | `Updater.kt` | Busca la versión nueva en GitHub, la descarga y la instala |
 | `ApkProvider.kt` | Entrega el propio APK para pasarlo por Quick Share |
+| `Groups.kt`, `Invites.kt`, `GroupKeys.kt` | Grupos: crear, unirse, sacar a alguien, invitaciones y firmas del admin |
+| `Qr.kt`, `ScanActivity.kt` | Dibujar el QR de invitación y leerlo con la cámara |
 
 ## 🛠️ Compilar
 
 Cada `push` a la rama principal compila el APK en GitHub Actions (`.github/workflows/android.yml`) y lo publica en **Releases** con la etiqueta `v1.0.N`. N es el número de versión de la app, y así la app sabe cuándo hay una nueva. La página de instalación de arriba siempre apunta a la última versión.
 
-Cada `push` también corre una prueba de punta a punta (`.github/workflows/e2e.yml`, script en `tools/e2e/`). La prueba instala la app en un emulador Android 15, la usa tocando la pantalla y simula a dos amigos que mandan solicitudes, sonidos y señales de detener por ntfy.sh.
+Cada `push` también corre una prueba de punta a punta (`.github/workflows/e2e.yml`, script en `tools/e2e/`). La prueba instala la app en un emulador Android 15 y la usa tocando la pantalla. Simula por ntfy.sh a amigos que mandan solicitudes, sonidos y señales de detener, y a miembros y admins de grupos (con firmas reales). También comprueba que suena con la pantalla apagada y en reposo, que se puede grabar un audio, que se puede pasar la app y que se actualiza sola.
 
 Para compilar en tu computadora necesitas JDK 17 y el Android SDK:
 

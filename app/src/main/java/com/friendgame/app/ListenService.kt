@@ -10,6 +10,10 @@ import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -21,7 +25,8 @@ import java.net.URL
 
 /**
  * Servicio en primer plano que mantiene abierta la conexión con el servidor y reacciona a los
- * mensajes: solicitudes de amistad, sonidos y señales de "detener".
+ * mensajes: solicitudes de amistad, sonidos, señales de "detener" y cambios en los grupos.
+ * Escucha el canal personal y el de cada grupo en una sola conexión.
  */
 class ListenService : Service() {
 
@@ -74,6 +79,17 @@ class ListenService : Service() {
     private val recentSounds = HashMap<String, ArrayDeque<Long>>()
     private var lastNetwork: Network? = null
 
+    @Volatile
+    private var subscribedTopics: List<String> = emptyList()
+
+    @Volatile
+    private var reconnectNow = false
+
+    /** Al unirse a un grupo, salir o cambiar su canal, hay que reconectar con la lista nueva. */
+    private val storeListener = Store.Listener {
+        if (running && currentTopics() != subscribedTopics) reconnect()
+    }
+
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val previous = lastNetwork
@@ -91,6 +107,7 @@ class ListenService : Service() {
         super.onCreate()
         Store.init(this)
         Notifs.createChannels(this)
+        Store.addListener(storeListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -116,6 +133,7 @@ class ListenService : Service() {
     }
 
     override fun onDestroy() {
+        Store.removeListener(storeListener)
         running = false
         connection?.disconnect()
         worker?.interrupt()
@@ -134,6 +152,22 @@ class ListenService : Service() {
         Store.notifyChanged()
     }
 
+    private fun currentTopics(): List<String> =
+        listOf(Relay.topicFor(Store.myCode)) + Store.groups().map { Relay.groupTopic(it.id) }
+
+    private fun reconnect() {
+        reconnectNow = true
+        val conn = connection
+        // Cerrar la conexión es una operación de red: no puede hacerse en el hilo principal.
+        Thread {
+            try {
+                conn?.disconnect()
+            } catch (_: Exception) {
+            }
+        }.start()
+        worker?.interrupt()
+    }
+
     private fun loop() {
         var backoffMs = 2_000L
         while (running) {
@@ -143,6 +177,11 @@ class ListenService : Service() {
             }
             setConnected(false)
             if (!running) break
+            if (reconnectNow) {
+                reconnectNow = false
+                Thread.interrupted()
+                continue
+            }
             try {
                 Thread.sleep(backoffMs)
             } catch (_: InterruptedException) {
@@ -153,7 +192,9 @@ class ListenService : Service() {
 
     private fun listenOnce(onOpen: () -> Unit) {
         val myCode = Store.myCode
-        val conn = Relay.subscribeUrl(myCode, Store.lastEventTime).openConnection() as HttpURLConnection
+        val topics = currentTopics()
+        subscribedTopics = topics
+        val conn = Relay.subscribeUrl(topics, Store.lastEventTime).openConnection() as HttpURLConnection
         connection = conn
         try {
             conn.connectTimeout = 15_000
@@ -199,13 +240,95 @@ class ListenService : Service() {
         val from = Codes.normalize(payload.optString("from")) ?: return
         if (from == myCode) return
         val name = payload.optString("name").trim().take(24).ifEmpty { "Alguien" }
+        val topic = event.optString("topic")
+        if (topic.startsWith(Relay.GROUP_PREFIX)) {
+            val group = Store.group(topic.removePrefix(Relay.GROUP_PREFIX)) ?: return
+            handleGroupMessage(group, from, name, payload, event)
+            return
+        }
         when (payload.optString("t")) {
             "req" -> onFriendRequest(from, name)
             "acc" -> onAccepted(from, name)
             "bye" -> onBye(from)
-            "snd" -> onSound(from, payload, event)
+            "snd" -> {
+                val friend = Store.friend(from) ?: return
+                if (friend.state != Friend.FRIEND || friend.muted) return
+                onSound(from, friend.name, null, payload, event)
+            }
             "stop" -> Player.stopIfMatches(payload.optString("id"), from)
+            "gmove" -> onGroupMoved(from, payload)
+            "gkick" -> onGroupKicked(from, payload)
         }
+    }
+
+    private fun handleGroupMessage(group: Group, from: String, name: String, payload: JSONObject, event: JSONObject) {
+        when (payload.optString("t")) {
+            "snd" -> {
+                if (group.muted) return
+                val sender = group.members.firstOrNull { it.code == from }?.name ?: name
+                onSound(from, sender, group, payload, event)
+            }
+            "stop" -> Player.stopIfMatches(payload.optString("id"), from)
+            "gjoin" -> {
+                val isNew = group.members.none { it.code == from }
+                val updated = group.copy(members = group.members.filter { it.code != from } + Member(from, name))
+                Store.putGroup(updated)
+                if (updated.isAdmin) {
+                    if (isNew) Notifs.groupJoined(this, name, group.name)
+                    try {
+                        Groups.publishRoster(updated)
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            "gleave" -> Store.putGroup(group.copy(members = group.members.filter { it.code != from }))
+            "groster" -> {
+                val body = verifiedBody(group, from, payload) ?: return
+                val members = Store.membersFrom(body.optJSONArray("members") ?: JSONArray())
+                val name2 = body.optString("name").trim().take(24).ifEmpty { group.name }
+                Store.putGroup(group.copy(name = name2, members = members))
+            }
+            "gend" -> {
+                verifiedBody(group, from, payload) ?: return
+                Store.removeGroup(group.id)
+                Notifs.groupGone(this, group.id, "El grupo «${group.name}» se cerró")
+            }
+        }
+    }
+
+    /** Solo vale lo que firmó el admin del grupo, y solo para ese grupo. */
+    private fun verifiedBody(group: Group, from: String, payload: JSONObject): JSONObject? {
+        if (from != group.adminCode) return null
+        val text = payload.optString("body")
+        if (!GroupKeys.verify(group.adminKey, text, payload.optString("sig"))) return null
+        val body = try {
+            JSONObject(text)
+        } catch (_: JSONException) {
+            return null
+        }
+        return if (body.optString("g") == group.id) body else null
+    }
+
+    private fun groupOf(payload: JSONObject): Group? = try {
+        Store.group(JSONObject(payload.optString("body")).optString("g"))
+    } catch (_: JSONException) {
+        null
+    }
+
+    /** El admin sacó a alguien: el grupo sigue en un canal nuevo. */
+    private fun onGroupMoved(from: String, payload: JSONObject) {
+        val group = groupOf(payload) ?: return
+        val body = verifiedBody(group, from, payload) ?: return
+        val newId = Codes.normalize(body.optString("ng")) ?: return
+        val members = Store.membersFrom(body.optJSONArray("members") ?: JSONArray())
+        Store.moveGroup(group.id, group.copy(id = newId, members = members))
+    }
+
+    private fun onGroupKicked(from: String, payload: JSONObject) {
+        val group = groupOf(payload) ?: return
+        verifiedBody(group, from, payload) ?: return
+        Store.removeGroup(group.id)
+        Notifs.groupGone(this, group.id, "Ya no estás en el grupo «${group.name}»")
     }
 
     private fun onFriendRequest(from: String, name: String) {
@@ -244,9 +367,7 @@ class ListenService : Service() {
         Player.stopIfFrom(from)
     }
 
-    private fun onSound(from: String, payload: JSONObject, event: JSONObject) {
-        val friend = Store.friend(from) ?: return
-        if (friend.state != Friend.FRIEND || friend.muted) return
+    private fun onSound(from: String, senderName: String, group: Group?, payload: JSONObject, event: JSONObject) {
         val sentAt = event.optLong("time")
         if (sentAt < sessionStart || serverNow - sentAt > MAX_SOUND_AGE_S) return
         if (!allowSound(from)) return
@@ -266,9 +387,12 @@ class ListenService : Service() {
                 Player.Source.Asset(sound.asset)
             }
             val shownLabel = label.ifEmpty { Sounds.byKey(kind)?.label ?: "Sonido" }
-            Notifs.soundReceived(this, friend.name, shownLabel)
+            val shownName = if (group != null) "$senderName · ${group.name}" else senderName
+            Notifs.soundReceived(this, shownName, shownLabel)
+            Store.addHistory("$shownName · $shownLabel")
+            vibrate()
             if (isInCall()) return
-            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, friend.name, shownLabel))
+            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, shownLabel))
         } finally {
             if (wakeLock?.isHeld == true) wakeLock.release()
         }
@@ -282,6 +406,18 @@ class ListenService : Service() {
         if (times.size >= RATE_MAX_PER_FRIEND) return false
         times.addLast(now)
         return true
+    }
+
+    private fun vibrate() {
+        val vibrator = if (Build.VERSION.SDK_INT >= 31) {
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            getSystemService(Vibrator::class.java)
+        }
+        try {
+            vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 150, 100, 150), -1))
+        } catch (_: Exception) {
+        }
     }
 
     private fun isInCall(): Boolean {

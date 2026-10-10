@@ -7,6 +7,7 @@
   ui.py see TEXTO                 busca un texto en toda la pantalla, haciendo scroll
   ui.py tapexact TEXTO            toca, si está en pantalla, el elemento cuyo texto es exactamente ese
   ui.py tapclass CLASE            toca el primer elemento de esa clase (ej. android.widget.Switch)
+  ui.py longtap TEXTO             mantiene presionado el elemento con ese texto
   ui.py find REGEX                imprime el primer texto que coincide
   ui.py top                       vuelve al inicio de la pantalla
   ui.py dump                      imprime todos los textos visibles
@@ -157,6 +158,15 @@ def main():
                 tap_node(node)
                 return 0
         return 1
+    if cmd == "longtap":
+        node = locate(lambda n: matches(n, sys.argv[2]))
+        if node is None:
+            return 1
+        x1, y1, x2, y2 = bounds(node)
+        x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
+        adb("shell", "input", "swipe", x, y, x, y, "900")
+        time.sleep(1.2)
+        return 0
     if cmd == "tapclass":
         node = locate(lambda n: n.get("class") == sys.argv[2])
         if node is None:

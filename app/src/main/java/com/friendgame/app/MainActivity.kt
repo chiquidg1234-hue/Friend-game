@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,11 +21,13 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
+import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.widget.EditText
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -37,6 +40,8 @@ class MainActivity : Activity(), Store.Listener {
     private companion object {
         const val REQ_PICK_AUDIO = 10
         const val REQ_NOTIFICATIONS = 11
+        const val REQ_SCAN = 12
+        const val REQ_MIC = 13
 
         /** Tiempo durante el que se muestra el botón para detener el sonido que mandaste. */
         const val STOP_WINDOW_MS = 15_000L
@@ -49,12 +54,15 @@ class MainActivity : Activity(), Store.Listener {
         const val INSTALL_PAGE = "https://github.com/chiquidg1234-hue/Friend-game/releases/latest"
     }
 
-    private class Sent(val toCode: String, val toName: String, val playbackId: String, val label: String)
+    private class Sent(val topic: String, val toName: String, val playbackId: String, val label: String)
+
+    /** A quién va un sonido: un amigo ("f:código") o un grupo ("g:id"). */
+    private class Target(val key: String, val name: String, val topic: String, val groupId: String?)
 
     private lateinit var content: LinearLayout
     private val ui = Handler(Looper.getMainLooper())
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
-    private var selectedCode: String? = null
+    private var selectedTarget: String? = null
     private var lastSent: Sent? = null
     private var lastSendAt = 0L
     private var renderPosted = false
@@ -122,15 +130,19 @@ class MainActivity : Activity(), Store.Listener {
     private fun render() {
         content.removeAllViews()
         val friends = Store.friends()
+        val groups = Store.groups()
         addHeader()
         addUpdateCard()
         addReceivingCard()
+        addBatteryCard()
         Player.now?.let { addPlayingCard(it) }
         lastSent?.let { addSentCard(it) }
         val incoming = friends.filter { it.state == Friend.INCOMING }
         if (incoming.isNotEmpty()) addRequestsCard(incoming)
-        addSoundsCard(friends.filter { it.state == Friend.FRIEND })
+        addSoundsCard(friends.filter { it.state == Friend.FRIEND }, groups)
+        addGroupsCard(groups)
         addFriendsCard(friends.filter { it.state != Friend.INCOMING })
+        addHistoryCard()
         addMyAudiosCard()
         addSettingsCard()
         addFooter()
@@ -212,6 +224,41 @@ class MainActivity : Activity(), Store.Listener {
             line.addView(toggle, lp(WRAP, WRAP))
             addView(line, lp())
             addView(label("Recibir sonidos (tú decides, siempre)", 13f, Palette.SUB), lp(topDp = 2))
+
+            val silentLine = row()
+            silentLine.addView(label("🔔 Sonar aunque esté en silencio", 15f, bold = true), lp(0, WRAP, weight = 1f))
+            val silentToggle = Switch(context).apply {
+                isChecked = Store.ringInSilent
+                setOnCheckedChangeListener { _, checked -> Store.ringInSilent = checked }
+            }
+            silentLine.addView(silentToggle, lp(WRAP, WRAP))
+            addView(silentLine, lp(topDp = 14))
+            addView(
+                label(
+                    if (Store.ringInSilent) "Usa el volumen de alarma: suena aunque el celular esté en silencio o vibración."
+                    else "Usa el volumen multimedia: si el celular está en silencio, puede no oírse.",
+                    13f, Palette.SUB,
+                ),
+                lp(topDp = 2),
+            )
+        }
+    }
+
+    /** Sin permiso de batería, algunos celulares cortan la conexión con la pantalla apagada. */
+    private fun addBatteryCard() {
+        if (!Store.receiving) return
+        val power = getSystemService(PowerManager::class.java) ?: return
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+        section("🔋 Para que suene con la pantalla apagada", Palette.CARD_HIGHLIGHT) {
+            addView(
+                label(
+                    "Algunos celulares cierran las apps en segundo plano para ahorrar batería. " +
+                        "Permite que Friend Game siga escuchando aunque no la estés usando.",
+                    13f, Palette.SUB,
+                ),
+                lp(topDp = 4),
+            )
+            addView(pill("Permitir", Palette.OK) { askBatteryExemption() }, lp(topDp = 10))
         }
     }
 
@@ -247,15 +294,20 @@ class MainActivity : Activity(), Store.Listener {
         }
     }
 
-    private fun addSoundsCard(accepted: List<Friend>) {
-        if (accepted.none { it.code == selectedCode }) selectedCode = accepted.firstOrNull()?.code
-        val target = accepted.firstOrNull { it.code == selectedCode }
+    private fun targets(friends: List<Friend>, groups: List<Group>): List<Target> =
+        friends.map { Target("f:${it.code}", it.name, Relay.topicFor(it.code), null) } +
+            groups.map { Target("g:${it.id}", it.name, Relay.groupTopic(it.id), it.id) }
+
+    private fun addSoundsCard(accepted: List<Friend>, groups: List<Group>) {
+        val all = targets(accepted, groups)
+        if (all.none { it.key == selectedTarget }) selectedTarget = all.firstOrNull()?.key
+        val target = all.firstOrNull { it.key == selectedTarget }
 
         section("Mandar un sonido") {
             if (target == null) {
                 addView(
                     label(
-                        "Cuando un amigo acepte tu solicitud podrás mandarle sonidos. Mientras, toca uno para escucharlo aquí.",
+                        "Cuando un amigo acepte tu solicitud o te unas a un grupo podrás mandar sonidos. Mientras, toca uno para escucharlo aquí.",
                         13f, Palette.SUB,
                     ),
                     lp(topDp = 4),
@@ -263,13 +315,19 @@ class MainActivity : Activity(), Store.Listener {
             } else {
                 addView(label("Para:", 13f, Palette.SUB), lp(topDp = 6))
                 val chips = row()
-                accepted.forEach { friend ->
-                    val selected = friend.code == selectedCode
-                    val chip = pill(
-                        (if (friend.muted) "🔇 " else "") + friend.name,
-                        if (selected) Palette.ACCENT else Palette.MUTED,
-                    ) {
-                        selectedCode = friend.code
+                all.forEach { option ->
+                    val muted = if (option.groupId == null) {
+                        accepted.firstOrNull { "f:${it.code}" == option.key }?.muted == true
+                    } else {
+                        groups.firstOrNull { it.id == option.groupId }?.muted == true
+                    }
+                    val prefix = when {
+                        muted -> "🔇 "
+                        option.groupId != null -> "👥 "
+                        else -> ""
+                    }
+                    val chip = pill(prefix + option.name, if (option.key == selectedTarget) Palette.ACCENT else Palette.MUTED) {
+                        selectedTarget = option.key
                         render()
                     }
                     chips.addView(chip, lp(WRAP, WRAP).apply { marginEnd = dp(8) })
@@ -279,8 +337,9 @@ class MainActivity : Activity(), Store.Listener {
                     addView(chips)
                 }
                 addView(scroller, lp(topDp = 6))
+                val who = if (target.groupId != null) "al grupo ${target.name}" else "a ${target.name}"
                 addView(
-                    label("Toca para mandar a ${target.name} · mantén presionado para escucharlo tú", 13f, Palette.SUB),
+                    label("Toca para mandar $who · mantén presionado para escucharlo tú", 13f, Palette.SUB),
                     lp(topDp = 10),
                 )
             }
@@ -337,14 +396,14 @@ class MainActivity : Activity(), Store.Listener {
                     else -> "🚫 ${friend.name}" to "Bloqueado"
                 }
                 val item = column().apply {
-                    background = clickable(rounded(if (friend.code == selectedCode) Palette.CARD_HIGHLIGHT else Palette.BG, 16))
+                    background = clickable(rounded(if ("f:${friend.code}" == selectedTarget) Palette.CARD_HIGHLIGHT else Palette.BG, 16))
                     setPadding(dp(14), dp(10), dp(14), dp(10))
                     isClickable = true
                     addView(label(title, 15f, bold = true), lp())
                     addView(label(subtitle, 12f, Palette.SUB), lp(topDp = 2))
                     setOnClickListener {
                         if (friend.state == Friend.FRIEND) {
-                            selectedCode = friend.code
+                            selectedTarget = "f:${friend.code}"
                             render()
                         } else {
                             friendOptions(friend)
@@ -367,6 +426,59 @@ class MainActivity : Activity(), Store.Listener {
         }
     }
 
+    private fun addGroupsCard(groups: List<Group>) {
+        section("Grupos") {
+            if (groups.isEmpty()) {
+                addView(
+                    label("Crea un grupo e invita con un código QR: un sonido le llega a todos a la vez.", 13f, Palette.SUB),
+                    lp(topDp = 4),
+                )
+            }
+            groups.forEach { group ->
+                val key = "g:${group.id}"
+                val count = group.members.size
+                val subtitle = "$count ${if (count == 1) "miembro" else "miembros"}" +
+                    (if (group.isAdmin) " · Lo administras tú" else "") +
+                    (if (group.muted) " · Silenciado" else "") + " · Mantén presionado para opciones"
+                val item = column().apply {
+                    background = clickable(rounded(if (key == selectedTarget) Palette.CARD_HIGHLIGHT else Palette.BG, 16))
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    isClickable = true
+                    addView(label((if (group.muted) "🔇 " else "👥 ") + group.name, 15f, bold = true), lp())
+                    addView(label(subtitle, 12f, Palette.SUB), lp(topDp = 2))
+                    setOnClickListener {
+                        selectedTarget = key
+                        render()
+                    }
+                    setOnLongClickListener {
+                        groupOptions(group)
+                        true
+                    }
+                }
+                addView(item, lp(topDp = 8))
+            }
+            addView(pill("➕ Crear grupo", Palette.ACCENT) { createGroup() }, lp(topDp = 12))
+            val joins = row()
+            joins.addView(pill("📷 Unirme con QR", Palette.MUTED) { scanInvite() }, lp(0, WRAP, weight = 1f))
+            joins.addView(View(context), lp(dp(8), 1))
+            joins.addView(pill("🔗 Pegar enlace", Palette.MUTED) { pasteInvite() }, lp(0, WRAP, weight = 1f))
+            addView(joins, lp(topDp = 8))
+        }
+    }
+
+    private fun addHistoryCard() {
+        val history = Store.history()
+        if (history.isEmpty()) return
+        section("🕑 Últimos sonidos recibidos") {
+            val now = System.currentTimeMillis()
+            history.take(5).forEach { entry ->
+                val ago = DateUtils.getRelativeTimeSpanString(entry.time, now, DateUtils.MINUTE_IN_MILLIS)
+                addView(label(entry.text, 14f, bold = true), lp(topDp = 8))
+                addView(label(ago, 12f, Palette.SUB), lp())
+            }
+        }
+    }
+
     private fun addMyAudiosCard() {
         section("Mis audios") {
             addView(label(CustomAudio.HINT, 13f, Palette.SUB), lp(topDp = 4))
@@ -382,7 +494,11 @@ class MainActivity : Activity(), Store.Listener {
                 line.addView(pill("🗑", Palette.MUTED) { deleteCustom(custom) }, lp(WRAP, WRAP))
                 addView(line, lp(topDp = 10))
             }
-            addView(pill("⬆️ Subir audio", Palette.CUSTOM, Palette.INK) { pickAudio() }, lp(topDp = 12))
+            val buttons = row()
+            buttons.addView(pill("🎙️ Grabar", Palette.CUSTOM, Palette.INK) { recordAudio() }, lp(0, WRAP, weight = 1f))
+            buttons.addView(View(context), lp(dp(8), 1))
+            buttons.addView(pill("⬆️ Subir archivo", Palette.CUSTOM, Palette.INK) { pickAudio() }, lp(0, WRAP, weight = 1f))
+            addView(buttons, lp(topDp = 12))
         }
     }
 
@@ -410,7 +526,7 @@ class MainActivity : Activity(), Store.Listener {
                 addView(label(Updater.message, 13f, Palette.SUB), lp(topDp = 4))
             }
             option("🌐 Servidor: ${Store.server}") { editServer() }
-            option("♻️ Cambiar mi código (borra tus amigos)") { confirmResetCode() }
+            option("♻️ Cambiar mi código (borra amigos y grupos)") { confirmResetCode() }
         }
     }
 
@@ -460,23 +576,25 @@ class MainActivity : Activity(), Store.Listener {
         startActivity(Intent.createChooser(intent, "Compartir mi código"))
     }
 
-    private fun sendSound(target: Friend, kind: String, label: String, custom: CustomSound?) {
+    private fun sendSound(target: Target, kind: String, label: String, custom: CustomSound?) {
         val now = SystemClock.elapsedRealtime()
         if (now - lastSendAt < SEND_COOLDOWN_MS) return
         lastSendAt = now
         val playbackId = Codes.random(12)
         val payload = Relay.payload("snd").put("id", playbackId).put("s", kind).put("label", label)
+        target.groupId?.let { payload.put("g", it) }
         val file = custom?.file(this)
         if (file != null && !file.exists()) {
             toast("No encuentro ese audio, súbelo otra vez.")
             return
         }
+        val toName = if (target.groupId != null) "el grupo ${target.name}" else target.name
         runInBackground({
-            if (file != null) Relay.publishFile(target.code, payload, file) else Relay.publish(target.code, payload)
+            if (file != null) Relay.publishFileTopic(target.topic, payload, file) else Relay.publishTopic(target.topic, payload)
         }) {
-            val sent = Sent(target.code, target.name, playbackId, label)
+            val sent = Sent(target.topic, toName, playbackId, label)
             lastSent = sent
-            toast("✅ Enviado a ${target.name}")
+            toast("✅ Enviado a $toName")
             render()
             ui.postDelayed({
                 if (lastSent === sent) {
@@ -491,12 +609,168 @@ class MainActivity : Activity(), Store.Listener {
         lastSent = null
         render()
         val payload = Relay.payload("stop").put("id", sent.playbackId)
-        runInBackground({ Relay.publish(sent.toCode, payload) }) { toast("⏹ Listo, se detuvo tu sonido") }
+        runInBackground({ Relay.publishTopic(sent.topic, payload) }) { toast("⏹ Listo, se detuvo tu sonido") }
+    }
+
+    // ------------------------------------------------------------------ Grupos
+
+    private fun createGroup() {
+        textDialog("Crear grupo", "¿Cómo se llama? Lo verán todos los que se unan.", "", "Nombre del grupo", "Crear") { name ->
+            val group = Groups.create(name)
+            selectedTarget = "g:${group.id}"
+            showInvite(group)
+            true
+        }
+    }
+
+    private fun showInvite(group: Group) {
+        val link = Invites.link(group)
+        val size = dp(240)
+        val image = ImageView(this).apply {
+            setImageBitmap(Qr.bitmap(link, size))
+            background = rounded(0xFFFFFFFF.toInt(), 12)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        val body = column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(8), dp(22), dp(8))
+            addView(image, LinearLayout.LayoutParams(size + dp(16), size + dp(16)))
+            addView(
+                label(
+                    "Que lo escanee desde Friend Game → Grupos → «Unirme con QR». " +
+                        "Si no tiene la app, al escanearlo con la cámara le abre la página para instalarla.",
+                    14f,
+                ),
+                lp(topDp = 12),
+            )
+            addView(label(link, 10f, Palette.SUB).apply { setTextIsSelectable(true) }, lp(topDp = 8))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Invitar a «${group.name}»")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Compartir enlace") { _, _ -> shareInvite(group) }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun shareInvite(group: Group) {
+        val text = "Únete a mi grupo «${group.name}» en Friend Game 🔊\n" +
+            "En la app: Grupos → «Pegar enlace» y pega esto:\n${Invites.link(group)}\n" +
+            "¿No tienes la app? Abre el enlace en Chrome para instalarla."
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(intent, "Invitar al grupo"))
+    }
+
+    private fun scanInvite() {
+        try {
+            startActivityForResult(Intent(this, ScanActivity::class.java), REQ_SCAN)
+        } catch (_: ActivityNotFoundException) {
+            pasteInvite()
+        }
+    }
+
+    private fun pasteInvite() {
+        val input = editText(clipboardText()?.takeIf { "#g=" in it } ?: "", "Pega aquí el enlace de invitación").apply {
+            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(600))
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Unirme con un enlace")
+            .setMessage("Pega el enlace de invitación que te mandaron.")
+            .setView(padded(input))
+            .setPositiveButton("Unirme", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val invite = Invites.parse(input.text.toString())
+                if (invite == null) {
+                    input.error = "Ese enlace no es una invitación de Friend Game."
+                } else {
+                    dialog.dismiss()
+                    confirmJoin(invite)
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun confirmJoin(invite: Invites.Invite) {
+        if (Store.group(invite.groupId) != null) {
+            toast("Ya estás en «${invite.name}»")
+            return
+        }
+        confirm(
+            "¿Unirte a «${invite.name}»?",
+            "Las personas del grupo podrán mandarte sonidos. Puedes silenciarlo o salirte cuando quieras.",
+        ) {
+            val group = Groups.join(invite)
+            selectedTarget = "g:${group.id}"
+            runInBackground({ Groups.announceJoin(group) }) { toast("👥 Te uniste a «${group.name}»") }
+        }
+    }
+
+    private fun groupOptions(group: Group) {
+        val options = mutableListOf<Pair<String, () -> Unit>>()
+        options += "📱 Invitar con QR" to { showInvite(group) }
+        options += "👥 Ver miembros" to { showMembers(group) }
+        options += (if (group.muted) "🔊 Volver a recibir sus sonidos" else "🔇 Silenciar el grupo") to {
+            Store.putGroup(group.copy(muted = !group.muted))
+        }
+        if (group.isAdmin) {
+            options += "✏️ Cambiar nombre" to {
+                textDialog("Cambiar nombre", null, group.name, "Nombre del grupo", "Guardar") { name ->
+                    runInBackground({ Groups.rename(group, name) }) {}
+                    true
+                }
+            }
+            options += "🗑 Cerrar el grupo" to {
+                confirm("¿Cerrar «${group.name}»?", "El grupo desaparece para todos.") {
+                    runInBackground({ Groups.close(group) }) { toast("Grupo cerrado") }
+                }
+            }
+        } else {
+            options += "🚪 Salir del grupo" to {
+                confirm("¿Salir de «${group.name}»?", "Ya no recibirás sus sonidos. Para volver necesitas otra invitación.") {
+                    runInBackground({ Groups.leave(group) }) { toast("Saliste de «${group.name}»") }
+                }
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(group.name)
+            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun showMembers(group: Group) {
+        val members = group.members.sortedBy { it.code != group.adminCode }
+        val labels = members.map { member ->
+            member.name +
+                (if (member.code == group.adminCode) " · admin" else "") +
+                (if (member.code == Store.myCode) " (tú)" else "")
+        }
+        AlertDialog.Builder(this)
+            .setTitle(if (group.isAdmin) "Miembros · toca a alguien para sacarlo" else "Miembros de «${group.name}»")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val member = members[which]
+                if (group.isAdmin && member.code != Store.myCode) confirmKick(group, member)
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun confirmKick(group: Group, member: Member) {
+        confirm(
+            "¿Sacar a ${member.name} del grupo?",
+            "Ya no podrá mandar ni recibir sonidos del grupo. El QR anterior deja de servir: para invitar a más gente, muestra el nuevo.",
+        ) {
+            runInBackground({ Groups.remove(group, member) }) { toast("${member.name} ya no está en «${group.name}»") }
+        }
     }
 
     private fun acceptRequest(friend: Friend) {
         Store.putFriend(friend.copy(state = Friend.FRIEND))
-        selectedCode = friend.code
+        selectedTarget = "f:${friend.code}"
         val payload = Relay.payload("acc")
         runInBackground({ Relay.publish(friend.code, payload) }) {
             toast("🎉 Ahora tú y ${friend.name} se pueden mandar sonidos")
@@ -562,7 +836,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun showAddFriend() {
-        val codeInput = editText("", "Su código (ej. ABCD-EFGH-JKMN-PQRS)").apply {
+        val codeInput = editText("", "Su código: ABCD-EFGH-…").apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24))
@@ -609,6 +883,13 @@ class MainActivity : Activity(), Store.Listener {
         sendRequest(code)
     }
 
+    private fun clipboardText(): String? = try {
+        val clip = getSystemService(ClipboardManager::class.java)?.primaryClip
+        if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this).toString() else null
+    } catch (_: Exception) {
+        null
+    }
+
     private fun clipboardCode(): String? = try {
         val clip = getSystemService(ClipboardManager::class.java)?.primaryClip
         val text = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this).toString() else null
@@ -636,6 +917,12 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SCAN && resultCode == RESULT_OK) {
+            val invite = Invites.parse(data?.getStringExtra(ScanActivity.EXTRA_TEXT))
+            if (invite == null) info("Ese QR no es de Friend Game", "Pide que te muestren el QR desde Grupos → Invitar con QR.")
+            else confirmJoin(invite)
+            return
+        }
         if (requestCode != REQ_PICK_AUDIO || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         toast("Revisando el audio…")
@@ -699,7 +986,84 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_MIC) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) recordAudio()
+            else toast("Sin permiso de micrófono no se puede grabar. Puedes subir un archivo.")
+        }
         render()
+    }
+
+    /** Graba hasta 8 segundos con el micrófono y lo guarda como audio propio. */
+    private fun recordAudio() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
+            return
+        }
+        val sound = CustomSound(Codes.random(10), "", "m4a")
+        val file = sound.file(this)
+        val recorder = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
+        try {
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioEncodingBitRate(96_000)
+            recorder.setAudioSamplingRate(44_100)
+            recorder.setMaxDuration(CustomAudio.MAX_MS.toInt())
+            recorder.setOutputFile(file.absolutePath)
+            recorder.prepare()
+            recorder.start()
+        } catch (_: Exception) {
+            recorder.release()
+            file.delete()
+            toast("No se pudo usar el micrófono.")
+            return
+        }
+        val startedAt = SystemClock.elapsedRealtime()
+        val status = label("🎙️ Grabando… 0 s", 20f, bold = true)
+        var finished = false
+        lateinit var dialog: AlertDialog
+        val tick = object : Runnable {
+            override fun run() {
+                if (finished) return
+                val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000
+                status.text = "🎙️ Grabando… $seconds s de 8"
+                ui.postDelayed(this, 250)
+            }
+        }
+        fun finish(keep: Boolean) {
+            if (finished) return
+            finished = true
+            ui.removeCallbacks(tick)
+            val ok = try {
+                recorder.stop()
+                true
+            } catch (_: RuntimeException) {
+                false // se detuvo antes de grabar algo
+            }
+            recorder.release()
+            dialog.dismiss()
+            if (keep && ok && file.length() > 0) {
+                nameNewAudio(CustomAudio.Imported(sound, "Mi grabación"))
+            } else {
+                file.delete()
+            }
+        }
+        recorder.setOnInfoListener { _, what, _ ->
+            if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) ui.post { finish(keep = true) }
+        }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Grabar audio")
+            .setView(padded(status, label("Se detiene sola a los 8 segundos.", 13f, Palette.SUB)))
+            .setCancelable(false)
+            .setPositiveButton("⏹ Listo", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { finish(keep = true) }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { finish(keep = false) }
+        }
+        dialog.show()
+        ui.post(tick)
     }
 
     private fun askBatteryExemption() {
@@ -736,11 +1100,12 @@ class MainActivity : Activity(), Store.Listener {
     private fun confirmResetCode() {
         confirm(
             "¿Cambiar tu código?",
-            "Se borrará tu lista de amigos y quien tenga tu código viejo ya no podrá escribirte. Útil si tu código llegó a alguien que no querías.",
+            "Se borrarán tus amigos y grupos, y quien tenga tu código viejo ya no podrá escribirte. Útil si tu código llegó a alguien que no querías.",
         ) {
             val goodbyes = Store.friends()
                 .filter { it.state == Friend.FRIEND || it.state == Friend.OUTGOING }
                 .map { it.code to Relay.payload("bye") }
+            val groups = Store.groups()
             Player.stop()
             runInBackground({
                 goodbyes.forEach { (code, payload) ->
@@ -749,9 +1114,15 @@ class MainActivity : Activity(), Store.Listener {
                     } catch (_: Exception) {
                     }
                 }
+                groups.forEach { group ->
+                    try {
+                        if (group.isAdmin) Groups.close(group) else Groups.leave(group)
+                    } catch (_: Exception) {
+                    }
+                }
             }) {}
             Store.resetCode()
-            selectedCode = null
+            selectedTarget = null
             ListenService.restart(this)
             toast("Listo: tienes un código nuevo")
         }
