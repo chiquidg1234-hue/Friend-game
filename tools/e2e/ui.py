@@ -89,13 +89,14 @@ def on_screen(node):
 
 
 def swipe_up():
-    adb("shell", "input", "swipe", str(W // 2), str(int(H * 0.75)), str(W // 2), str(int(H * 0.35)), "300")
-    time.sleep(0.8)
+    # Lento para que no quede deslizándose: un toque durante el deslizamiento solo lo frena.
+    adb("shell", "input", "swipe", str(W // 2), str(int(H * 0.75)), str(W // 2), str(int(H * 0.35)), "700")
+    time.sleep(1.2)
 
 
 def swipe_down():
-    adb("shell", "input", "swipe", str(W // 2), str(int(H * 0.3)), str(W // 2), str(int(H * 0.85)), "250")
-    time.sleep(0.6)
+    adb("shell", "input", "swipe", str(W // 2), str(int(H * 0.3)), str(W // 2), str(int(H * 0.85)), "400")
+    time.sleep(0.8)
 
 
 def top():
@@ -109,18 +110,31 @@ def tap_node(node):
     time.sleep(1.2)
 
 
-def locate(predicate):
-    """Busca en la pantalla actual; si no está, baja hasta 8 veces y luego vuelve arriba."""
-    for attempt in range(9):
-        for node in nodes():
-            if predicate(node) and on_screen(node):
-                return node
-        if attempt < 8:
-            swipe_up()
-    top()
+def find_on_screen(predicate):
     for node in nodes():
         if predicate(node) and on_screen(node):
             return node
+    return None
+
+
+def settled(predicate):
+    """Tras un scroll, espera a que la pantalla quede quieta y vuelve a medir el elemento."""
+    time.sleep(1.0)
+    return find_on_screen(predicate)
+
+
+def locate(predicate):
+    """Busca en la pantalla actual; si no está, baja hasta 8 veces y luego vuelve arriba."""
+    node = find_on_screen(predicate)
+    if node is not None:
+        return node
+    for _ in range(8):
+        swipe_up()
+        if find_on_screen(predicate) is not None:
+            return settled(predicate)
+    top()
+    if find_on_screen(predicate) is not None:
+        return settled(predicate)
     return None
 
 
