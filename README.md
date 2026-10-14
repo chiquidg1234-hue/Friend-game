@@ -69,6 +69,8 @@ Cada quien manda en su propio celular:
 - Si estás en una llamada, el sonido no se reproduce: solo te llega el aviso.
 - **🔔 Sonar aunque esté en silencio** viene activado: los sonidos usan el volumen de **alarma**, que suena aunque el celular esté en silencio o en vibración. Si lo desactivas, usan el volumen multimedia. Lo decide cada quien en su celular.
 - Al llegar un sonido, el celular también vibra.
+- Si la alarma está en 0 y el multimedia no, el sonido usa el multimedia para no perderse.
+- **🔊 Probar y revisar el sonido** hace sonar una sirena como si te la mandaran y te dice qué puede estar impidiendo que se oiga: volumen en 0, «No molestar», auriculares conectados, ahorro de batería o falta de conexión. En el historial también queda anotado si un sonido no sonó y por qué.
 - De un grupo puedes salirte o silenciarlo cuando quieras.
 
 ## 🔋 Para que suene con la pantalla apagada

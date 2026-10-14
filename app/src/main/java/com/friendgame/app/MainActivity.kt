@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
+import android.media.AudioManager
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -241,7 +242,49 @@ class MainActivity : Activity(), Store.Listener {
                 ),
                 lp(topDp = 2),
             )
+            val problem = Store.lastProblem.ifEmpty { if (Store.receiving) SoundCheck.silentReason(context) ?: "" else "" }
+            if (problem.isNotEmpty()) {
+                addView(
+                    label("⚠️ ${problem.replaceFirstChar { it.uppercase() }}: los sonidos no se van a oír.", 14f, Palette.YELLOW, bold = true),
+                    lp(topDp = 12),
+                )
+            }
+            addView(pill("🔊 Probar y revisar el sonido", Palette.MUTED) { checkSound() }, lp(topDp = 12))
         }
+    }
+
+    /** Hace sonar una sirena igual que un sonido recibido y muestra qué podría estar impidiéndolo. */
+    private fun checkSound() {
+        val sirena = Sounds.byKey("sirena") ?: return
+        Player.play(
+            this, Player.Source.Asset(sirena.asset),
+            Player.NowPlaying(Codes.random(12), "", "Prueba", sirena.label), incoming = true,
+        )
+        val items = SoundCheck.items(this)
+        val text = items.joinToString("\n\n") { (if (it.ok) "✅ " else "⚠️ ") + it.text }
+        val allOk = items.all { it.ok }
+        AlertDialog.Builder(this)
+            .setTitle(if (allOk) "Revisión del sonido: todo bien" else "Revisión del sonido")
+            .setMessage(
+                "Debería estar sonando una sirena, igual que cuando te mandan un sonido.\n\n$text" +
+                    if (allOk) "" else "\n\nArregla lo marcado con ⚠️ y vuelve a probar."
+            )
+            .setPositiveButton("Ajustar volumen") { _, _ -> openVolume() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun openVolume() {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                startActivity(Intent(Settings.Panel.ACTION_VOLUME))
+                return
+            }
+        } catch (_: Exception) {
+        }
+        val stream = if (SoundCheck.useAlarm(this)) AudioManager.STREAM_ALARM else AudioManager.STREAM_MUSIC
+        getSystemService(AudioManager::class.java)
+            ?.adjustStreamVolume(stream, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
     }
 
     /** Sin permiso de batería, algunos celulares cortan la conexión con la pantalla apagada. */

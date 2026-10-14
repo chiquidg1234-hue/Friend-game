@@ -368,31 +368,42 @@ class ListenService : Service() {
     }
 
     private fun onSound(from: String, senderName: String, group: Group?, payload: JSONObject, event: JSONObject) {
+        val kind = payload.optString("s")
+        val label = payload.optString("label").trim().take(30).ifEmpty { Sounds.byKey(kind)?.label ?: "Sonido" }
+        val shownName = if (group != null) "$senderName · ${group.name}" else senderName
         val sentAt = event.optLong("time")
-        if (sentAt < sessionStart || serverNow - sentAt > MAX_SOUND_AGE_S) return
+        if (sentAt < sessionStart || serverNow - sentAt > MAX_SOUND_AGE_S) {
+            // Llegó tarde (la app no estaba conectada): no suena, pero queda anotado.
+            Store.addHistory("$shownName · $label (no sonó: llegó cuando la app no estaba conectada)")
+            return
+        }
         if (!allowSound(from)) return
 
         val wakeLock = getSystemService(PowerManager::class.java)
             ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "friendgame:sound")
         wakeLock?.acquire(30_000L)
         try {
-            val kind = payload.optString("s")
-            val label = payload.optString("label").trim().take(30)
             val source: Player.Source = if (kind == "custom") {
-                val attachment = event.optJSONObject("attachment") ?: return
-                val file = download(attachment.optString("url")) ?: return
+                val attachment = event.optJSONObject("attachment")
+                val file = attachment?.let { download(it.optString("url")) }
+                if (file == null) {
+                    Store.addHistory("$shownName · $label (no sonó: no se pudo descargar el audio)")
+                    return
+                }
                 Player.Source.FromFile(file)
             } else {
                 val sound = Sounds.byKey(kind) ?: return
                 Player.Source.Asset(sound.asset)
             }
-            val shownLabel = label.ifEmpty { Sounds.byKey(kind)?.label ?: "Sonido" }
-            val shownName = if (group != null) "$senderName · ${group.name}" else senderName
-            Notifs.soundReceived(this, shownName, shownLabel)
-            Store.addHistory("$shownName · $shownLabel")
+            Notifs.soundReceived(this, shownName, label)
             vibrate()
-            if (isInCall()) return
-            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, shownLabel))
+            if (isInCall()) {
+                Store.addHistory("$shownName · $label (no sonó: estabas en una llamada)")
+                return
+            }
+            val reason = SoundCheck.silentReason(this)
+            Store.addHistory(if (reason == null) "$shownName · $label" else "$shownName · $label (puede no haberse oído: $reason)")
+            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, label))
         } finally {
             if (wakeLock?.isHeld == true) wakeLock.release()
         }
@@ -420,10 +431,12 @@ class ListenService : Service() {
         }
     }
 
-    private fun isInCall(): Boolean {
-        val mode = getSystemService(AudioManager::class.java)?.mode ?: return false
-        return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
-    }
+    /**
+     * Solo una llamada telefónica real. Antes también contaba MODE_IN_COMMUNICATION, pero apps
+     * como WhatsApp o Discord a veces lo dejan puesto y eso silenciaba todos los sonidos.
+     */
+    private fun isInCall(): Boolean =
+        getSystemService(AudioManager::class.java)?.mode == AudioManager.MODE_IN_CALL
 
     /** Descarga el audio propio de un amigo, solo desde nuestro servidor y con tamaño limitado. */
     private fun download(url: String): File? {

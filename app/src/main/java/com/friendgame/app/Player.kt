@@ -54,9 +54,10 @@ object Player {
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
-    fun play(context: Context, source: Source, info: NowPlaying) {
+    /** [incoming]: suena como un sonido recibido (con el volumen que corresponda), no como vista previa. */
+    fun play(context: Context, source: Source, info: NowPlaying, incoming: Boolean = !info.isPreview) {
         val app = context.applicationContext
-        main.post { playOnMain(app, source, info) }
+        main.post { playOnMain(app, source, info, incoming) }
     }
 
     /** Escuchar un sonido en tu propio celular antes de mandarlo. */
@@ -82,12 +83,27 @@ object Player {
         main.post { if (now?.fromCode == fromCode) stopOnMain() }
     }
 
-    private fun playOnMain(app: Context, source: Source, info: NowPlaying) {
+    private fun playOnMain(app: Context, source: Source, info: NowPlaying, incoming: Boolean) {
         stopOnMain()
         appContext = app
+        val alarm = incoming && SoundCheck.useAlarm(app)
+        // Si el reproductor falla con el volumen de alarma, se intenta otra vez con el multimedia.
+        val mp = start(app, source, alarm) ?: (if (alarm) start(app, source, false) else null)
+        if (mp == null) {
+            if (incoming) Store.lastProblem = "No se pudo reproducir «${info.label}» en este celular."
+            return
+        }
+        if (incoming) Store.lastProblem = ""
+        player = mp
+        now = info
+        main.postDelayed(timeout, MAX_PLAY_MS)
+        Store.notifyChanged()
+    }
+
+    private fun start(app: Context, source: Source, alarm: Boolean): MediaPlayer? {
         val mp = MediaPlayer()
-        attributes = attributesFor(alarm = !info.isPreview && Store.ringInSilent)
-        try {
+        attributes = attributesFor(alarm)
+        return try {
             mp.setAudioAttributes(attributes)
             mp.setWakeMode(app, PowerManager.PARTIAL_WAKE_LOCK)
             when (source) {
@@ -104,15 +120,12 @@ object Player {
             mp.prepare()
             requestFocus(app)
             mp.start()
-        } catch (e: Exception) {
+            mp
+        } catch (_: Exception) {
             mp.release()
             abandonFocus(app)
-            return
+            null
         }
-        player = mp
-        now = info
-        main.postDelayed(timeout, MAX_PLAY_MS)
-        Store.notifyChanged()
     }
 
     private fun stopOnMain() {

@@ -34,7 +34,7 @@ bad() {
 soft() {
   local desc="$1"
   shift
-  if "$@"; then ok "$desc"; else echo "⚠️  $desc (el emulador de GitHub no tiene micrófono real)"; fi
+  if "$@"; then ok "$desc"; else echo "⚠️  $desc (no se pudo comprobar en el emulador de GitHub)"; fi
 }
 check() {
   local desc="$1"
@@ -140,6 +140,30 @@ adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
 sleep 2
 check "Queda en el historial de sonidos" $UI see "Pantalla apagada"
+
+echo "== 6c. Con el volumen de alarma en 0, suena con el multimedia"
+adb shell cmd media_session volume --stream 4 --set 0 >/dev/null 2>&1
+ALARM_VOL=$(adb shell cmd media_session volume --stream 4 --get 2>/dev/null | grep -o 'volume is [0-9]*' | grep -o '[0-9]*$')
+echo "Volumen de alarma: ${ALARM_VOL:-desconocido}"
+if [ "$ALARM_VOL" = "0" ]; then
+  adb shell cmd media_session volume --stream 3 --set 8 >/dev/null 2>&1
+  publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p7 custom 'Alarma en cero')" >/dev/null
+  check "Suena igual con la alarma en 0" $UI playing 30
+  check "…usando el volumen multimedia" sh -c "adb shell dumpsys audio | grep AudioPlaybackConfiguration | grep 'state:started' | grep -q USAGE_MEDIA"
+  $UI silent 15
+  adb shell cmd media_session volume --stream 4 --set 5 >/dev/null 2>&1
+else
+  soft "Bajar el volumen de alarma a 0 desde la prueba" false
+fi
+
+echo "== 6d. Probar y revisar el sonido"
+$UI top
+check "Botón Probar y revisar el sonido" $UI tap "Probar y revisar el sonido"
+check "Suena la sirena de prueba" $UI playing 10
+check "Muestra la revisión" $UI wait "Revisión del sonido" 10
+shot "revision-sonido"
+check "Cierra la revisión" $UI tapexact "Cerrar"
+$UI silent 10
 
 echo "== 7. Un desconocido no puede hacer sonar el celular"
 EXTRANO=$(new_code)

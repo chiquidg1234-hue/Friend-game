@@ -141,6 +141,14 @@ object Store {
             notifyChanged()
         }
 
+    /** Último problema al reproducir un sonido (se muestra en la pantalla para entender qué pasó). */
+    @Volatile
+    var lastProblem: String = ""
+        set(value) {
+            field = value
+            notifyChanged()
+        }
+
     /** Hora (del servidor) del último evento visto, para recuperar lo perdido al reconectar. */
     var lastEventTime: Long
         get() = prefs.getLong("last_event_time", 0)
