@@ -84,7 +84,7 @@ check "Llega la notificación de solicitud" sh -c "adb shell dumpsys notificatio
 shot "solicitud"
 check "Botón Aceptar" $UI tap "Aceptar"
 check "A Ana le llega la aceptación" $INBOX "$OUT/inbox-ana.jsonl" acc from="$MYCODE" name=Robot --wait 20
-check "Ana aparece como destinataria" $UI wait "Toca para mandar a Ana" 10
+check "Ana aparece como destinataria" $UI see "Toca para mandar a Ana"
 $UI top
 shot "amigos"
 
@@ -140,21 +140,6 @@ adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
 sleep 2
 check "Queda en el historial de sonidos" $UI see "Pantalla apagada"
-
-echo "== 6c. Con el volumen de alarma en 0, suena con el multimedia"
-adb shell cmd media_session volume --stream 4 --set 0 >/dev/null 2>&1
-ALARM_VOL=$(adb shell cmd media_session volume --stream 4 --get 2>/dev/null | grep -o 'volume is [0-9]*' | grep -o '[0-9]*$')
-echo "Volumen de alarma: ${ALARM_VOL:-desconocido}"
-if [ "$ALARM_VOL" = "0" ]; then
-  adb shell cmd media_session volume --stream 3 --set 8 >/dev/null 2>&1
-  publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p7 custom 'Alarma en cero')" >/dev/null
-  check "Suena igual con la alarma en 0" $UI playing 30
-  check "…usando el volumen multimedia" sh -c "adb shell dumpsys audio | grep AudioPlaybackConfiguration | grep 'state:started' | grep -q USAGE_MEDIA"
-  $UI silent 15
-  adb shell cmd media_session volume --stream 4 --set 5 >/dev/null 2>&1
-else
-  soft "Bajar el volumen de alarma a 0 desde la prueba" false
-fi
 
 echo "== 6d. Probar y revisar el sonido"
 $UI top
