@@ -64,7 +64,6 @@ class InstallReceiver : BroadcastReceiver() {
                 confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 try {
                     context.startActivity(confirm)
-                    return
                 } catch (_: Exception) {
                 }
             }

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#1B1035</color>
+    <color name="bg">#150C2C</color>
+    <color name="surface">#231848</color>
     <color name="ic_launcher_background">#5B2BD6</color>
 </resources>

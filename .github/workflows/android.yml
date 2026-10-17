@@ -29,7 +29,11 @@ jobs:
           java-version: 17
           cache: gradle
 
+      # Enlace para donar: se configura en Settings → Secrets and variables → Actions →
+      # Variables → FG_DONATE_URL (por ejemplo https://paypal.me/TU_USUARIO/{amount}USD).
       - name: Compilar la app
+        env:
+          FG_DONATE_URL: ${{ vars.FG_DONATE_URL }}
         run: ./gradlew --no-daemon --stacktrace assembleRelease
 
       - name: Preparar APK
@@ -64,6 +68,6 @@ jobs:
 
             ---
 
-            - **¿Un amigo ya la tiene?** Que te la pase desde la app con **📲 Pasar la app a un amigo** (Quick Share o Bluetooth): se instala sin navegador.
+            - **¿Un amigo ya la tiene?** Que te la pase desde la app con **Amigos → Pasar la app** (Quick Share o Bluetooth): se instala sin navegador.
             - **¿Ya la tienes?** No hace falta volver aquí: la app avisa cuando hay una versión nueva y se actualiza desde dentro.
             - Funciona en Android 8 o más nuevo.

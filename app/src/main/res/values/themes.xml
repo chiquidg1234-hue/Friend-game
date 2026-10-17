@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
-        <item name="android:colorPrimary">#2A1B54</item>
-        <item name="android:colorPrimaryDark">#1B1035</item>
+        <item name="android:colorPrimary">#231848</item>
+        <item name="android:colorPrimaryDark">#150C2C</item>
         <item name="android:colorAccent">#FF4FA3</item>
+        <item name="android:colorControlActivated">#FF4FA3</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:alertDialogTheme">@style/AppDialog</item>
+    </style>
+
+    <!-- Diálogos con los colores de la app: fondo morado, esquinas redondas y botones rosados. -->
+    <style name="AppDialog" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg</item>
+        <item name="android:colorBackground">@color/surface</item>
+        <item name="android:colorAccent">#FF7AB8</item>
+        <item name="android:colorControlActivated">#FF7AB8</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#BDB2E6</item>
+        <item name="android:textColorHint">#8A7DC0</item>
     </style>
 </resources>

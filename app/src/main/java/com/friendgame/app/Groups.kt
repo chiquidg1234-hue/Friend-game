@@ -42,7 +42,18 @@ object Groups {
 
     fun leave(group: Group) {
         Store.removeGroup(group.id)
-        Relay.publishTopic(Relay.groupTopic(group.id), Relay.payload("gleave").put("g", group.id))
+        val (topic, message) = goodbye(group)
+        Relay.publishTopic(topic, message)
+    }
+
+    /**
+     * Mensaje para irse de un grupo: el admin lo cierra para todos y los demás avisan que salen.
+     * Se arma antes de cambiar de código, porque lleva el código de quien lo manda.
+     */
+    fun goodbye(group: Group): Pair<String, JSONObject> {
+        val message = if (group.isAdmin) Relay.signed("gend", JSONObject().put("g", group.id), group.adminSecret)
+        else Relay.payload("gleave").put("g", group.id)
+        return Relay.groupTopic(group.id) to message
     }
 
     /** Admin: manda a todos la lista de miembros y el nombre, firmados. */
@@ -87,7 +98,7 @@ object Groups {
     /** Admin: cierra el grupo para todos. */
     fun close(group: Group) {
         Store.removeGroup(group.id)
-        val body = JSONObject().put("g", group.id)
-        Relay.publishTopic(Relay.groupTopic(group.id), Relay.signed("gend", body, group.adminSecret))
+        val (topic, message) = goodbye(group)
+        Relay.publishTopic(topic, message)
     }
 }

@@ -11,6 +11,9 @@ plugins {
 // FG_VERSION_CODE permite fijarlo a mano (la prueba en emulador lo usa).
 val buildNumber = (System.getenv("FG_VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 
+// Enlace para donar (PayPal, Ko-fi, Mercado Pago…). Ver Donations.kt.
+val donateUrl = (System.getenv("FG_DONATE_URL") ?: "").trim().replace("\\", "").replace("\"", "")
+
 android {
     namespace = "com.friendgame.app"
     compileSdk = 35
@@ -21,6 +24,11 @@ android {
         targetSdk = 35
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
+        buildConfigField("String", "DONATE_URL", "\"$donateUrl\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {

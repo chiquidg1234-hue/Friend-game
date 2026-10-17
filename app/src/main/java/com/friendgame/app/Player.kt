@@ -8,6 +8,7 @@ import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import java.io.File
 
 /**
@@ -16,7 +17,7 @@ import java.io.File
  */
 object Player {
     /** Nadie puede tener sonando tu celular más de esto, aunque el archivo sea más largo. */
-    private const val MAX_PLAY_MS = 10_000L
+    const val MAX_PLAY_MS = 10_000L
 
     sealed class Source {
         class Asset(val path: String) : Source()
@@ -28,8 +29,17 @@ object Player {
         val fromCode: String,
         val fromName: String,
         val label: String,
+        /** Clave del sonido integrado ("sirena"…) o "custom". */
+        val soundKey: String = "",
+        val groupId: String? = null,
     ) {
         val isPreview: Boolean get() = fromCode.isEmpty()
+
+        /** Cuándo empezó a sonar y cuánto va a durar (para la barra de progreso). */
+        var startedAt = 0L
+            internal set
+        var durationMs = MAX_PLAY_MS
+            internal set
     }
 
     @Volatile
@@ -84,17 +94,23 @@ object Player {
     }
 
     private fun playOnMain(app: Context, source: Source, info: NowPlaying, incoming: Boolean) {
-        stopOnMain()
+        // El aviso del sonido nuevo ya está puesto (comparten el mismo aviso): no se quita.
+        stopOnMain(cancelNotification = false)
         appContext = app
         val alarm = incoming && SoundCheck.useAlarm(app)
         // Si el reproductor falla con el volumen de alarma, se intenta otra vez con el multimedia.
         val mp = start(app, source, alarm) ?: (if (alarm) start(app, source, false) else null)
         if (mp == null) {
-            if (incoming) Store.lastProblem = "No se pudo reproducir «${info.label}» en este celular."
+            if (incoming) {
+                Store.lastProblem = "No se pudo reproducir «${info.label}» en este celular."
+                Store.notifyChanged()
+            }
             return
         }
         if (incoming) Store.lastProblem = ""
         player = mp
+        info.startedAt = SystemClock.elapsedRealtime()
+        info.durationMs = mp.duration.toLong().takeIf { it > 0 }?.coerceAtMost(MAX_PLAY_MS) ?: MAX_PLAY_MS
         now = info
         main.postDelayed(timeout, MAX_PLAY_MS)
         Store.notifyChanged()
@@ -128,7 +144,7 @@ object Player {
         }
     }
 
-    private fun stopOnMain() {
+    private fun stopOnMain(cancelNotification: Boolean = true) {
         main.removeCallbacks(timeout)
         val mp = player
         val wasPlaying = now
@@ -143,7 +159,7 @@ object Player {
         }
         appContext?.let {
             abandonFocus(it)
-            if (wasPlaying != null && !wasPlaying.isPreview) Notifs.cancelSound(it)
+            if (cancelNotification && wasPlaying != null && !wasPlaying.isPreview) Notifs.cancelSound(it)
         }
         if (wasPlaying != null) Store.notifyChanged()
     }

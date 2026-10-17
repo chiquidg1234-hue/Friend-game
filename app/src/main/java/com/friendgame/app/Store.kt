@@ -244,6 +244,16 @@ object Store {
         saveGroups(groups().filter { it.id != group.id } + group)
     }
 
+    /**
+     * Cambia un grupo partiendo de la copia guardada más nueva; si ya no está (lo dejaste o
+     * cambió de canal mientras tanto), no lo vuelve a agregar.
+     */
+    @Synchronized
+    fun updateGroup(id: String, change: (Group) -> Group): Group? {
+        val current = group(id) ?: return null
+        return change(current).also { putGroup(it) }
+    }
+
     /** Cambia el canal del grupo (al sacar a alguien) conservando el resto de los datos. */
     @Synchronized
     fun moveGroup(oldId: String, group: Group) {

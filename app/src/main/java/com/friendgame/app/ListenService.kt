@@ -97,9 +97,13 @@ class ListenService : Service() {
             if (previous != null && previous != network) {
                 connection?.disconnect()
             }
-            if (!connected) worker?.interrupt()
+            if (!connected && sleeping) worker?.interrupt()
         }
     }
+
+    /** El hilo está esperando para reintentar (y no a mitad de una conexión). */
+    @Volatile
+    private var sleeping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -112,10 +116,17 @@ class ListenService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = Notifs.serviceNotification(this, connected)
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(Notifs.ID_SERVICE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(Notifs.ID_SERVICE, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(Notifs.ID_SERVICE, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(Notifs.ID_SERVICE, notification)
+            }
+        } catch (_: Exception) {
+            // Android 12+ puede negarlo si el sistema reinicia el servicio en segundo plano; se
+            // vuelve a iniciar al abrir la app, al reiniciar el celular o al actualizarse.
+            stopSelf()
+            return START_NOT_STICKY
         }
         if (!Store.receiving) {
             stopSelf()
@@ -183,8 +194,11 @@ class ListenService : Service() {
                 continue
             }
             try {
+                sleeping = true
                 Thread.sleep(backoffMs)
             } catch (_: InterruptedException) {
+            } finally {
+                sleeping = false
             }
             backoffMs = (backoffMs * 2).coerceAtMost(60_000L)
         }
@@ -220,7 +234,9 @@ class ListenService : Service() {
                         }
                         "message" -> handleMessage(myCode, event)
                     }
-                    if (time > Store.lastEventTime) Store.lastEventTime = time
+                    // "open" llega antes de repetir los mensajes guardados: si se usara su hora,
+                    // un corte a mitad de la repetición perdería el resto para siempre.
+                    if (event.optString("event") != "open" && time > Store.lastEventTime) Store.lastEventTime = time
                 }
             }
         } finally {
@@ -265,14 +281,17 @@ class ListenService : Service() {
         when (payload.optString("t")) {
             "snd" -> {
                 if (group.muted) return
+                val friend = Store.friend(from)
+                if (friend != null && (friend.state == Friend.BLOCKED || friend.muted)) return
                 val sender = group.members.firstOrNull { it.code == from }?.name ?: name
                 onSound(from, sender, group, payload, event)
             }
             "stop" -> Player.stopIfMatches(payload.optString("id"), from)
             "gjoin" -> {
                 val isNew = group.members.none { it.code == from }
-                val updated = group.copy(members = group.members.filter { it.code != from } + Member(from, name))
-                Store.putGroup(updated)
+                val updated = Store.updateGroup(group.id) { current ->
+                    current.copy(members = current.members.filter { it.code != from } + Member(from, name))
+                } ?: return
                 if (updated.isAdmin) {
                     if (isNew) Notifs.groupJoined(this, name, group.name)
                     try {
@@ -281,12 +300,12 @@ class ListenService : Service() {
                     }
                 }
             }
-            "gleave" -> Store.putGroup(group.copy(members = group.members.filter { it.code != from }))
+            "gleave" -> Store.updateGroup(group.id) { current -> current.copy(members = current.members.filter { it.code != from }) }
             "groster" -> {
                 val body = verifiedBody(group, from, payload) ?: return
                 val members = Store.membersFrom(body.optJSONArray("members") ?: JSONArray())
                 val name2 = body.optString("name").trim().take(24).ifEmpty { group.name }
-                Store.putGroup(group.copy(name = name2, members = members))
+                Store.updateGroup(group.id) { current -> current.copy(name = name2, members = members) }
             }
             "gend" -> {
                 verifiedBody(group, from, payload) ?: return
@@ -382,6 +401,7 @@ class ListenService : Service() {
         val wakeLock = getSystemService(PowerManager::class.java)
             ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "friendgame:sound")
         wakeLock?.acquire(30_000L)
+        var played = false
         try {
             val source: Player.Source = if (kind == "custom") {
                 val attachment = event.optJSONObject("attachment")
@@ -403,9 +423,12 @@ class ListenService : Service() {
             }
             val reason = SoundCheck.silentReason(this)
             Store.addHistory(if (reason == null) "$shownName · $label" else "$shownName · $label (puede no haberse oído: $reason)")
-            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, label))
+            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, label, kind, group?.id))
+            played = true
         } finally {
-            if (wakeLock?.isHeld == true) wakeLock.release()
+            // Player.play solo encola el trabajo: si ya hay sonido, el wake lock se deja vencer
+            // solo para que el celular no se duerma antes de que empiece a sonar.
+            if (!played && wakeLock?.isHeld == true) wakeLock.release()
         }
     }
 

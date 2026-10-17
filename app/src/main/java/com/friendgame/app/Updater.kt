@@ -85,6 +85,8 @@ object Updater {
     fun install(activity: Activity) {
         val file = apkFile
         if (state != State.READY || file == null || !file.exists()) {
+            // Si el archivo descargado se borró (limpieza de caché), se busca y descarga de nuevo.
+            if (state == State.READY) state = State.IDLE
             check(activity, force = true)
             return
         }
@@ -113,6 +115,8 @@ object Updater {
     fun onInstallResult(status: Int, detail: String?) {
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> set(State.IDLE, "Actualizada.")
+            // Si sales de la pantalla de Android sin contestar, el botón vuelve a servir.
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> set(State.READY, "Confirma la instalación en la pantalla de Android.")
             PackageInstaller.STATUS_FAILURE_ABORTED -> set(State.READY, "Cancelaste la instalación. Toca Actualizar cuando quieras.")
             else -> set(State.FAILED, "No se pudo instalar${if (detail.isNullOrBlank()) "." else ": $detail"}")
         }
@@ -193,17 +197,32 @@ object Updater {
             // Desde la segunda actualización Android puede instalarla sin preguntar.
             params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         }
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            session.openWrite(APK_ASSET, 0, file.length()).use { out ->
-                file.inputStream().use { it.copyTo(out) }
-                session.fsync(out)
+        // Sesiones de intentos anteriores que quedaron a medias.
+        installer.mySessions.forEach { old ->
+            try {
+                installer.abandonSession(old.sessionId)
+            } catch (_: Exception) {
             }
-            val intent = Intent(context, InstallReceiver::class.java).setAction(InstallReceiver.ACTION)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-            val pending = PendingIntent.getBroadcast(context, sessionId, intent, flags)
-            session.commit(pending.intentSender)
+        }
+        val sessionId = installer.createSession(params)
+        try {
+            installer.openSession(sessionId).use { session ->
+                session.openWrite(APK_ASSET, 0, file.length()).use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                    session.fsync(out)
+                }
+                val intent = Intent(context, InstallReceiver::class.java).setAction(InstallReceiver.ACTION)
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                val pending = PendingIntent.getBroadcast(context, sessionId, intent, flags)
+                session.commit(pending.intentSender)
+            }
+        } catch (e: Exception) {
+            try {
+                installer.abandonSession(sessionId)
+            } catch (_: Exception) {
+            }
+            throw e
         }
     }
 }

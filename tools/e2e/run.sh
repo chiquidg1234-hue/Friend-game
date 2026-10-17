@@ -58,18 +58,20 @@ adb logcat -c
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
 
 echo "== 1. Primer inicio: pide el nombre"
-check "Aparece la bienvenida" $UI wait "bienvenida" 40
+check "Aparece la bienvenida" $UI wait "Hazle sonar el celular" 40
 shot "bienvenida"
 $UI tapclass android.widget.EditText
 adb shell input text "Robot"
-check "Botón Listo" $UI tap "Listo"
+check "Botón Empezar" $UI tap "Empezar"
 check "Muestra el saludo con el nombre" $UI wait "Hola, Robot" 15
+check "Pestaña Amigos" $UI tab Amigos
 check "Muestra el código de amigo" $UI wait "Tu código de amigo" 10
 PRETTY=$($UI find '^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$')
 MYCODE=$(echo "$PRETTY" | tr -d '-' | tr 'A-Z' 'a-z')
 echo "Código del robot: $PRETTY ($MYCODE)"
 [ ${#MYCODE} -eq 16 ] || { bad "No pude leer el código"; exit 1; }
-check "Se conecta al servidor" $UI wait "Listo para recibir sonidos" 60
+check "Pestaña Sonar" $UI tab Sonar
+check "Se conecta al servidor" $UI wait "En línea" 60
 shot "inicio"
 check "El servicio está en primer plano" sh -c "adb shell dumpsys activity services $PKG | grep -q 'isForeground=true'"
 
@@ -79,14 +81,18 @@ curl -s -N "$SERVER/fgame-$ANA/json" > "$OUT/inbox-ana.jsonl" &
 ANA_SUB=$!
 sleep 2
 echo "publicar req: $(publish "$MYCODE" "{\"fg\":1,\"t\":\"req\",\"from\":\"$ANA\",\"name\":\"Ana\"}")"
-check "Aparece la solicitud de Ana" $UI wait "Ana te mandó una solicitud" 30
+check "Aparece la solicitud de Ana" $UI wait "Ana quiere ser tu amigo" 30
 check "Llega la notificación de solicitud" sh -c "adb shell dumpsys notification --noredact | grep -q 'solicitud de amistad'"
+check "La pestaña Amigos avisa la solicitud" $UI wait "Pestaña Amigos, 1 solicitud" 5
 shot "solicitud"
+check "Pestaña Amigos" $UI tab Amigos
 check "Botón Aceptar" $UI tap "Aceptar"
 check "A Ana le llega la aceptación" $INBOX "$OUT/inbox-ana.jsonl" acc from="$MYCODE" name=Robot --wait 20
-check "Ana aparece como destinataria" $UI see "Toca para mandar a Ana"
-$UI top
 shot "amigos"
+check "Pestaña Sonar" $UI tab Sonar
+check "Ana aparece como destinataria" $UI see "mandárselo a Ana"
+$UI top
+shot "sonar"
 
 echo "== 3. Ana manda un sonido integrado"
 echo "publicar snd: $(publish "$MYCODE" "$(sound_json "$ANA" Ana p1 sirena Sirena)")"
@@ -105,14 +111,15 @@ publish "$MYCODE" "$(stop_json "$ANA" p2)" >/dev/null
 check "El detener de Ana lo corta" $UI silent 4
 ELAPSED=$(( $(date +%s) - START ))
 check "…antes del límite de 10 s ($ELAPSED s después de empezar)" test "$ELAPSED" -lt 8
-check "Se quita el aviso de 'sonando'" $UI absent "Ana te mandó «Tono largo»" 8
+check "Se quita la pantalla de 'te llegó un sonido'" $UI absent "Te llegó un sonido" 8
 
 echo "== 5. El robot detiene un sonido desde su propio celular"
 publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p3 custom 'Otra vez')" >/dev/null
 check "Suena otra vez" $UI playing 25
-check "Muestra quién lo mandó" $UI wait "Ana te mandó «Otra vez»" 6
+check "Muestra la pantalla de 'te llegó un sonido'" $UI wait "Te llegó un sonido" 6
+check "Muestra quién lo mandó" $UI wait "de Ana" 3
 shot "sonando"
-check "Botón Detener" $UI tap "⏹ Detener"
+check "Botón Detener" $UI tapexact "Detener"
 check "Se detiene al tocar Detener" $UI silent 3
 
 echo "== 6. Ningún sonido dura más de 10 segundos"
@@ -142,13 +149,15 @@ sleep 2
 check "Queda en el historial de sonidos" $UI see "Pantalla apagada"
 
 echo "== 6d. Probar y revisar el sonido"
-$UI top
+check "Pestaña Ajustes" $UI tab Ajustes
+shot "ajustes"
 check "Botón Probar y revisar el sonido" $UI tap "Probar y revisar el sonido"
 check "Suena la sirena de prueba" $UI playing 10
 check "Muestra la revisión" $UI wait "Revisión del sonido" 10
 shot "revision-sonido"
 check "Cierra la revisión" $UI tapexact "Cerrar"
 $UI silent 10
+$UI tab Sonar
 
 echo "== 7. Un desconocido no puede hacer sonar el celular"
 EXTRANO=$(new_code)
@@ -162,6 +171,7 @@ SENT=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina --wait 20)
 check "A Ana le llega la bocina" test -n "$SENT"
 SENT_ID=$(echo "$SENT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)
 check "Aparece el botón para detener mi sonido" $UI wait "Detener mi sonido" 8
+check "Dice a quién se lo mandaste" $UI wait "Mandaste «Bocina» a Ana" 3
 shot "enviado"
 check "Toca Detener mi sonido" $UI tap "Detener mi sonido"
 check "A Ana le llega el detener" $INBOX "$OUT/inbox-ana.jsonl" stop from="$MYCODE" id="$SENT_ID" --wait 20
@@ -172,6 +182,7 @@ BETO_PRETTY=$(echo "$BETO" | tr 'a-z' 'A-Z' | sed 's/.\{4\}/&-/g; s/-$//')
 curl -s -N "$SERVER/fgame-$BETO/json" > "$OUT/inbox-beto.jsonl" &
 BETO_SUB=$!
 sleep 2
+check "Pestaña Amigos" $UI tab Amigos
 check "Botón Agregar amigo" $UI tap "Agregar amigo"
 shot "agregar"
 $UI tapclass android.widget.EditText
@@ -185,7 +196,7 @@ check "Al aceptar, Beto aparece con su nombre" $UI wait "Beto" 20
 shot "beto"
 
 echo "== 9b. Grupos: crear, invitar con QR, sonidos y sacar a alguien"
-$UI top
+check "Pestaña Grupos" $UI tab Grupos
 check "Botón Crear grupo" $UI tap "Crear grupo"
 $UI tapclass android.widget.EditText
 adb shell input text "Primos"
@@ -210,15 +221,19 @@ publish "g-$GID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$CARLA\",\"name\":\"Carla
 publish "g-$GID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$DANI\",\"name\":\"Dani\",\"g\":\"$GID\"}" >/dev/null
 check "El admin manda a todos la lista de miembros firmada" $INBOX "$OUT/inbox-grupo.jsonl" groster from="$MYCODE" --wait 20
 check "El grupo muestra 3 miembros" $UI see "3 miembros"
+shot "grupos"
 check "Avisa que alguien se unió" sh -c "adb shell dumpsys notification --noredact | grep -q 'se unió a'"
-publish "g-$GID" "$(sound_json "$CARLA" Carla gp1 sirena Sirena)" >/dev/null
-check "Suena lo que Carla manda al grupo" $UI playing 20
-$UI silent 10
-$UI top
-check "Elige el grupo como destino" $UI tap "👥 Primos"
+publish_file "g-$GID" "$TONE" "$(sound_json "$CARLA" Carla gp1 custom 'Audio de Carla')" >/dev/null
+check "Suena lo que Carla manda al grupo" $UI playing 25
+check "Dice de qué grupo viene" $UI wait "de Carla · Primos" 6
+shot "sonando-grupo"
+$UI silent 15
+check "Pestaña Sonar" $UI tab Sonar
+check "Elige el grupo como destino" $UI tap "Mandar a Primos"
 check "Toca la Bocina para el grupo" $UI tap "Bocina"
 check "Al grupo le llega la bocina" $INBOX "$OUT/inbox-grupo.jsonl" snd from="$MYCODE" s=bocina g="$GID" --wait 20
-check "Opciones del grupo" $UI longtap "Lo administras tú"
+check "Pestaña Grupos" $UI tab Grupos
+check "Opciones del grupo" $UI tap "Opciones de Primos"
 check "Ver miembros" $UI tap "Ver miembros"
 shot "grupo-miembros"
 check "Elige a Carla" $UI tap "Carla"
@@ -244,6 +259,7 @@ INVITE2="https://github.com/chiquidg1234-hue/Friend-game/releases/latest#g=$G2&n
 curl -s -N "$SERVER/fgame-g-$G2/json" > "$OUT/inbox-familia.jsonl" &
 FAM_SUB=$!
 sleep 2
+$UI tab Grupos
 $UI top
 check "Botón Pegar enlace" $UI tap "Pegar enlace"
 $UI tapclass android.widget.EditText
@@ -258,7 +274,7 @@ check "Confirma" $UI tapexact "Sí"
 check "Avisa al grupo que se unió" $INBOX "$OUT/inbox-familia.jsonl" gjoin from="$MYCODE" --wait 20
 ROSTER="{\"g\":\"$G2\",\"name\":\"Familia\",\"members\":[{\"code\":\"$EVA\",\"name\":\"Eva\"},{\"code\":\"$MYCODE\",\"name\":\"Robot\"},{\"code\":\"$DANI\",\"name\":\"Fede\"}]}"
 publish "g-$G2" "$($ADMIN sign "$OUT/eva.json" groster "$ROSTER")" >/dev/null
-check "Toma la lista de miembros firmada por la admin" $UI see "3 miembros · Mantén"
+check "Toma la lista de miembros firmada por la admin" $UI see "3 miembros · creado por Eva"
 $ADMIN new "$OUT/falsa.json" >/dev/null
 FAKE=$($ADMIN sign "$OUT/falsa.json" groster "{\"g\":\"$G2\",\"name\":\"Hackeado\",\"members\":[]}" | python3 -c "import json,sys; d=json.load(sys.stdin); d['from']='$EVA'; print(json.dumps(d))")
 publish "g-$G2" "$FAKE" >/dev/null
@@ -269,10 +285,10 @@ check "Suena lo que la admin manda al grupo" $UI playing 20
 $UI silent 10
 publish "$MYCODE" "$($ADMIN sign "$OUT/eva.json" gkick "{\"g\":\"$G2\",\"name\":\"Familia\"}")" >/dev/null
 check "La admin lo saca y avisa" sh -c "for i in \$(seq 1 20); do adb shell dumpsys notification --noredact | grep -q 'Ya no estás en el grupo' && exit 0; sleep 1; done; exit 1"
-check "El grupo desaparece de la lista" sh -c "! $UI see '👥 Familia'"
+check "El grupo desaparece de la lista" sh -c "! $UI see 'creado por Eva'"
 
 echo "== 9d. Grabar un audio con el micrófono"
-$UI top
+check "Pestaña Sonar" $UI tab Sonar
 check "Botón Grabar" $UI tap "Grabar"
 check "Está grabando" $UI wait "Grabando" 10
 sleep 3
@@ -286,7 +302,21 @@ else
   $UI top
 fi
 
+echo "== 9e. Apoyar con una donación"
+check "Pestaña Ajustes" $UI tab Ajustes
+check "Tarjeta Apoya Friend Game" $UI tap "Apoya Friend Game"
+check "Muestra los montos" $UI wait "Elige cuánto" 10
+check "Elige 5 USD" $UI tapexact "5 USD"
+check "El botón dice el monto" $UI wait "Donar 5 USD" 5
+shot "apoyar"
+check "Toca Donar" $UI tap "Donar 5 USD"
+check "Sin enlace configurado, avisa que pronto" $UI wait "Gracias por querer apoyar" 10
+$UI tapexact "Cerrar"
+adb shell input keyevent KEYCODE_BACK
+check "Atrás vuelve a Ajustes" $UI wait "Tu celular" 10
+
 echo "== 10. Pausar la recepción"
+$UI tab Ajustes
 $UI top
 check "Toca el interruptor" $UI tapclass android.widget.Switch
 check "Queda en pausa" $UI wait "En pausa" 10
@@ -295,12 +325,13 @@ shot "pausa"
 publish "$MYCODE" "$(sound_json "$ANA" Ana p5 bocina 'En pausa')" >/dev/null
 check "En pausa no suena nada" $UI never 6
 check "Vuelve a activar" $UI tapclass android.widget.Switch
-check "Se reconecta" $UI wait "Listo para recibir sonidos" 60
+check "Se reconecta" $UI wait "En línea" 60
 check "Lo mandado durante la pausa no suena al reactivar" $UI never 5
 shot "final"
 
 echo "== 11. Pasar la app a un amigo (Quick Share)"
-check "Botón Pasar la app" $UI tap "Pasar la app a un amigo"
+check "Pestaña Amigos" $UI tab Amigos
+check "Botón Pasar la app" $UI tap "Pasar la app"
 check "Se abre el menú de compartir con el APK" sh -c "sleep 3; adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | grep -qiE 'chooser|intentresolver'"
 shot "pasar-app"
 adb shell input keyevent KEYCODE_BACK
@@ -314,10 +345,10 @@ adb uninstall "$PKG" >/dev/null
 adb install -g "$ROOT/app-debug-v1.apk" >/dev/null
 adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
-check "La versión vieja pide el nombre" $UI wait "bienvenida" 40
+check "La versión vieja pide el nombre" $UI wait "Hazle sonar el celular" 40
 $UI tapclass android.widget.EditText
 adb shell input text "Robot"
-$UI tap "Listo"
+$UI tap "Empezar"
 check "Avisa que hay una versión nueva" $UI wait "Actualizar ahora" 90
 shot "actualizacion"
 check "Toca Actualizar ahora" $UI tap "Actualizar ahora"
