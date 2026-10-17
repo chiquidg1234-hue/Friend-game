@@ -62,7 +62,10 @@ check "Aparece la bienvenida" $UI wait "Hazle sonar el celular" 40
 shot "bienvenida"
 $UI tapclass android.widget.EditText
 adb shell input text "Robot"
-check "Botón Empezar" $UI tap "Empezar"
+sleep 2
+# Con el teclado abierto la app sube el botón Empezar. Se toca sin deslizar: deslizar encima
+# del teclado escribiría letras en el nombre.
+check "Botón Empezar (visible sobre el teclado)" $UI tapexact "Empezar"
 check "Muestra el saludo con el nombre" $UI wait "Hola, Robot" 15
 check "Pestaña Amigos" $UI tab Amigos
 check "Muestra el código de amigo" $UI wait "Tu código de amigo" 10
@@ -348,7 +351,9 @@ adb shell am start -n "$PKG/.MainActivity" >/dev/null
 check "La versión vieja pide el nombre" $UI wait "Hazle sonar el celular" 40
 $UI tapclass android.widget.EditText
 adb shell input text "Robot"
-$UI tap "Empezar"
+sleep 2
+# Esta vez con el ✓/Enter del teclado.
+adb shell input keyevent KEYCODE_ENTER
 check "Avisa que hay una versión nueva" $UI wait "Actualizar ahora" 90
 shot "actualizacion"
 check "Toca Actualizar ahora" $UI tap "Actualizar ahora"

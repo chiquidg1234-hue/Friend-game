@@ -30,6 +30,7 @@ import android.text.TextUtils
 import android.text.format.DateUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -286,7 +287,11 @@ class MainActivity : Activity(), Store.Listener {
         shell.setPadding(left, top, right, 0)
         nav.setPadding(dp(8), dp(8), dp(8), dp(12) + bottom)
         overlay.setPadding(left, top, right, bottom)
-        welcome?.setPadding(left, top, right, maxOf(bottom, imeBottom))
+        welcome?.let { page ->
+            page.setPadding(left, top, right, maxOf(bottom, imeBottom))
+            // Con el teclado abierto, que se vean el nombre y el botón Empezar.
+            if (imeBottom > 0 && page is ScrollView) page.post { page.smoothScrollTo(0, page.getChildAt(0)?.height ?: 0) }
+        }
     }
 
     // ------------------------------------------------------------------ Pantalla
@@ -1279,6 +1284,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun finishWelcome(name: String) {
+        if (welcome == null) return
         Store.myName = name
         welcome?.let {
             hideKeyboard(it)
@@ -1358,8 +1364,10 @@ class MainActivity : Activity(), Store.Listener {
             if (name.isEmpty()) input.error = "Escribe tu nombre" else finishWelcome(name)
         }
         page.addView(button("Empezar", heightDp = 58, radiusDp = 20, display = true, sizeSp = 20f) { start() }, lp(topDp = 20))
-        input.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) {
+        input.setOnEditorActionListener { _, actionId, event ->
+            // El ✓ del teclado, o Enter en un teclado físico.
+            val enter = actionId == EditorInfo.IME_NULL && event?.action == KeyEvent.ACTION_DOWN
+            if (actionId == EditorInfo.IME_ACTION_DONE || enter) {
                 start()
                 true
             } else {
