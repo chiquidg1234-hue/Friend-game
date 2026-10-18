@@ -60,9 +60,14 @@ adb shell am start -n "$PKG/.MainActivity" >/dev/null
 echo "== 1. Primer inicio: pide el nombre"
 check "Aparece la bienvenida" $UI wait "Hazle sonar el celular" 40
 shot "bienvenida"
-$UI tapclass android.widget.EditText
-adb shell input text "Robot"
-sleep 2
+# Si un aviso del emulador ("no responde") se come lo escrito, se vuelve a escribir.
+for attempt in 1 2 3; do
+  $UI tapclass android.widget.EditText
+  adb shell input text "Robot"
+  sleep 2
+  if $UI find '^Robot$' >/dev/null; then break; fi
+  echo "(el nombre no quedó escrito, intento $attempt)"
+done
 # Con el teclado abierto la app sube el botón Empezar. Se toca sin deslizar: deslizar encima
 # del teclado escribiría letras en el nombre.
 check "Botón Empezar (visible sobre el teclado)" $UI tapexact "Empezar"
