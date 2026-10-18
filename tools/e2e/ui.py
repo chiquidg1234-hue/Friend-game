@@ -57,7 +57,10 @@ def nodes():
         found = dump()
         if not any("isn't responding" in (n.get("text") or "") for n in found):
             return found
-        wait = next((n for n in found if (n.get("text") or "").strip().lower() == "wait"), None)
+        # Si es otra app (el escritorio del emulador), se cierra; si fuera Friend Game, se espera.
+        ours = any("friend game" in (n.get("text") or "").lower() for n in found)
+        wanted = "wait" if ours else "close app"
+        wait = next((n for n in found if (n.get("text") or "").strip().lower() == wanted), None)
         if wait is None:
             return found
         print("(el emulador mostró un aviso de app sin respuesta: se cierra)", file=sys.stderr)

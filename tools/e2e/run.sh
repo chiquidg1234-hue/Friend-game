@@ -60,6 +60,10 @@ open_settings() { $UI tab Tú && $UI tap "Ajustes" && $UI wait "Recibir sonidos"
 stop_json() { echo "{\"fg\":1,\"t\":\"stop\",\"from\":\"$1\",\"id\":\"$2\"}"; }
 
 echo "== Instalando $APK"
+# El escritorio del emulador (Pixel Launcher) a veces deja de responder por falta de CPU y su
+# aviso tapa la app. Se ocultan esos avisos del sistema; los cierres de Friend Game se revisan
+# igual en el logcat (paso 13).
+adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 adb install -r -g "$APK" || { echo "No se pudo instalar"; exit 1; }
 adb logcat -c
 adb shell am start -n "$PKG/.MainActivity" >/dev/null
