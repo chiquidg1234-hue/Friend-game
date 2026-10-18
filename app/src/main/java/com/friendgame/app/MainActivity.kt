@@ -156,6 +156,7 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onStart() {
         super.onStart()
+        android.util.Log.i("FriendGame", "onStart")
         Store.addListener(this)
         render()
         Updater.check(this)
@@ -167,6 +168,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     override fun onStop() {
+        android.util.Log.i("FriendGame", "onStop")
         Store.removeListener(this)
         ui.removeCallbacks(progressTick)
         // Android no deja usar el micrófono en segundo plano: la grabación se cancela.
@@ -195,6 +197,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     override fun onStoreChanged() {
+        android.util.Log.i("FriendGame", "onStoreChanged posted=$renderPosted now=${Player.now?.label}")
         if (renderPosted) return
         renderPosted = true
         ui.post {
@@ -1172,6 +1175,7 @@ class MainActivity : Activity(), Store.Listener {
 
     /** Mientras suena algo que te mandaron, ocupa toda la pantalla con el botón para detenerlo. */
     private fun renderOverlay() {
+        android.util.Log.i("FriendGame", "renderOverlay now=${Player.now?.label} preview=${Player.now?.isPreview}")
         ui.removeCallbacks(progressTick)
         progressFill = null
         overlay.removeAllViews()

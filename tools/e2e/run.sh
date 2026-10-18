@@ -123,6 +123,8 @@ check "Muestra la pantalla de 'te llegó un sonido'" $UI wait "Te llegó un soni
 check "Muestra quién lo mandó" $UI wait "de Ana" 3
 shot "sonando"
 check "Botón Detener" $UI tapexact "Detener"
+adb logcat -d -s FriendGame:I AndroidRuntime:E | tail -40
+if [ -n "${E2E_UNTIL:-}" ]; then exit "$FAILS"; fi
 check "Se detiene al tocar Detener" $UI silent 3
 
 echo "== 6. Ningún sonido dura más de 10 segundos"

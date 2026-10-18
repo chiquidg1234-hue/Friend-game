@@ -112,6 +112,7 @@ object Player {
         info.startedAt = SystemClock.elapsedRealtime()
         info.durationMs = mp.duration.toLong().takeIf { it > 0 }?.coerceAtMost(MAX_PLAY_MS) ?: MAX_PLAY_MS
         now = info
+        android.util.Log.i("FriendGame", "playOnMain now=${info.label} from=${info.fromCode}")
         main.postDelayed(timeout, MAX_PLAY_MS)
         Store.notifyChanged()
     }
