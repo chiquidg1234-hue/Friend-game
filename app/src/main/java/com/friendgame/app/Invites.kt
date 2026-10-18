@@ -10,10 +10,19 @@ import java.net.URLEncoder
 object Invites {
     private const val BASE = "https://github.com/chiquidg1234-hue/Friend-game/releases/latest"
 
-    class Invite(val groupId: String, val name: String, val adminCode: String, val adminKey: String)
+    class Invite(
+        val groupId: String,
+        val name: String,
+        val adminCode: String,
+        val adminKey: String,
+        val community: Boolean = false,
+        val emoji: String = "",
+    )
 
-    fun link(group: Group): String =
-        "$BASE#g=${group.id}&n=${URLEncoder.encode(group.name, "UTF-8")}&a=${group.adminCode}&k=${group.adminKey}"
+    fun link(group: Group): String {
+        val base = "$BASE#g=${group.id}&n=${URLEncoder.encode(group.name, "UTF-8")}&a=${group.adminCode}&k=${group.adminKey}"
+        return if (group.community) base + "&c=1&e=" + URLEncoder.encode(group.emoji, "UTF-8") else base
+    }
 
     fun parse(text: String?): Invite? {
         val fragment = text?.trim()?.substringAfter('#', "") ?: return null
@@ -29,6 +38,11 @@ object Invites {
         } catch (_: Exception) {
             ""
         }.trim().take(24).ifEmpty { "Grupo" }
-        return Invite(id, name, admin, key)
+        val emoji = try {
+            URLDecoder.decode(params["e"] ?: "", "UTF-8")
+        } catch (_: Exception) {
+            ""
+        }.take(8)
+        return Invite(id, name, admin, key, params["c"] == "1", emoji)
     }
 }

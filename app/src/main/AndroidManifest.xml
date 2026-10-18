@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Retos: que el sonido suene a la hora exacta en todos los celulares. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Leer el QR de invitación a un grupo y grabar audios propios. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -64,6 +67,10 @@
 
         <receiver
             android:name=".ActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".RetoReceiver"
             android:exported="false" />
 
         <receiver

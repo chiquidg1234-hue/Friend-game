@@ -28,9 +28,9 @@ jobs:
       # normal con un número alto para que no ofrezca actualizaciones en el resto de la prueba.
       - name: Compilar APK de prueba
         run: |
-          FG_VERSION_CODE=1 ./gradlew --no-daemon assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk app-debug-v1.apk
-          FG_VERSION_CODE=999999 ./gradlew --no-daemon assembleDebug
+          FG_VERSION_CODE=1 ./gradlew --no-daemon assembleGithubDebug
+          cp app/build/outputs/apk/github/debug/app-github-debug.apk app-debug-v1.apk
+          FG_VERSION_CODE=999999 ./gradlew --no-daemon assembleGithubDebug
 
       # Para simular con firmas reales al admin de un grupo de otra persona.
       - uses: actions/setup-python@v5

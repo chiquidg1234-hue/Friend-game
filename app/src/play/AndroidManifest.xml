@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Versión para Google Play: Play actualiza la app por su cuenta y no deja que una app instale
+  APKs ni se actualice sola, ni usar USE_EXACT_ALARM si no es un reloj o calendario. Se quitan
+  esos permisos y las piezas que los usan.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
+
+    <application>
+        <receiver android:name=".InstallReceiver" tools:node="remove" />
+        <provider android:name=".ApkProvider" tools:node="remove" />
+    </application>
+</manifest>

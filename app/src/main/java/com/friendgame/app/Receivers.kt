@@ -5,14 +5,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
+import android.widget.Toast
 
 /** Vuelve a escuchar al encender el celular o al actualizar la app. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> ListenService.start(context)
+            Intent.ACTION_BOOT_COMPLETED -> {
+                ListenService.start(context)
+                Store.init(context)
+                Retos.rescheduleAll(context)
+            }
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 ListenService.start(context)
+                Retos.rescheduleAll(context)
                 Notifs.createChannels(context)
                 Notifs.appUpdated(context, Updater.currentVersionName(context))
             }
@@ -31,10 +37,20 @@ class ActionReceiver : BroadcastReceiver() {
         Store.init(context)
         when (intent.action) {
             ACTION_STOP -> {
-                Player.stop()
+                val now = Player.now
+                if (now != null && Locks.blocksStop(now)) {
+                    Toast.makeText(context, "🔒 Hay un candado: este sonido no se puede detener", Toast.LENGTH_LONG).show()
+                    return
+                }
+                Player.stopByUser(context)
                 Notifs.cancelSound(context)
             }
             ACTION_PAUSE -> {
+                val lock = Locks.anyActive()
+                if (lock != null) {
+                    Toast.makeText(context, "🔒 Hay un candado activo hasta las ${Locks.untilText(lock)}: no se puede pausar", Toast.LENGTH_LONG).show()
+                    return
+                }
                 Player.stop()
                 Store.receiving = false
                 ListenService.stop(context)

@@ -7,6 +7,7 @@ on:
       - ".github/workflows/e2e.yml"
       - "README.md"
       - "docs/**"
+      - "!docs/legal/**"
       - ".gitignore"
   workflow_dispatch:
 
@@ -29,22 +30,46 @@ jobs:
           java-version: 17
           cache: gradle
 
-      # Enlace para donar: se configura en Settings → Secrets and variables → Actions →
-      # Variables → FG_DONATE_URL (por ejemplo https://paypal.me/TU_USUARIO/{amount}USD).
+      # La clave de subida para Google Play va en secretos (ver docs/PLAY_STORE.md). Sin ella,
+      # el paquete para Play sale sin firmar.
+      - name: Clave de subida para Google Play
+        env:
+          KEYSTORE_B64: ${{ secrets.FG_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "FG_UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          else
+            echo "Sin clave de subida: el .aab para Play saldrá sin firmar."
+          fi
+
+      # Variables en Settings → Secrets and variables → Actions → Variables:
+      # FG_DONATE_URL (por ejemplo https://paypal.me/TU_USUARIO/{amount}USD) y FG_CONTACT_EMAIL.
       - name: Compilar la app
         env:
           FG_DONATE_URL: ${{ vars.FG_DONATE_URL }}
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+          FG_CONTACT_EMAIL: ${{ vars.FG_CONTACT_EMAIL }}
+          FG_UPLOAD_STORE_PASSWORD: ${{ secrets.FG_UPLOAD_STORE_PASSWORD }}
+          FG_UPLOAD_KEY_ALIAS: ${{ secrets.FG_UPLOAD_KEY_ALIAS }}
+          FG_UPLOAD_KEY_PASSWORD: ${{ secrets.FG_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace assembleGithubRelease bundlePlayRelease
 
       - name: Preparar APK
         run: |
-          cp app/build/outputs/apk/release/app-release.apk FriendGame.apk
-          ls -l FriendGame.apk
+          cp app/build/outputs/apk/github/release/app-github-release.apk FriendGame.apk
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab FriendGame-play.aab
+          ls -l FriendGame.apk FriendGame-play.aab
 
       - uses: actions/upload-artifact@v4
         with:
           name: FriendGame-apk
           path: FriendGame.apk
+
+      # Paquete para subir a Google Play Console (Producción, Prueba cerrada…).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FriendGame-play-aab
+          path: FriendGame-play.aab
 
       - name: Publicar descarga
         if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)

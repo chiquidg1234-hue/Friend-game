@@ -34,12 +34,17 @@ object Relay {
         return URL("${baseUrl()}/${topics.joinToString(",")}/json$query")
     }
 
-    /** Mensaje base: siempre lleva quién lo manda, para que el otro pueda contestar. */
-    fun payload(type: String): JSONObject = JSONObject()
-        .put("fg", PROTOCOL_VERSION)
-        .put("t", type)
-        .put("from", Store.myCode)
-        .put("name", Store.myName)
+    /**
+     * Mensaje base: siempre lleva quién lo manda, para que el otro pueda contestar, y sus puntos,
+     * para el ranking.
+     */
+    fun payload(type: String): JSONObject = Points.attach(
+        JSONObject()
+            .put("fg", PROTOCOL_VERSION)
+            .put("t", type)
+            .put("from", Store.myCode)
+            .put("name", Store.myName)
+    )
 
     /**
      * Mensaje firmado por el admin de un grupo: los datos van como texto en "body" y la firma en

@@ -26,7 +26,11 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.text.format.DateUtils
 import android.util.TypedValue
 import android.view.Gravity
@@ -44,7 +48,10 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
+import java.text.DateFormat
+import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -68,14 +75,24 @@ class MainActivity : Activity(), Store.Listener {
 
         const val STATE_TAB = "tab"
         const val STATE_TARGET = "target"
-        const val STATE_SUPPORT = "support"
+        const val STATE_PAGES = "pages"
+
+        /** Páginas que se abren encima de una pestaña (con atrás se vuelve). */
+        const val PAGE_SETTINGS = "settings"
+        const val PAGE_SUPPORT = "support"
+        const val PAGE_CHAT = "chat:"
+        const val PAGE_RANKING = "ranking:"
+
+        /** Emojis para elegir al crear una comunidad. */
+        val COMMUNITY_EMOJIS = listOf("🎮", "⚽", "🎵", "🏫", "🏠", "🔥", "😂", "🐶", "🍕", "🎨")
     }
 
     private enum class Tab(val title: String, val iconRes: Int) {
         SOUND("Sonar", R.drawable.ic_nav_sound),
+        CHATS("Chats", R.drawable.ic_nav_chat),
         GROUPS("Grupos", R.drawable.ic_nav_groups),
         FRIENDS("Amigos", R.drawable.ic_nav_friends),
-        SETTINGS("Ajustes", R.drawable.ic_nav_settings),
+        ME("Tú", R.drawable.ic_trophy),
     }
 
     private class Sent(val topic: String, val toName: String, val playbackId: String, val label: String)
@@ -85,17 +102,30 @@ class MainActivity : Activity(), Store.Listener {
 
     private lateinit var root: FrameLayout
     private lateinit var shell: LinearLayout
+    /** Encabezado fijo de algunas páginas (el chat), arriba del contenido con scroll. */
+    private lateinit var topBar: LinearLayout
     private lateinit var scroll: ScrollView
+    /** Para escribir en el chat: se arma una sola vez para no perder lo escrito al redibujar. */
+    private lateinit var composer: LinearLayout
+    private lateinit var composerInput: EditText
     private lateinit var content: LinearLayout
     private lateinit var bars: LinearLayout
     private lateinit var nav: LinearLayout
+    private lateinit var navDivider: View
     private lateinit var overlay: FrameLayout
     private var welcome: View? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
     private var tab = Tab.SOUND
-    private var supportOpen = false
+    private val pages = ArrayList<String>()
+    private val page: String? get() = pages.lastOrNull()
+    private val chatKey: String? get() = page?.takeIf { it.startsWith(PAGE_CHAT) }?.removePrefix(PAGE_CHAT)
+    private var rankingWeekly = true
+    private var lastChatSize = -1
+    /** Próximo momento en que algo vence y hay que redibujar. */
+    private var nextDeadline = Long.MAX_VALUE
+    private var lastSendTextAt = 0L
     private var donationAmount: Int? = Donations.DEFAULT_AMOUNT
     private var selectedTarget: String? = null
     private var lastSent: Sent? = null
@@ -116,7 +146,7 @@ class MainActivity : Activity(), Store.Listener {
         if (savedInstanceState != null) {
             tab = Tab.entries.getOrNull(savedInstanceState.getInt(STATE_TAB)) ?: Tab.SOUND
             selectedTarget = savedInstanceState.getString(STATE_TARGET)
-            supportOpen = savedInstanceState.getBoolean(STATE_SUPPORT)
+            savedInstanceState.getStringArrayList(STATE_PAGES)?.let { pages.addAll(it) }
         }
         openTabFrom(intent)
 
@@ -144,20 +174,35 @@ class MainActivity : Activity(), Store.Listener {
         if (openTabFrom(intent)) render()
     }
 
-    /** Los avisos de amistad o de grupos abren directo su pestaña. */
+    /** Los avisos de amistad o de grupos abren directo su pestaña; los del chat, la conversación. */
     private fun openTabFrom(intent: Intent?): Boolean {
+        val chat = intent?.getStringExtra(Notifs.EXTRA_CHAT)
+        if (chat != null) {
+            intent.removeExtra(Notifs.EXTRA_CHAT)
+            tab = Tab.CHATS
+            pages.clear()
+            pages.add(PAGE_CHAT + chat)
+            return true
+        }
         val name = intent?.getStringExtra(Notifs.EXTRA_TAB) ?: return false
         intent.removeExtra(Notifs.EXTRA_TAB)
         tab = Tab.entries.firstOrNull { it.name == name } ?: return false
-        supportOpen = false
+        pages.clear()
         return true
     }
 
     override fun onStart() {
         super.onStart()
         Store.addListener(this)
+        if (Store.myName.isNotBlank()) {
+            Points.onDailyOpen()
+            Retos.checkDue(this)
+            Locks.finishDue()
+            broadcastPoints()
+        }
         render()
-        Updater.check(this)
+        ui.post(clock)
+        if (!BuildConfig.STORE_BUILD) Updater.check(this)
     }
 
     override fun onResume() {
@@ -167,6 +212,8 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onStop() {
         Store.removeListener(this)
+        ui.removeCallbacks(clock)
+        Chats.visibleKey = null
         // Android no deja usar el micrófono en segundo plano: la grabación se cancela.
         cancelRecording?.invoke()
         super.onStop()
@@ -176,7 +223,7 @@ class MainActivity : Activity(), Store.Listener {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_TAB, tab.ordinal)
         outState.putString(STATE_TARGET, selectedTarget)
-        outState.putBoolean(STATE_SUPPORT, supportOpen)
+        outState.putStringArrayList(STATE_PAGES, pages)
     }
 
     /** Girar la pantalla o cambiar el tamaño no recrea la app (ver el manifiesto): se redibuja. */
@@ -201,12 +248,13 @@ class MainActivity : Activity(), Store.Listener {
         }
     }
 
-    /** Atrás: corta el sonido que llegó, cierra "Apoyar" o vuelve a la pestaña Sonar. */
+    /** Atrás: corta el sonido que llegó, cierra la página abierta o vuelve a la pestaña Sonar. */
     private fun handleBack(): Boolean {
         when {
             welcome != null -> return false
-            overlay.visibility == View.VISIBLE -> Player.stop()
-            supportOpen -> closeSupport()
+            // Con candado el sonido no se corta, pero atrás tampoco saca de la pantalla.
+            overlay.visibility == View.VISIBLE -> Player.stopByUser(this)
+            pages.isNotEmpty() -> closePage()
             tab != Tab.SOUND -> openTab(Tab.SOUND)
             else -> return false
         }
@@ -224,7 +272,7 @@ class MainActivity : Activity(), Store.Listener {
      */
     private fun updateBackCallback() {
         if (Build.VERSION.SDK_INT < 33) return
-        val needed = welcome == null && (overlay.visibility == View.VISIBLE || supportOpen || tab != Tab.SOUND)
+        val needed = welcome == null && (overlay.visibility == View.VISIBLE || pages.isNotEmpty() || tab != Tab.SOUND)
         if (needed && backCallback == null) {
             val callback = OnBackInvokedCallback { handleBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
@@ -245,15 +293,20 @@ class MainActivity : Activity(), Store.Listener {
         }
         content = column()
         scroll.addView(content, ViewGroup.LayoutParams(MATCH, WRAP))
+        topBar = column().apply { visibility = View.GONE }
+        buildComposer()
         bars = column()
         nav = row().apply {
             setBackgroundColor(Palette.NAV)
             gravity = Gravity.TOP
         }
         shell = column()
+        shell.addView(topBar, lp())
         shell.addView(scroll, lp(MATCH, 0, weight = 1f))
+        shell.addView(composer, lp())
         shell.addView(bars, lp())
-        shell.addView(divider(Palette.LINE), lp(MATCH, dp(1)))
+        navDivider = divider(Palette.LINE)
+        shell.addView(navDivider, lp(MATCH, dp(1)))
         shell.addView(nav, lp())
         overlay = FrameLayout(this).apply {
             visibility = View.GONE
@@ -284,6 +337,9 @@ class MainActivity : Activity(), Store.Listener {
         val (left, top, right, bottom) = systemBars
         shell.setPadding(left, top, right, 0)
         nav.setPadding(dp(8), dp(8), dp(8), dp(12) + bottom)
+        // En el chat no hay navegación: la caja para escribir queda sobre el teclado.
+        composer.setPadding(dp(12), dp(8), dp(12), dp(10) + maxOf(bottom, imeBottom))
+        if (chatKey != null && imeBottom > 0) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         overlay.setPadding(left, top, right, bottom)
         welcome?.let { page ->
             page.setPadding(left, top, right, maxOf(bottom, imeBottom))
@@ -296,48 +352,135 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun render() {
         if (welcome != null) return
-        val screen = if (supportOpen) "support" else tab.name
+        val current = page
+        // Si el chat o el grupo de la página ya no existe (te eliminaron, saliste), se cierra.
+        val chat = chatKey
+        if (chat != null && Chats.title(chat) == null) {
+            pages.removeAt(pages.size - 1)
+            render()
+            return
+        }
+        val screen = current ?: tab.name
         val sameScreen = screen == renderedScreen
         val y = scroll.scrollY
         content.removeAllViews()
+        topBar.removeAllViews()
+        nextDeadline = Long.MAX_VALUE
         content.setPadding(dp(20), dp(20), dp(20), dp(28))
-        if (supportOpen) {
-            renderSupport()
-        } else {
-            when (tab) {
+        Chats.visibleKey = chat
+        when {
+            current == null -> when (tab) {
                 Tab.SOUND -> renderSound()
+                Tab.CHATS -> renderChats()
                 Tab.GROUPS -> renderGroups()
                 Tab.FRIENDS -> renderFriends()
-                Tab.SETTINGS -> renderSettings()
+                Tab.ME -> renderMe()
             }
+            current == PAGE_SETTINGS -> renderSettings()
+            current == PAGE_SUPPORT -> renderSupport()
+            chat != null -> renderChat(chat)
+            current.startsWith(PAGE_RANKING) -> renderRanking(current.removePrefix(PAGE_RANKING))
         }
+        topBar.visibility = if (topBar.childCount == 0) View.GONE else View.VISIBLE
+        composer.visibility = if (chat != null) View.VISIBLE else View.GONE
         renderBars()
         renderNav()
         renderOverlay()
         renderedScreen = screen
-        if (sameScreen) scroll.post { scroll.scrollTo(0, y) } else scroll.scrollTo(0, 0)
+        if (chat != null) {
+            // En el chat se baja a lo último cuando llega algo nuevo o al abrirlo.
+            val size = content.childCount
+            if (!sameScreen || size != lastChatSize) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+            else scroll.post { scroll.scrollTo(0, y) }
+            lastChatSize = size
+        } else if (sameScreen) {
+            scroll.post { scroll.scrollTo(0, y) }
+        } else {
+            scroll.scrollTo(0, 0)
+        }
+        applyInsets()
         updateBackCallback()
+        celebrate()
     }
 
     private fun openTab(target: Tab) {
-        if (target == tab && !supportOpen) {
+        if (target == tab && pages.isEmpty()) {
             scroll.smoothScrollTo(0, 0)
             return
         }
-        supportOpen = false
+        pages.clear()
         tab = target
         render()
     }
 
-    private fun openSupport() {
-        supportOpen = true
-        tab = Tab.SETTINGS
+    private fun openPage(name: String) {
+        if (page != name) pages.add(name)
         render()
     }
 
-    private fun closeSupport() {
-        supportOpen = false
+    private fun closePage() {
+        if (pages.isNotEmpty()) pages.removeAt(pages.size - 1)
+        hideKeyboard(composerInput)
         render()
+    }
+
+    private fun openChat(key: String) {
+        if (Chats.title(key) == null) return
+        if (tab != Tab.CHATS && pages.isEmpty()) tab = Tab.CHATS
+        openPage(PAGE_CHAT + key)
+    }
+
+    private fun openSupport() = openPage(PAGE_SUPPORT)
+
+    private fun closeSupport() = closePage()
+
+    /** Logros y subidas de nivel: un aviso corto que no interrumpe. */
+    private fun celebrate() {
+        Points.takeCelebrations().forEach { toast(it) }
+    }
+
+    /** Cada segundo revisa si algo venció (un reto, un candado) para redibujar. */
+    private val clock = object : Runnable {
+        override fun run() {
+            if (System.currentTimeMillis() >= nextDeadline) {
+                nextDeadline = Long.MAX_VALUE
+                Retos.checkDue(this@MainActivity)
+                Locks.finishDue()
+                render()
+            }
+            ui.postDelayed(this, 1000)
+        }
+    }
+
+    private fun liveText(
+        sizeSp: Float,
+        color: Int,
+        description: String,
+        bold: Boolean = true,
+        center: Boolean = false,
+        text: () -> String,
+    ): View = LiveText(this, sizeSp, color, bold, description, center, text)
+
+    private fun deadline(at: Long) {
+        if (at in (System.currentTimeMillis() + 1)..<nextDeadline) nextDeadline = at
+    }
+
+    /** Manda mis puntos a amigos y grupos de vez en cuando, para que el ranking esté al día. */
+    private fun broadcastPoints() {
+        if (!Points.broadcastDue()) return
+        val topics = Store.friends().filter { it.state == Friend.FRIEND }.map { Relay.topicFor(it.code) } +
+            Store.groups().map { Relay.groupTopic(it.id) }
+        if (topics.isEmpty()) return
+        Points.lastBroadcast = System.currentTimeMillis()
+        val payload = Relay.payload("pts")
+        runInBackground({
+            topics.forEach { topic ->
+                try {
+                    Relay.publishTopic(topic, payload)
+                } catch (_: Exception) {
+                }
+            }
+        }) {}
     }
 
     private fun add(view: View, topDp: Int = 0) {
@@ -372,7 +515,10 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     /** Aviso corto con una acción a la derecha. */
-    private fun alert(lead: View, titleText: String, text: String, action: String, actionColor: Int, onAction: () -> Unit) {
+    private fun alert(lead: View, titleText: String, text: String, action: String, actionColor: Int, onAction: () -> Unit) =
+        banner(lead, titleText, label(text, 13f, Palette.SUB), action, actionColor, onAction)
+
+    private fun banner(lead: View, titleText: String, body: View, action: String, actionColor: Int, onAction: () -> Unit) {
         val box = row().apply {
             background = rounded(Palette.SURFACE, 20)
             setPadding(dp(14), dp(12), dp(12), dp(12))
@@ -380,7 +526,7 @@ class MainActivity : Activity(), Store.Listener {
         box.addView(lead)
         val texts = column()
         texts.addView(label(titleText, 15f, bold = true), lp())
-        texts.addView(label(text, 13f, Palette.SUB), lp(topDp = 2))
+        texts.addView(body, lp(topDp = 2))
         box.addView(texts, lp(0, WRAP, weight = 1f).apply {
             marginStart = dp(12)
             marginEnd = dp(10)
@@ -425,7 +571,13 @@ class MainActivity : Activity(), Store.Listener {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, lp())
-        hello.addView(label("¿A quién le das un susto hoy?", 13f, Palette.SUB), lp())
+        val level = Points.level()
+        hello.addView(label("Nivel ${level.number} · ${level.name} · ${Points.total()} pts", 13f, Palette.YELLOW, bold = true).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            contentDescription = "Nivel ${level.number}, ${level.name}, ${Points.total()} puntos. Abre tu perfil"
+            setOnClickListener { openTab(Tab.ME) }
+        }, lp())
         header.addView(hello, lp(0, WRAP, weight = 1f).apply {
             marginStart = dp(12)
             marginEnd = dp(8)
@@ -443,6 +595,7 @@ class MainActivity : Activity(), Store.Listener {
                 "Ver", Palette.ACCENT,
             ) { openTab(Tab.FRIENDS) }
         }
+        addGameBanners()
         if (Store.receiving) {
             val problem = currentProblem()
             if (problem.isNotEmpty()) {
@@ -458,20 +611,43 @@ class MainActivity : Activity(), Store.Listener {
             }
         }
 
-        val all = targets(friends.filter { it.state == Friend.FRIEND }, groups)
+        val all = targets(friends.filter { it.state == Friend.FRIEND }, groups.filter { !it.community })
         if (all.none { it.key == selectedTarget }) selectedTarget = all.firstOrNull()?.key
         val target = all.firstOrNull { it.key == selectedTarget }
         if (target == null) addNoTargets() else addTargetChips(all, target)
 
+        if (target != null) {
+            add(
+                button(
+                    "Crear un reto", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_bolt,
+                    heightDp = 44, radiusDp = 14, sizeSp = 14f, iconColor = Palette.YELLOW,
+                ) { showCreateReto(target.key) },
+                10,
+            )
+        }
+
         add(sectionTitle("Sonidos", "Mantén presionado para oírlo tú"), 22)
+        val myLevel = Points.level().number
         grid(Sounds.all.map { sound ->
-            soundTile(sound.emoji, sound.label, sound.color,
+            val locked = sound.level > myLevel
+            soundTile(sound.emoji, if (locked) "🔒 Nivel ${sound.level}" else sound.label, sound.color,
                 onClick = {
-                    if (target == null) Player.preview(this, Player.Source.Asset(sound.asset), sound.label)
-                    else sendSound(target, sound.key, sound.label, null)
+                    when {
+                        locked -> {
+                            val missing = Points.LEVELS[sound.level - 1].min - Points.total()
+                            toast("${sound.emoji} ${sound.label} se desbloquea en el nivel ${sound.level} (te faltan $missing puntos). Mantén presionado para oírlo.")
+                        }
+                        target == null -> Player.preview(this, Player.Source.Asset(sound.asset), sound.label)
+                        else -> sendSound(target, sound.key, sound.label, null)
+                    }
                 },
                 onLongClick = { Player.preview(this, Player.Source.Asset(sound.asset), sound.label) },
-            )
+            ).apply {
+                if (locked) {
+                    alpha = 0.45f
+                    contentDescription = "${sound.label}, bloqueado hasta el nivel ${sound.level}"
+                }
+            }
         })
 
         add(sectionTitle("Tus audios"), 22)
@@ -508,7 +684,11 @@ class MainActivity : Activity(), Store.Listener {
             contentDescription = "Estado: $text. Abre los ajustes de recepción"
             addView(View(context).apply { background = oval(color) }, LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginEnd = dp(6) })
             addView(label(text, 12f, color, bold = true))
-            setOnClickListener { openTab(Tab.SETTINGS) }
+            setOnClickListener {
+                tab = Tab.ME
+                pages.clear()
+                openPage(PAGE_SETTINGS)
+            }
         }
     }
 
@@ -649,13 +829,33 @@ class MainActivity : Activity(), Store.Listener {
             )
             add(box, 16)
         }
-        groups.forEach { addGroupCard(it) }
+        groups.filter { !it.community }.forEach { addGroupCard(it) }
+        val communities = groups.filter { it.community }
+        if (communities.isNotEmpty()) {
+            add(caps("Comunidades"), 20)
+            communities.forEach { addGroupCard(it) }
+        }
         add(
             button(
                 "Crear grupo", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_plus,
                 heightDp = 56, radiusDp = 18, display = true, sizeSp = 18f,
             ) { createGroup() },
             18,
+        )
+        add(
+            button(
+                "Crear comunidad", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_trophy,
+                heightDp = 52, radiusDp = 18, iconColor = Palette.YELLOW,
+            ) { createCommunity() },
+            8,
+        )
+        add(
+            label(
+                "Grupo: para amigos cercanos, cada sonido le suena a todos. Comunidad: hasta ${Group.MAX_MEMBERS} personas " +
+                    "con chat, ranking y retos; ahí solo suenan los retos.",
+                12f, Palette.SUB,
+            ),
+            8,
         )
         val joins = row()
         joins.addView(
@@ -680,7 +880,15 @@ class MainActivity : Activity(), Store.Listener {
         val badge = FrameLayout(this).apply {
             background = rounded(if (group.isAdmin) Palette.YELLOW else Palette.avatar(group.id), 16)
         }
-        badge.addView(icon(R.drawable.ic_nav_groups, Palette.INK, 26), FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        if (group.community && group.emoji.isNotEmpty()) {
+            badge.addView(label(group.emoji, 24f).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(MATCH, MATCH))
+        } else {
+            badge.addView(icon(R.drawable.ic_nav_groups, Palette.INK, 26), FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+        }
         head.addView(badge, LinearLayout.LayoutParams(dp(48), dp(48)))
         val texts = column()
         texts.addView(title(group.name, 19f, weight = 600).apply {
@@ -690,6 +898,7 @@ class MainActivity : Activity(), Store.Listener {
         val count = group.members.size
         val adminName = group.members.firstOrNull { it.code == group.adminCode }?.name
         val subtitle = buildString {
+            if (group.community) append("Comunidad · ")
             append("$count ${if (count == 1) "miembro" else "miembros"}")
             if (!group.isAdmin && adminName != null) append(" · creado por $adminName")
             if (group.muted) append(" · silenciado")
@@ -723,16 +932,28 @@ class MainActivity : Activity(), Store.Listener {
         box.addView(people, lp(topDp = 14))
 
         val actions = row()
-        actions.addView(button("Mandar sonido", heightDp = 44, radiusDp = 14, sizeSp = 14f) {
-            selectedTarget = "g:${group.id}"
-            openTab(Tab.SOUND)
-        }, lp(0, WRAP, weight = 1f))
+        if (group.community) {
+            actions.addView(button("Ranking", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_trophy, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
+                openPage(PAGE_RANKING + Chats.groupKey(group.id))
+            }, lp(0, WRAP, weight = 1f))
+        } else {
+            actions.addView(button("Mandar sonido", heightDp = 44, radiusDp = 14, sizeSp = 14f) {
+                selectedTarget = "g:${group.id}"
+                openTab(Tab.SOUND)
+            }, lp(0, WRAP, weight = 1f))
+        }
+        actions.addView(space(8))
+        val unread = Store.unreadCounts()[Chats.groupKey(group.id)] ?: 0
+        actions.addView(
+            button(
+                if (unread > 0) "Chat ($unread)" else "Chat", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_nav_chat,
+                heightDp = 44, radiusDp = 14, sizeSp = 14f,
+            ) { openChat(Chats.groupKey(group.id)) },
+            lp(0, WRAP, weight = 1f),
+        )
         actions.addView(space(8))
         actions.addView(
-            button("Invitar", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_qr, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
-                showInvite(group)
-            },
-            lp(0, WRAP, weight = 1f),
+            iconButton(R.drawable.ic_qr, "Invitar a ${group.name} con QR", Palette.SURFACE2, Palette.TEXT) { showInvite(group) },
         )
         box.addView(actions, lp(topDp = 14))
         add(box, 14)
@@ -846,16 +1067,23 @@ class MainActivity : Activity(), Store.Listener {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, lp())
-        val subtitle = when (friend.state) {
-            Friend.FRIEND -> if (friend.muted) "Silenciado: no te suenan sus sonidos" else "Toca para mandarle un sonido"
-            Friend.OUTGOING -> "Esperando que acepte tu solicitud"
+        val lock = if (active) Locks.activeWith(friend.code) else null
+        val subtitle = when {
+            lock != null -> "🔒 Candado hasta las ${Locks.untilText(lock)}"
+            friend.state == Friend.FRIEND -> if (friend.muted) "Silenciado: no te suenan sus sonidos" else "Toca para mandarle un sonido"
+            friend.state == Friend.OUTGOING -> "Esperando que acepte tu solicitud"
             else -> "Bloqueado"
         }
-        texts.addView(label(subtitle, 13f, Palette.SUB), lp())
+        texts.addView(label(subtitle, 13f, if (lock != null) Palette.YELLOW else Palette.SUB, bold = lock != null), lp())
         line.addView(texts, lp(0, WRAP, weight = 1f).apply {
             marginStart = dp(12)
             marginEnd = dp(4)
         })
+        if (active) {
+            line.addView(iconButton(R.drawable.ic_nav_chat, "Chat con ${friend.name}", 0, Palette.ACCENT_TEXT) {
+                openChat(Chats.friendKey(friend.code))
+            })
+        }
         line.addView(iconButton(R.drawable.ic_more, "Opciones de ${friend.name}", 0, Palette.SUB) { friendOptions(friend) })
         line.setOnClickListener {
             if (active) {
@@ -875,7 +1103,18 @@ class MainActivity : Activity(), Store.Listener {
     // ------------------------------------------------------------------ Pestaña Ajustes
 
     private fun renderSettings() {
-        screenTitle("Ajustes")
+        val top = row()
+        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
+        top.addView(title("Ajustes", 30f), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        add(top)
+        val lock = Locks.anyActive()
+        if (lock != null) {
+            val name = Store.friend(lock.friend)?.name ?: "un amigo"
+            alert(
+                icon(R.drawable.ic_lock, Palette.YELLOW, 24), "Candado con $name",
+                "Hasta las ${Locks.untilText(lock)} no se puede pausar ni cambiar cómo suena.", "Ver", Palette.YELLOW,
+            ) { info("Candado con $name", lockRules(lock)) }
+        }
         add(caps("Cuando te mandan un sonido"), 18)
         val box = card(padDp = 0)
         val (status, statusColor) = when {
@@ -884,6 +1123,7 @@ class MainActivity : Activity(), Store.Listener {
             else -> "Conectando…" to Palette.YELLOW
         }
         box.addView(switchRow("Recibir sonidos", status, statusColor, Store.receiving) { checked ->
+            if (lockBlocks()) return@switchRow
             Store.receiving = checked
             if (checked) {
                 ListenService.start(this)
@@ -899,7 +1139,7 @@ class MainActivity : Activity(), Store.Listener {
                 if (Store.ringInSilent) "Usa el volumen de alarma: suena en silencio y en vibración"
                 else "Usa el volumen multimedia: en silencio puede no oírse",
                 Palette.SUB, Store.ringInSilent,
-            ) { Store.ringInSilent = it },
+            ) { if (!lockBlocks()) Store.ringInSilent = it },
             lp(),
         )
         val problem = if (Store.receiving) currentProblem() else ""
@@ -975,9 +1215,35 @@ class MainActivity : Activity(), Store.Listener {
             Updater.release != null -> "$version · hay una nueva" to Palette.YELLOW
             else -> "$version · buscar" to Palette.SUB
         }
-        item("Versión", versionText, versionColor) { Updater.check(this, force = true) }
+        if (BuildConfig.STORE_BUILD) {
+            item("Versión", version, Palette.SUB) { info("Versión", "Friend Game $version. Las actualizaciones llegan por Google Play.") }
+        } else {
+            item("Versión", versionText, versionColor) { Updater.check(this, force = true) }
+        }
         item("Servidor", Uri.parse(Store.server).host ?: Store.server, Palette.SUB) { editServer() }
+        item("Alarmas puntuales", if (Retos.puntualAllowed(this)) "Permitidas" else "Permitir", if (Retos.puntualAllowed(this)) Palette.OK else Palette.YELLOW) {
+            askExactAlarms()
+        }
         add(rows, 8)
+
+        add(caps("Reglas y privacidad"), 20)
+        val legal = card(padDp = 0)
+        fun legalItem(name: String, onClick: () -> Unit) {
+            if (legal.childCount > 0) legal.addView(divider(), dividerLp())
+            val line = row().apply {
+                setPadding(dp(16), dp(14), dp(14), dp(14))
+                background = rowRipple()
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+            line.addView(label(name, 15f, bold = true), lp(0, WRAP, weight = 1f))
+            line.addView(icon(R.drawable.ic_chevron, Palette.FAINT, 16))
+            legal.addView(line, lp())
+        }
+        legalItem("Términos de uso") { showLegal("Términos de uso", Legal.TERMS_ASSET) }
+        legalItem("Política de privacidad") { showLegal("Política de privacidad", Legal.PRIVACY_ASSET) }
+        legalItem("Ayuda y contacto") { showContact() }
+        add(legal, 8)
         if (Updater.message.isNotEmpty() && Updater.release == null) add(label(Updater.message, 13f, Palette.SUB), 8)
 
         add(button("Cambiar mi código (borra amigos y grupos)", Palette.BG, Palette.DANGER_TEXT, heightDp = 48, sizeSp = 14f) {
@@ -1011,13 +1277,49 @@ class MainActivity : Activity(), Store.Listener {
         hero.addView(
             label(
                 "Friend Game es gratis, sin anuncios y no vende tus datos. Si te saca risas, " +
-                    "una donación ayuda a mantenerla y a agregar sonidos nuevos.",
+                    if (BuildConfig.STORE_BUILD) "pásasela a tus amigos y déjale una reseña: eso la ayuda a crecer."
+                    else "una donación ayuda a mantenerla y a agregar sonidos nuevos.",
                 15f, Palette.SUB,
             ).apply { gravity = Gravity.CENTER },
             lp(topDp = 8),
         )
         add(hero, 4)
 
+        // En Google Play no se permite donar por un enlace externo: se ofrece la reseña.
+        if (!BuildConfig.STORE_BUILD) addDonation()
+
+        val other = card()
+        other.addView(title("Otras formas de ayudar", 17f, weight = 600), lp())
+        fun way(iconRes: Int, color: Int, text: String, onClick: (() -> Unit)?) {
+            val line = row().apply {
+                setPadding(0, dp(8), 0, dp(8))
+                if (onClick != null) {
+                    background = rowRipple()
+                    isClickable = true
+                    setOnClickListener { onClick() }
+                }
+            }
+            line.addView(icon(iconRes, color, 20))
+            line.addView(label(text, 15f, bold = true), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+            other.addView(line, lp(topDp = 4))
+        }
+        way(R.drawable.ic_share, Palette.OK, "Pásasela a tus amigos") { shareApp() }
+        if (BuildConfig.STORE_BUILD) {
+            way(R.drawable.ic_star, Palette.YELLOW, "Déjale una reseña en Google Play") { openStorePage() }
+        } else {
+            way(R.drawable.ic_star, Palette.YELLOW, "Déjale una reseña cuando esté en Play Store", null)
+        }
+        add(other, 20)
+        if (!BuildConfig.STORE_BUILD) {
+            add(
+                label("Las donaciones son voluntarias y no desbloquean nada: la app es igual para todos.", 12f, Palette.SUB)
+                    .apply { gravity = Gravity.CENTER },
+                18,
+            )
+        }
+    }
+
+    private fun addDonation() {
         if (Donations.choosesAmount) {
             add(caps("Elige cuánto"), 22)
             val amounts = row()
@@ -1052,30 +1354,6 @@ class MainActivity : Activity(), Store.Listener {
             ).apply { gravity = Gravity.CENTER },
             8,
         )
-
-        val other = card()
-        other.addView(title("Otras formas de ayudar", 17f, weight = 600), lp())
-        fun way(iconRes: Int, color: Int, text: String, onClick: (() -> Unit)?) {
-            val line = row().apply {
-                setPadding(0, dp(8), 0, dp(8))
-                if (onClick != null) {
-                    background = rowRipple()
-                    isClickable = true
-                    setOnClickListener { onClick() }
-                }
-            }
-            line.addView(icon(iconRes, color, 20))
-            line.addView(label(text, 15f, bold = true), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-            other.addView(line, lp(topDp = 4))
-        }
-        way(R.drawable.ic_share, Palette.OK, "Pásasela a tus amigos") { shareApp() }
-        way(R.drawable.ic_star, Palette.YELLOW, "Déjale una reseña cuando esté en Play Store", null)
-        add(other, 20)
-        add(
-            label("Las donaciones son voluntarias y no desbloquean nada: la app es igual para todos.", 12f, Palette.SUB)
-                .apply { gravity = Gravity.CENTER },
-            18,
-        )
     }
 
     private fun donate(amount: Int?) {
@@ -1093,6 +1371,989 @@ class MainActivity : Activity(), Store.Listener {
         } catch (_: ActivityNotFoundException) {
             toast("No encontré un navegador para abrir la página de donación.")
         }
+    }
+
+    // ------------------------------------------------------------------ Chats
+
+    private fun buildComposer() {
+        composerInput = EditText(this).apply {
+            hint = "Escribe un mensaje…"
+            setHintTextColor(Palette.FAINT)
+            setTextColor(Palette.TEXT)
+            textSize = 16f
+            typeface = Fonts.body(context, 500)
+            background = rounded(Palette.SURFACE, 22)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            minHeight = dp(46)
+            maxLines = 4
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(Chats.MAX_TEXT))
+            contentDescription = "Mensaje"
+        }
+        composer = row().apply {
+            setBackgroundColor(Palette.NAV)
+            gravity = Gravity.BOTTOM
+            visibility = View.GONE
+        }
+        composer.addView(composerInput, lp(0, WRAP, weight = 1f))
+        composer.addView(space(8))
+        composer.addView(iconButton(R.drawable.ic_send, "Enviar mensaje", Palette.ACCENT, Palette.INK, 46) { sendChat() })
+    }
+
+    private fun sendChat() {
+        val key = chatKey ?: return
+        val text = composerInput.text.toString().trim()
+        if (text.isEmpty()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSendTextAt < 400) return
+        lastSendTextAt = now
+        composerInput.setText("")
+        // Si no sale, se devuelve lo escrito para no perderlo.
+        runInBackground({ Chats.send(key, text) }, onError = { if (composerInput.text.isEmpty()) composerInput.setText(text) }) {}
+    }
+
+    /** En Sonar: el candado activo y los retos que están por sonar. */
+    private fun addGameBanners() {
+        Locks.anyActive()?.let { lock ->
+            val name = Store.friend(lock.friend)?.name ?: "un amigo"
+            val body = liveText(13f, Palette.SUB, "Ninguno puede detener los sonidos del otro hasta las ${Locks.untilText(lock)}", bold = false) {
+                "Ninguno puede detener los sonidos del otro. Quedan ${Locks.remainingText(lock.until)}."
+            }
+            deadline(lock.until)
+            banner(icon(R.drawable.ic_lock, Palette.YELLOW, 24), "Candado con $name", body, "Chat", Palette.YELLOW) {
+                openChat(Chats.friendKey(lock.friend))
+            }
+        }
+        Store.retos().filter { it.state == Reto.WAITING && Chats.title(it.chat) != null }.sortedBy { it.at }.take(2).forEach { reto ->
+            val kind = Retos.kindOf(reto.kind)
+            val body = liveText(13f, Palette.SUB, "${kind.title} · suena a las ${timeText(reto.at)}", bold = false) {
+                "${kind.title} · suena en ${Locks.remainingText(reto.at)}"
+            }
+            deadline(reto.at)
+            banner(label(kind.emoji, 22f), "Reto en ${Chats.title(reto.chat)}", body, "Ver", Palette.ACCENT) { openChat(reto.chat) }
+        }
+    }
+
+    private fun renderChats() {
+        screenTitle("Chats", "Escríbele a tus amigos y grupos, y arma retos.")
+        val keys = Chats.keys()
+        if (keys.isEmpty()) {
+            val box = card()
+            box.addView(title("Todavía no tienes con quién chatear", 18f, weight = 600), lp())
+            box.addView(
+                label("Agrega a un amigo con su código o únete a un grupo, y aquí aparecen sus chats.", 13f, Palette.SUB),
+                lp(topDp = 4),
+            )
+            box.addView(button("Agregar amigo", heightDp = 44, radiusDp = 14, sizeSp = 14f) {
+                openTab(Tab.FRIENDS)
+                showAddFriend()
+            }, lp(topDp = 12))
+            add(box, 16)
+            return
+        }
+        val unread = Store.unreadCounts()
+        val list = card(padDp = 0)
+        keys.forEach { key ->
+            val name = Chats.title(key) ?: return@forEach
+            val group = Chats.group(key)
+            val last = Store.chat(key).lastOrNull()
+            val count = unread[key] ?: 0
+            if (list.childCount > 0) list.addView(divider(), dividerLp())
+            val line = row().apply {
+                setPadding(dp(16), dp(12), dp(14), dp(12))
+                background = rowRipple()
+                isClickable = true
+                contentDescription = "Chat con $name" + if (count > 0) ", $count sin leer" else ""
+                setOnClickListener { openChat(key) }
+            }
+            line.addView(chatAvatar(key, 46))
+            val texts = column()
+            texts.addView(label(name, 16f, bold = true).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, lp())
+            val lock = if (group == null) Locks.activeWith(Chats.codeOf(key)) else null
+            val preview = when {
+                lock != null -> "🔒 Candado activo hasta las ${Locks.untilText(lock)}"
+                last == null -> if (group?.community == true) "Comunidad · toca para escribir" else "Toca para escribir"
+                last.kind == ChatMessage.INFO -> last.text
+                else -> (if (last.from == Store.myCode) "Tú: " else if (group != null) "${last.name}: " else "") + Chats.preview(last)
+            }
+            texts.addView(label(preview, 13f, if (count > 0) Palette.TEXT else Palette.SUB, bold = count > 0).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, lp())
+            line.addView(texts, lp(0, WRAP, weight = 1f).apply {
+                marginStart = dp(12)
+                marginEnd = dp(8)
+            })
+            val side = column().apply { gravity = Gravity.END }
+            if (last != null) side.addView(label(shortTime(last.time), 11f, Palette.SUB), LinearLayout.LayoutParams(WRAP, WRAP))
+            if (count > 0) {
+                side.addView(label(if (count > 99) "99+" else count.toString(), 11f, Palette.INK, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    background = rounded(Palette.ACCENT, 999)
+                    setPadding(dp(7), dp(2), dp(7), dp(2))
+                    minWidth = dp(22)
+                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
+            }
+            line.addView(side)
+            list.addView(line, lp())
+        }
+        add(list, 16)
+        add(label("⚡ En cada chat puedes crear un reto y 🔒 con un amigo, proponer un candado.", 12f, Palette.SUB), 10)
+    }
+
+    private fun chatAvatar(key: String, sizeDp: Int): View {
+        val group = Chats.group(key)
+        if (group == null) return avatar(Chats.title(key) ?: "?", Palette.avatar(Chats.codeOf(key)), sizeDp = sizeDp)
+        val badge = FrameLayout(this).apply {
+            background = rounded(if (group.isAdmin) Palette.YELLOW else Palette.avatar(group.id), sizeDp / 3)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        }
+        if (group.community && group.emoji.isNotEmpty()) {
+            badge.addView(label(group.emoji, sizeDp * 0.45f).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+            }, FrameLayout.LayoutParams(MATCH, MATCH))
+        } else {
+            badge.addView(icon(R.drawable.ic_nav_groups, Palette.INK, sizeDp / 2), FrameLayout.LayoutParams(dp(sizeDp / 2), dp(sizeDp / 2), Gravity.CENTER))
+        }
+        return badge
+    }
+
+    private fun timeText(time: Long): String = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(time))
+
+    private fun shortTime(time: Long): String =
+        if (DateUtils.isToday(time)) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(time))
+        else DateUtils.formatDateTime(this, time, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH)
+
+    private fun renderChat(key: String) {
+        val group = Chats.group(key)
+        val friend = Chats.friend(key)
+        val name = Chats.title(key) ?: return
+        Store.markChatRead(key)
+        Notifs.cancelChat(this, key)
+
+        // Encabezado fijo: no se va con el scroll.
+        val head = row().apply {
+            setPadding(dp(8), dp(8), dp(12), dp(8))
+            setBackgroundColor(Palette.NAV)
+        }
+        head.addView(iconButton(R.drawable.ic_back, "Volver", 0, Palette.TEXT) { closePage() })
+        head.addView(chatAvatar(key, 40))
+        val texts = column()
+        texts.addView(title(name, 18f, weight = 600).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp())
+        val lock = friend?.let { Locks.activeWith(it.code) }
+        val subtitle = when {
+            lock != null -> {
+                deadline(lock.until)
+                liveText(12f, Palette.YELLOW, "Candado · quedan ${Locks.remainingText(lock.until)}, hasta las ${Locks.untilText(lock)}") {
+                    "🔒 Candado · quedan ${Locks.remainingText(lock.until)}"
+                }
+            }
+            else -> label(
+                if (group != null) (if (group.community) "Comunidad · " else "Grupo · ") +
+                    "${group.members.size} ${if (group.members.size == 1) "miembro" else "miembros"}"
+                else "Chat con tu amigo",
+                12f, Palette.SUB,
+            ).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+        }
+        texts.addView(subtitle, lp())
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply {
+            marginStart = dp(10)
+            marginEnd = dp(6)
+        })
+        head.addView(iconButton(R.drawable.ic_bolt, "Crear un reto", Palette.SURFACE2, Palette.YELLOW, 40) { showCreateReto(key) })
+        if (friend != null) {
+            head.addView(space(6))
+            head.addView(
+                iconButton(
+                    R.drawable.ic_lock, if (lock != null) "Candado activo" else "Proponer un candado",
+                    if (lock != null) Palette.YELLOW else Palette.SURFACE2, if (lock != null) Palette.INK else Palette.TEXT, 40,
+                ) { if (lock != null) info("Candado con ${friend.name}", lockRules(lock)) else showProposeLock(friend) },
+            )
+        }
+        if (group != null) {
+            head.addView(space(6))
+            head.addView(iconButton(R.drawable.ic_trophy, "Ranking de ${group.name}", Palette.SURFACE2, Palette.YELLOW, 40) {
+                openPage(PAGE_RANKING + key)
+            })
+        }
+        topBar.addView(head, lp())
+        topBar.addView(divider(Palette.LINE), lp(MATCH, dp(1)))
+
+        content.setPadding(dp(14), dp(12), dp(14), dp(16))
+        val messages = Store.chat(key).takeLast(120)
+        if (messages.isEmpty()) {
+            val hint = if (friend != null) "Escribe el primer mensaje 👋\nCon ⚡ creas un reto y con 🔒 propones un candado."
+            else "Escribe el primer mensaje 👋\nCon ⚡ creas un reto para todo el grupo."
+            add(label(hint, 14f, Palette.SUB).apply { gravity = Gravity.CENTER }, 40)
+            return
+        }
+        var previous: String? = null
+        messages.forEach { message ->
+            when (message.kind) {
+                ChatMessage.INFO -> {
+                    add(infoLine(message.text), 8)
+                    previous = null
+                }
+                ChatMessage.RETO -> {
+                    Store.reto(message.ref)?.let { add(retoCard(it), 10) }
+                    previous = null
+                }
+                ChatMessage.LOCK -> {
+                    Store.lock(message.ref)?.let { add(lockCard(it, message.from == Store.myCode), 10) }
+                    previous = null
+                }
+                else -> {
+                    val sameSender = message.from == previous
+                    add(bubble(key, message, showName = group != null && !sameSender), if (sameSender) 4 else 10)
+                    previous = message.from
+                }
+            }
+        }
+    }
+
+    private fun bubble(key: String, message: ChatMessage, showName: Boolean): View {
+        val mine = message.from == Store.myCode
+        val line = row().apply { gravity = if (mine) Gravity.END else Gravity.START }
+        val box = column().apply {
+            background = rounded(if (mine) Palette.ACCENT else Palette.SURFACE, 18)
+            setPadding(dp(12), dp(8), dp(12), dp(6))
+            isLongClickable = true
+            contentDescription = (if (mine) "Tú" else message.name) + ": " + message.text
+            setOnLongClickListener {
+                messageOptions(key, message)
+                true
+            }
+        }
+        if (showName && !mine) box.addView(label(message.name, 12f, Palette.avatar(message.from), bold = true), LinearLayout.LayoutParams(WRAP, WRAP))
+        box.addView(label(message.text, 15f, if (mine) Palette.INK else Palette.TEXT).apply {
+            maxWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
+        }, LinearLayout.LayoutParams(WRAP, WRAP))
+        box.addView(
+            label(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(message.time)), 10f, if (mine) 0xB3150C2C.toInt() else Palette.SUB)
+                .apply { gravity = Gravity.END },
+            LinearLayout.LayoutParams(MATCH, WRAP),
+        )
+        line.addView(box, LinearLayout.LayoutParams(WRAP, WRAP))
+        return line
+    }
+
+    private fun infoLine(text: String): View = row().apply {
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(label(text, 12f, Palette.SUB, bold = true).apply {
+            gravity = Gravity.CENTER
+            background = rounded(Palette.SURFACE, 999)
+            setPadding(dp(12), dp(5), dp(12), dp(5))
+        }, LinearLayout.LayoutParams(WRAP, WRAP))
+    }
+
+    private fun messageOptions(key: String, message: ChatMessage) {
+        val options = mutableListOf<Pair<String, () -> Unit>>()
+        options += "📋 Copiar" to {
+            copyText("Mensaje", message.text)
+            toast("Copiado")
+        }
+        if (message.from != Store.myCode && message.from.isNotEmpty()) {
+            options += "🚩 Denunciar a ${message.name}" to { report(message.from, message.name, message.text) }
+        }
+        AlertDialog.Builder(this)
+            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    // ------------------------------------------------------------------ Retos
+
+    private fun retoCard(reto: Reto): View {
+        val kind = Retos.kindOf(reto.kind)
+        val sound = Sounds.byKey(reto.sound)
+        val mine = reto.from == Store.myCode
+        val box = card(Palette.SURFACE2, 20, 14)
+        val head = row()
+        head.addView(label(kind.emoji, 26f).apply { includeFontPadding = false })
+        val texts = column()
+        texts.addView(title("Reto: ${kind.title}", 17f, weight = 600), lp())
+        texts.addView(
+            label("${if (mine) "Lo creaste tú" else "Lo creó ${reto.fromName}"} · ${sound?.emoji ?: "🔊"} ${sound?.label ?: reto.sound}", 13f, Palette.SUB),
+            lp(),
+        )
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(10) })
+        box.addView(head, lp())
+        val status = label("", 15f, Palette.YELLOW, bold = true)
+        when (reto.state) {
+            Reto.WAITING -> deadline(reto.at)
+            Reto.RANG -> {
+                status.text = if (reto.kind == Retos.FASTEST) "¡Sonó! Esperando los tiempos de todos…" else "¡Sonó para todos!"
+                deadline(reto.at + 91_000L)
+            }
+            Reto.DONE -> status.text = if (reto.kind == Retos.FASTEST) "Terminó" else "¡Sonó para todos!"
+            Reto.MISSED -> {
+                status.text = "No sonó en tu celular: estaba sin conexión a esa hora"
+                status.setTextColor(Palette.SUB)
+            }
+            else -> {
+                status.text = "Cancelado"
+                status.setTextColor(Palette.SUB)
+            }
+        }
+        if (reto.state == Reto.WAITING) {
+            box.addView(
+                liveText(15f, Palette.YELLOW, "Suena en ${Locks.remainingText(reto.at)}, a las ${timeText(reto.at)}") {
+                    "Suena en ${Locks.remainingText(reto.at)}"
+                },
+                lp(topDp = 10),
+            )
+        } else {
+            box.addView(status, lp(topDp = 10))
+        }
+        if (reto.kind == Retos.FASTEST && reto.results.isNotEmpty()) {
+            val medals = listOf("🥇", "🥈", "🥉")
+            Retos.ranking(reto).forEachIndexed { i, result ->
+                val who = if (result.code == Store.myCode) "Tú" else result.name
+                box.addView(label("${medals.getOrElse(i) { "${i + 1}." }} $who · ${Retos.seconds(result.ms)}", 14f, bold = i == 0), lp(topDp = 4))
+            }
+        }
+        if (reto.state == Reto.WAITING) {
+            box.addView(label(kind.text, 12f, Palette.SUB), lp(topDp = 4))
+            if (!Retos.puntualAllowed(this)) {
+                box.addView(
+                    label("Para que suene a la hora exacta, permite las alarmas puntuales en Tú → Ajustes.", 12f, Palette.YELLOW),
+                    lp(topDp = 4),
+                )
+            }
+            if (mine) {
+                box.addView(
+                    button("Cancelar reto", Palette.SURFACE, Palette.TEXT, heightDp = 40, radiusDp = 12, sizeSp = 13f) { cancelReto(reto) },
+                    lp(topDp = 10),
+                )
+            }
+        }
+        return box
+    }
+
+    /** Botón chiquito para elegir una opción (minutos, sonido, emoji). */
+    private fun chip(text: String, selected: Boolean, onClick: () -> Unit): View =
+        label(text, 14f, if (selected) Palette.INK else Palette.TEXT, bold = true).apply {
+            gravity = Gravity.CENTER
+            background = clickable(rounded(if (selected) Palette.YELLOW else Palette.SURFACE, 999))
+            setPadding(dp(14), 0, dp(14), 0)
+            isClickable = true
+            isSelected = selected
+            contentDescription = text + if (selected) ", elegido" else ""
+            setOnClickListener { onClick() }
+        }
+
+    private fun chipRow(): Pair<HorizontalScrollView, LinearLayout> {
+        val chips = row()
+        val scroller = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chips)
+        }
+        return scroller to chips
+    }
+
+    private fun showCreateReto(key: String) {
+        val name = Chats.title(key) ?: return
+        val sounds = Sounds.unlocked(Points.level().number)
+        var kind = Retos.FASTEST
+        var minutes = Retos.DEFAULT_DELAY_MIN
+        var sound = sounds.firstOrNull { it.key == "sirena" } ?: sounds.first()
+        val kinds = column()
+        val (timeScroll, times) = chipRow()
+        val (soundScroll, soundChips) = chipRow()
+        lateinit var refresh: () -> Unit
+        refresh = {
+            kinds.removeAllViews()
+            Retos.KINDS.forEach { option ->
+                val selected = option.key == kind
+                val item = row().apply {
+                    background = clickable(rounded(if (selected) Palette.ACCENT_SOFT else Palette.SURFACE, 16, if (selected) Palette.ACCENT else null))
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    isClickable = true
+                    isSelected = selected
+                    contentDescription = option.title + if (selected) ", elegido" else ""
+                    setOnClickListener {
+                        kind = option.key
+                        refresh()
+                    }
+                }
+                item.addView(label(option.emoji, 24f))
+                val texts = column()
+                texts.addView(label(option.title, 15f, bold = true), lp())
+                texts.addView(label(option.text, 12f, Palette.SUB), lp())
+                item.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(10) })
+                kinds.addView(item, lp(topDp = 8))
+            }
+            times.removeAllViews()
+            Retos.DELAYS_MIN.forEach { value ->
+                times.addView(chip("$value min", value == minutes) {
+                    minutes = value
+                    refresh()
+                }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+            }
+            soundChips.removeAllViews()
+            sounds.forEach { option ->
+                soundChips.addView(chip("${option.emoji} ${option.label}", option.key == sound.key) {
+                    sound = option
+                    refresh()
+                }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+            }
+        }
+        refresh()
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        body.addView(caps("Tipo de reto"), lp(topDp = 4))
+        body.addView(kinds, lp())
+        body.addView(caps("¿En cuánto tiempo suena?"), lp(topDp = 16))
+        body.addView(timeScroll, lp(topDp = 8))
+        body.addView(caps("Sonido"), lp(topDp = 16))
+        body.addView(soundScroll, lp(topDp = 8))
+        body.addView(label("Suena a la vez en el celular de todos los del chat, también en el tuyo.", 12f, Palette.SUB), lp(topDp = 12))
+        AlertDialog.Builder(this)
+            .setTitle("Nuevo reto en «$name»")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Crear reto") { _, _ -> createReto(key, kind, sound.key, minutes * 60L) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun createReto(key: String, kind: String, soundKey: String, delaySeconds: Long) {
+        val payload = Retos.create(this, key, kind, soundKey, delaySeconds)
+        if (chatKey != key) openChat(key)
+        runInBackground({ Relay.publishTopic(Chats.topic(key), payload) }) {
+            toast("⚡ Reto creado: suena en ${delaySeconds / 60} min para todos")
+        }
+    }
+
+    private fun cancelReto(reto: Reto) {
+        confirm("¿Cancelar el reto?", "Ya no va a sonar para nadie.") {
+            val payload = Retos.cancel(this, reto.id) ?: return@confirm
+            Chats.info(reto.chat, "Cancelaste el reto")
+            runInBackground({ Relay.publishTopic(Chats.topic(reto.chat), payload) }) {}
+        }
+    }
+
+    // ------------------------------------------------------------------ Candado
+
+    private fun lockCard(lock: Lock, byMe: Boolean): View {
+        val name = Store.friend(lock.friend)?.name ?: "Tu amigo"
+        val box = card(Palette.SURFACE2, 20, 14)
+        val head = row()
+        head.addView(icon(R.drawable.ic_lock, Palette.YELLOW, 26))
+        val texts = column()
+        texts.addView(title(if (byMe) "Propusiste un candado" else "$name propone un candado", 17f, weight = 600), lp())
+        texts.addView(
+            label("${lock.minutes} minutos en que ninguno podrá detener, silenciar ni pausar los sonidos del otro.", 13f, Palette.SUB),
+            lp(),
+        )
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(10) })
+        box.addView(head, lp())
+        val pending = Locks.isPending(lock)
+        when {
+            lock.state == Lock.ASKED && pending -> {
+                val actions = row()
+                actions.addView(
+                    button("Aceptar", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_lock, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
+                        acceptLock(lock)
+                    },
+                    lp(0, WRAP, weight = 1f),
+                )
+                actions.addView(space(8))
+                actions.addView(
+                    button("No, gracias", Palette.SURFACE, Palette.TEXT, heightDp = 44, radiusDp = 14, sizeSp = 14f) { rejectLock(lock) },
+                    lp(0, WRAP, weight = 1f),
+                )
+                box.addView(actions, lp(topDp = 12))
+                deadline(Locks.expiresAt(lock))
+            }
+            lock.state == Lock.OFFERED && pending -> {
+                box.addView(label("Esperando que $name acepte…", 14f, Palette.YELLOW, bold = true), lp(topDp = 10))
+                box.addView(
+                    button("Retirar propuesta", Palette.SURFACE, Palette.TEXT, heightDp = 40, radiusDp = 12, sizeSp = 13f) { rejectLock(lock) },
+                    lp(topDp = 8),
+                )
+                deadline(Locks.expiresAt(lock))
+            }
+            lock.isActive -> {
+                box.addView(
+                    liveText(15f, Palette.YELLOW, "Activo hasta las ${Locks.untilText(lock)}") { "Activo · quedan ${Locks.remainingText(lock.until)}" },
+                    lp(topDp = 10),
+                )
+                deadline(lock.until)
+            }
+            lock.state == Lock.ACTIVE || lock.state == Lock.DONE -> box.addView(label("✅ Cumplido", 14f, Palette.OK, bold = true), lp(topDp = 10))
+            lock.state == Lock.REJECTED -> box.addView(label("No se hizo", 14f, Palette.SUB, bold = true), lp(topDp = 10))
+            else -> box.addView(label("La propuesta venció", 14f, Palette.SUB, bold = true), lp(topDp = 10))
+        }
+        return box
+    }
+
+    private fun showProposeLock(friend: Friend) {
+        var minutes = Locks.DEFAULT_MINUTES
+        val (timeScroll, times) = chipRow()
+        lateinit var refresh: () -> Unit
+        refresh = {
+            times.removeAllViews()
+            Locks.MINUTES.forEach { value ->
+                times.addView(chip("$value min", value == minutes) {
+                    minutes = value
+                    refresh()
+                }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+            }
+        }
+        refresh()
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        body.addView(
+            label(
+                "Si ${friend.name} acepta, durante ese tiempo ninguno de los dos podrá detener, silenciar ni pausar " +
+                    "los sonidos del otro, ni eliminarse o bloquearse.",
+                14f,
+            ),
+            lp(),
+        )
+        body.addView(caps("¿Cuánto dura?"), lp(topDp = 16))
+        body.addView(timeScroll, lp(topDp = 8))
+        body.addView(
+            label(
+                "Siguen los límites de siempre: cada sonido dura como mucho 10 segundos y nadie puede mandar más de 4 cada 20 segundos.",
+                12f, Palette.SUB,
+            ),
+            lp(topDp = 12),
+        )
+        AlertDialog.Builder(this)
+            .setTitle("🔒 Candado con ${friend.name}")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Proponer") { _, _ ->
+                val payload = Locks.propose(friend.code, minutes)
+                openChat(Chats.friendKey(friend.code))
+                runInBackground({ Relay.publish(friend.code, payload) }) {
+                    toast("🔒 Propuesta enviada. Empieza cuando ${friend.name} acepte.")
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun acceptLock(lock: Lock) {
+        val name = Store.friend(lock.friend)?.name ?: "tu amigo"
+        confirm(
+            "¿Aceptar el candado?",
+            "Durante ${lock.minutes} minutos ni tú ni $name podrán detener, silenciar ni pausar los sonidos del otro.",
+        ) {
+            val payload = Locks.accept(this, lock.id)
+            if (payload == null) {
+                toast("La propuesta ya venció")
+                return@confirm
+            }
+            val until = Store.lock(lock.id)?.let { Locks.untilText(it) } ?: ""
+            Chats.info(Chats.friendKey(lock.friend), "🔒 Aceptaste el candado: hasta las $until")
+            runInBackground({ Relay.publish(lock.friend, payload) }) {}
+        }
+    }
+
+    private fun rejectLock(lock: Lock) {
+        val payload = Locks.reject(lock.id) ?: return
+        runInBackground({ Relay.publish(lock.friend, payload) }) {}
+    }
+
+    private fun lockRules(lock: Lock): String {
+        val name = Store.friend(lock.friend)?.name ?: "tu amigo"
+        return "Hasta las ${Locks.untilText(lock)} (quedan ${Locks.remainingText(lock.until)}) ni tú ni $name pueden " +
+            "detener, silenciar ni pausar los sonidos del otro, ni eliminarse o bloquearse.\n\n" +
+            "Cada sonido sigue durando como mucho 10 segundos y nadie puede mandar más de 4 cada 20 segundos. " +
+            "Si alguien te molesta de verdad, «Denunciar» siempre funciona."
+    }
+
+    /** true (y avisa) si un candado impide cambiar cómo se reciben los sonidos. */
+    private fun lockBlocks(): Boolean {
+        val lock = Locks.anyActive() ?: return false
+        val name = Store.friend(lock.friend)?.name ?: "un amigo"
+        toast("🔒 Tienes un candado con $name hasta las ${Locks.untilText(lock)}: no se puede cambiar hasta que termine")
+        // Vuelve el interruptor a como estaba.
+        ui.post { render() }
+        return true
+    }
+
+    // ------------------------------------------------------------------ Pestaña Tú
+
+    private fun renderMe() {
+        val total = Points.total()
+        val level = Points.level(total)
+        val next = Points.next(level)
+        val top = row()
+        top.addView(title("Tú", 30f), lp(0, WRAP, weight = 1f))
+        top.addView(iconButton(R.drawable.ic_nav_settings, "Ajustes", Palette.SURFACE) { openPage(PAGE_SETTINGS) })
+        add(top)
+
+        val hero = card(Palette.SURFACE, 24, 18)
+        val head = row()
+        head.addView(avatar(Store.myName, Palette.YELLOW, sizeDp = 64))
+        val texts = column()
+        texts.addView(title(Store.myName, 22f, weight = 600).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp())
+        texts.addView(label("Nivel ${level.number} · ${level.name}", 14f, Palette.YELLOW, bold = true), lp())
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(14) })
+        hero.addView(head, lp())
+        hero.addView(title("$total puntos", 30f), lp(topDp = 14))
+        hero.addView(progressBar(Points.progress(total)), lp(MATCH, dp(10), topDp = 8))
+        hero.addView(
+            label(
+                if (next != null) "Te faltan ${next.min - total} para el nivel ${next.number}: ${next.name}" else "¡Llegaste al nivel máximo!",
+                13f, Palette.SUB,
+            ),
+            lp(topDp = 6),
+        )
+        add(hero, 12)
+
+        val stats = row()
+        fun stat(value: String, name: String) {
+            val box = card(Palette.SURFACE, 18, 12).apply { gravity = Gravity.CENTER_HORIZONTAL }
+            box.addView(title(value, 22f).apply { gravity = Gravity.CENTER }, lp())
+            box.addView(label(name, 12f, Palette.SUB).apply { gravity = Gravity.CENTER }, lp())
+            if (stats.childCount > 0) stats.addView(space(8))
+            stats.addView(box, lp(0, WRAP, weight = 1f))
+        }
+        val streak = Points.streak
+        stat("🔥 $streak", if (streak == 1) "día seguido" else "días seguidos")
+        stat("${Points.week()}", "esta semana")
+        stat("${Points.stat("retos_won")}", "retos ganados")
+        add(stats, 10)
+
+        add(sectionTitle("Ranking con tus amigos", "Esta semana"), 22)
+        val people = Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
+        add(rankingList(Points.ranking(people, weekly = true).take(5)), 10)
+        if (people.isEmpty()) add(label("Agrega amigos para competir con ellos.", 13f, Palette.SUB), 8)
+        add(
+            button(
+                "Ver ranking completo", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_trophy,
+                heightDp = 44, radiusDp = 14, sizeSp = 14f, iconColor = Palette.YELLOW,
+            ) { openPage(PAGE_RANKING) },
+            10,
+        )
+
+        val got = Points.LOGROS.count { Points.hasLogro(it.key) }
+        add(sectionTitle("Logros", "$got de ${Points.LOGROS.size}"), 24)
+        grid(Points.LOGROS.map { logroTile(it) })
+
+        add(sectionTitle("Sonidos por nivel"), 24)
+        val list = card(padDp = 0)
+        Sounds.all.filter { it.level > 1 }.forEach { sound ->
+            if (list.childCount > 0) list.addView(divider(), dividerLp())
+            val unlocked = sound.level <= level.number
+            val line = row().apply { setPadding(dp(16), dp(10), dp(16), dp(10)) }
+            line.addView(label(sound.emoji, 22f))
+            line.addView(label(sound.label, 15f, bold = true), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+            line.addView(label(if (unlocked) "✅ Desbloqueado" else "🔒 Nivel ${sound.level}", 13f, if (unlocked) Palette.OK else Palette.SUB, bold = true))
+            list.addView(line, lp())
+        }
+        add(list, 10)
+
+        val help = card()
+        help.addView(title("Cómo ganar puntos", 17f, weight = 600), lp())
+        listOf(
+            "🔊 Mandar un sonido: +2 (hasta 20 veces al día)",
+            "👂 Recibir un sonido: +1",
+            "💬 Escribir en el chat: +1 (hasta 10 al día)",
+            "⚡ Crear un reto: +5 · jugarlo: +5",
+            "🥇 Ganar «El más rápido»: +15 (2.º +8, 3.º +4)",
+            "🔒 Cumplir un candado: +20",
+            "🤝 Amigo nuevo: +10 · 📅 Abrir la app cada día: +5",
+        ).forEach { help.addView(label(it, 13f, Palette.SUB), lp(topDp = 6)) }
+        add(help, 20)
+
+        add(
+            button("Ajustes", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_nav_settings, heightDp = 52, iconColor = Palette.ACCENT_TEXT) {
+                openPage(PAGE_SETTINGS)
+            },
+            16,
+        )
+        addFooter()
+    }
+
+    private fun progressBar(fraction: Float, color: Int = Palette.YELLOW): View {
+        val track = row().apply {
+            background = rounded(Palette.LINE, 999)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val value = fraction.coerceIn(0f, 1f)
+        if (value > 0f) track.addView(View(this).apply { background = rounded(color, 999) }, LinearLayout.LayoutParams(0, MATCH, value))
+        if (value < 1f) track.addView(View(this), LinearLayout.LayoutParams(0, MATCH, 1f - value))
+        return track
+    }
+
+    private fun logroTile(logro: Points.Logro): View {
+        val got = Points.hasLogro(logro.key)
+        return column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            minimumHeight = dp(104)
+            setPadding(dp(6), dp(10), dp(6), dp(10))
+            background = clickable(rounded(if (got) Palette.SURFACE2 else Palette.SURFACE, 20))
+            isClickable = true
+            alpha = if (got) 1f else 0.55f
+            contentDescription = "${logro.title}: ${logro.text}" + if (got) ", conseguido" else ", pendiente"
+            addView(label(if (got) logro.emoji else "🔒", 26f).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, lp())
+            addView(label(logro.title, 12f, bold = true).apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+            }, lp(topDp = 6))
+            setOnClickListener {
+                info(
+                    "${logro.emoji} ${logro.title}",
+                    "${logro.text}.\n\n" + if (got) "¡Ya lo conseguiste! (+${logro.bonus} puntos)" else "Da +${logro.bonus} puntos.",
+                )
+            }
+        }
+    }
+
+    private fun rankingList(entries: List<Points.Entry>): View {
+        val box = card(padDp = 0)
+        val medals = listOf("🥇", "🥈", "🥉")
+        entries.forEachIndexed { i, entry ->
+            if (i > 0) box.addView(divider(), dividerLp())
+            val line = row().apply {
+                setPadding(dp(14), dp(10), dp(16), dp(10))
+                if (entry.isMe) background = rounded(Palette.ACCENT_SOFT, 20)
+                contentDescription = "Puesto ${i + 1}: ${if (entry.isMe) "tú" else entry.name}, ${entry.points} puntos"
+            }
+            line.addView(label(medals.getOrElse(i) { "${i + 1}" }, if (i < 3) 22f else 15f, Palette.SUB, bold = true).apply {
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(34), WRAP))
+            line.addView(avatar(entry.name, Palette.avatar(entry.code), sizeDp = 36), LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(6) })
+            val texts = column()
+            texts.addView(label(if (entry.isMe) "Tú" else entry.name, 15f, bold = true).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, lp())
+            texts.addView(label("Nivel ${entry.level} · ${Points.LEVELS[entry.level - 1].name}", 12f, Palette.SUB), lp())
+            line.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(10) })
+            line.addView(title("${entry.points}", 18f, Palette.YELLOW), LinearLayout.LayoutParams(WRAP, WRAP))
+            box.addView(line, lp())
+        }
+        return box
+    }
+
+    private fun renderRanking(scope: String) {
+        val group = if (scope.isEmpty()) null else Chats.group(scope)
+        val top = row()
+        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
+        val texts = column()
+        texts.addView(title("Ranking", 28f), lp())
+        texts.addView(label(group?.name ?: "Tú y tus amigos", 14f, Palette.SUB), lp())
+        top.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        add(top)
+        if (scope.isNotEmpty() && group == null) {
+            add(label("Ya no estás en ese grupo.", 14f, Palette.SUB), 16)
+            return
+        }
+        val toggle = row()
+        toggle.addView(chip("Esta semana", rankingWeekly) {
+            rankingWeekly = true
+            render()
+        }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+        toggle.addView(chip("Total", !rankingWeekly) {
+            rankingWeekly = false
+            render()
+        }, LinearLayout.LayoutParams(WRAP, dp(40)))
+        add(toggle, 16)
+        val people = group?.members?.map { it.code to it.name }
+            ?: Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
+        add(rankingList(Points.ranking(people, rankingWeekly)), 12)
+        add(
+            label(
+                "Los puntos de los demás se actualizan cuando usan la app y te mandan algo. La semana empieza el lunes.",
+                12f, Palette.SUB,
+            ),
+            10,
+        )
+    }
+
+    // ------------------------------------------------------------------ Reglas, privacidad y denuncias
+
+    private fun showLegal(titleText: String, asset: String) {
+        val text = label(Legal.text(this, asset), 14f).apply {
+            setPadding(dp(22), dp(8), dp(22), dp(8))
+            movementMethod = LinkMovementMethod.getInstance()
+            setLinkTextColor(Palette.ACCENT_TEXT)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(titleText)
+            .setView(ScrollView(this).apply { addView(text) })
+            .setPositiveButton("Entendido", null)
+            .setNeutralButton("Abrir en la web") { _, _ -> openUrl(if (asset == Legal.TERMS_ASSET) Legal.TERMS_URL else Legal.PRIVACY_URL) }
+            .show()
+    }
+
+    private fun showContact() {
+        val message = if (Legal.hasContact()) {
+            "Escríbenos a ${Legal.contactEmail} para dudas, problemas o para denunciar a alguien."
+        } else {
+            "Puedes dejar un reporte o una idea en la página del proyecto en GitHub (sin datos personales). " +
+                "Para denunciar a alguien usa «Denunciar» en sus opciones: se bloquea al instante."
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Ayuda y contacto")
+            .setMessage(message)
+            .setPositiveButton(if (Legal.hasContact()) "Escribir" else "Abrir GitHub") { _, _ ->
+                val email = Legal.reportIntent("Friend Game: ayuda", "")
+                if (email != null) startSafely(email) else openUrl(Legal.ISSUES_URL)
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun legalNote(): TextView {
+        val text = SpannableStringBuilder("Al empezar aceptas los ")
+        fun link(linkText: String, action: () -> Unit) {
+            val start = text.length
+            text.append(linkText)
+            text.setSpan(object : ClickableSpan() {
+                override fun onClick(widget: View) {
+                    action()
+                }
+            }, start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        link("Términos de uso") { showLegal("Términos de uso", Legal.TERMS_ASSET) }
+        text.append(" y la ")
+        link("Política de privacidad") { showLegal("Política de privacidad", Legal.PRIVACY_ASSET) }
+        text.append(". Es para mayores de 13 años.")
+        return label(text, 12f, Palette.SUB).apply {
+            gravity = Gravity.CENTER
+            movementMethod = LinkMovementMethod.getInstance()
+            setLinkTextColor(Palette.ACCENT_TEXT)
+        }
+    }
+
+    /** Denunciar bloquea al instante y, si hay correo de contacto, arma el correo con los datos. */
+    private fun report(code: String, name: String, text: String = "") {
+        val reasons = listOf("Me molesta o me acosa", "Manda contenido ofensivo", "Es spam", "Otro motivo")
+        AlertDialog.Builder(this)
+            .setTitle("¿Por qué denuncias a $name?")
+            .setItems(reasons.toTypedArray()) { _, which ->
+                val friend = Store.friend(code)
+                if (friend != null) block(friend) else Store.putFriend(Friend(code, name, Friend.BLOCKED, muted = true))
+                val body = "Denuncia en Friend Game\nMotivo: ${reasons[which]}\nPersona: $name (código ${Codes.pretty(code)})\n" +
+                    (if (text.isNotEmpty()) "Mensaje: «$text»\n" else "") +
+                    "Denuncia hecha por: ${Codes.pretty(Store.myCode)}"
+                val email = Legal.reportIntent("Denuncia: $name", body)
+                if (email != null) {
+                    toast("Bloqueaste a $name. Manda el correo para que revisemos la denuncia.")
+                    startSafely(email)
+                } else {
+                    info("Bloqueaste a $name", "Ya no te pueden llegar sus sonidos ni sus mensajes. Gracias por avisar.")
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun reportGroup(group: Group) {
+        val reasons = listOf("Molestan o acosan", "Contenido ofensivo", "Es spam", "Otro motivo")
+        AlertDialog.Builder(this)
+            .setTitle("¿Por qué denuncias «${group.name}»?")
+            .setItems(reasons.toTypedArray()) { _, which ->
+                runInBackground({ Groups.leave(group) }) {}
+                val body = "Denuncia en Friend Game\nMotivo: ${reasons[which]}\nGrupo: ${group.name} (${group.id})\n" +
+                    "Admin: ${Codes.pretty(group.adminCode)}\nDenuncia hecha por: ${Codes.pretty(Store.myCode)}"
+                val email = Legal.reportIntent("Denuncia de grupo: ${group.name}", body)
+                if (email != null) {
+                    toast("Saliste de «${group.name}». Manda el correo para que revisemos la denuncia.")
+                    startSafely(email)
+                } else {
+                    info("Saliste de «${group.name}»", "Ya no te llegarán sus sonidos ni sus mensajes. Gracias por avisar.")
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun startSafely(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            toast("No encontré una app para abrir esto.")
+        }
+    }
+
+    private fun openUrl(url: String) {
+        startSafely(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
+    }
+
+    private fun openStorePage() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")))
+        } catch (_: ActivityNotFoundException) {
+            openUrl("https://play.google.com/store/apps/details?id=$packageName")
+        }
+    }
+
+    private fun askExactAlarms() {
+        if (Retos.puntualAllowed(this)) {
+            info("Alarmas puntuales", "Listo: los retos suenan a la hora exacta.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                toast("Búscalo en Ajustes → Apps → Friend Game → Alarmas y recordatorios.")
+            }
+        }
+    }
+
+    private fun createCommunity() {
+        var emoji = COMMUNITY_EMOJIS.first()
+        val input = editText("", "Nombre de la comunidad").apply { filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24)) }
+        val (emojiScroll, emojis) = chipRow()
+        lateinit var refresh: () -> Unit
+        refresh = {
+            emojis.removeAllViews()
+            COMMUNITY_EMOJIS.forEach { option ->
+                emojis.addView(chip(option, option == emoji) {
+                    emoji = option
+                    refresh()
+                }, LinearLayout.LayoutParams(WRAP, dp(44)).apply { marginEnd = dp(6) })
+            }
+        }
+        refresh()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Crear comunidad")
+            .setMessage("Hasta ${Group.MAX_MEMBERS} personas con chat, ranking y retos. Los sonidos solo suenan en los retos.")
+            .setView(padded(input, label("Elige un emoji", 13f, Palette.SUB), emojiScroll))
+            .setPositiveButton("Crear", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text.toString().trim()
+                if (name.isEmpty()) {
+                    input.error = "Escribe un nombre"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                val group = Groups.create(name, community = true, emoji = emoji)
+                tab = Tab.GROUPS
+                pages.clear()
+                render()
+                showInvite(group)
+            }
+        }
+        dialog.show()
     }
 
     // ------------------------------------------------------------------ Barras y navegación
@@ -1132,7 +2393,12 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun renderNav() {
         nav.removeAllViews()
+        val inChat = chatKey != null
+        nav.visibility = if (inChat) View.GONE else View.VISIBLE
+        navDivider.visibility = nav.visibility
+        if (inChat) return
         val requests = Store.friends().count { it.state == Friend.INCOMING }
+        val unread = Store.unreadCounts().filterKeys { Chats.title(it) != null }.values.sum()
         Tab.entries.forEach { item ->
             val selected = item == tab
             val cell = column().apply {
@@ -1141,8 +2407,11 @@ class MainActivity : Activity(), Store.Listener {
                 background = RippleDrawable(ColorStateList.valueOf(0x30FFFFFF), null, null)
                 isClickable = true
                 isSelected = selected
-                contentDescription = "Pestaña ${item.title}" +
-                    if (item == Tab.FRIENDS && requests > 0) ", $requests ${if (requests == 1) "solicitud" else "solicitudes"}" else ""
+                contentDescription = "Pestaña ${item.title}" + when {
+                    item == Tab.FRIENDS && requests > 0 -> ", $requests ${if (requests == 1) "solicitud" else "solicitudes"}"
+                    item == Tab.CHATS && unread > 0 -> ", $unread ${if (unread == 1) "mensaje nuevo" else "mensajes nuevos"}"
+                    else -> ""
+                }
                 setOnClickListener { openTab(item) }
             }
             val pill = FrameLayout(this).apply { if (selected) background = rounded(Palette.ACCENT_SOFT, 16) }
@@ -1150,15 +2419,20 @@ class MainActivity : Activity(), Store.Listener {
                 icon(item.iconRes, if (selected) Palette.ACCENT_TEXT else Palette.SUB, 22),
                 FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER),
             )
-            if (item == Tab.FRIENDS && requests > 0) {
-                val badge = label(if (requests > 9) "9+" else requests.toString(), 10f, Palette.INK, bold = true).apply {
+            val count = when (item) {
+                Tab.FRIENDS -> requests
+                Tab.CHATS -> unread
+                else -> 0
+            }
+            if (count > 0) {
+                val badge = label(if (count > 9) "9+" else count.toString(), 10f, Palette.INK, bold = true).apply {
                     gravity = Gravity.CENTER
                     includeFontPadding = false
                     background = oval(Palette.YELLOW)
                 }
-                pill.addView(badge, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.TOP or Gravity.END).apply { marginEnd = dp(8) })
+                pill.addView(badge, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.TOP or Gravity.END).apply { marginEnd = dp(6) })
             }
-            cell.addView(pill, LinearLayout.LayoutParams(dp(56), dp(32)))
+            cell.addView(pill, LinearLayout.LayoutParams(dp(52), dp(32)))
             cell.addView(label(item.title, 12f, if (selected) Palette.ACCENT_TEXT else Palette.SUB).apply {
                 typeface = Fonts.body(context, if (selected) 800 else 700)
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
@@ -1187,8 +2461,11 @@ class MainActivity : Activity(), Store.Listener {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(24), dp(20), dp(24), dp(24))
         }
+        val reto = now.retoId?.let { Store.reto(it) }
+        val locked = Locks.blocksStop(now)
         page.addView(View(this), lp(MATCH, 0, weight = 1f))
-        page.addView(caps("Te llegó un sonido").apply { textSize = 13f }, LinearLayout.LayoutParams(WRAP, WRAP))
+        val heading = if (reto != null) "Reto · ${Retos.kindOf(reto.kind).title}" else "Te llegó un sonido"
+        page.addView(caps(heading).apply { textSize = 13f }, LinearLayout.LayoutParams(WRAP, WRAP))
 
         val stage = FrameLayout(this)
         stage.addView(View(this).apply { background = oval(0, Palette.LINE) }, FrameLayout.LayoutParams(dp(260), dp(260), Gravity.CENTER))
@@ -1212,24 +2489,53 @@ class MainActivity : Activity(), Store.Listener {
             setPadding(dp(8), dp(8), dp(16), dp(8))
         }
         from.addView(avatar(sender, Palette.avatar(now.fromCode), sizeDp = 32))
-        from.addView(label("de ${now.fromName}", 16f, bold = true), LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(10) })
+        from.addView(
+            label(if (reto != null) now.fromName else "de ${now.fromName}", 16f, bold = true),
+            LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(10) },
+        )
         page.addView(from, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(12) })
 
         page.addView(View(this), lp(MATCH, dp(32), weight = 1f))
-        page.addView(
-            button("Detener", Palette.DANGER, Palette.TEXT, iconRes = R.drawable.ic_stop, heightDp = 64, radiusDp = 22, display = true, sizeSp = 22f) {
-                Player.stop()
-            },
-            lp(),
-        )
-        val muteText = if (now.groupId != null) "Silenciar el grupo" else "Silenciar a $sender"
-        page.addView(button(muteText, Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_mute, heightDp = 52, radiusDp = 18) {
-            muteSender(now)
-        }, lp(topDp = 12))
-        page.addView(
-            label("Se corta solo a los 10 segundos. Tú decides, siempre.", 13f, Palette.SUB).apply { gravity = Gravity.CENTER },
-            lp(topDp = 12),
-        )
+        if (locked) {
+            // Candado: lo acordaron los dos, así que el botón no corta el sonido.
+            val lock = Locks.activeWith(now.fromCode)
+            page.addView(
+                button(
+                    "Candado activo", Palette.SURFACE2, Palette.YELLOW, iconRes = R.drawable.ic_lock,
+                    heightDp = 64, radiusDp = 22, display = true, sizeSp = 22f,
+                ) { toast("🔒 Acordaron un candado: este sonido no se puede detener") },
+                lp(),
+            )
+            if (lock != null) {
+                page.addView(
+                    liveText(
+                        13f, Palette.YELLOW,
+                        "Acordaste un candado con $sender hasta las ${Locks.untilText(lock)}. Se corta solo a los 10 segundos.",
+                        center = true,
+                    ) { "Acordaste un candado con $sender: quedan ${Locks.remainingText(lock.until)}. Se corta solo a los 10 segundos." },
+                    lp(topDp = 12),
+                )
+            }
+        } else {
+            page.addView(
+                button("Detener", Palette.DANGER, Palette.TEXT, iconRes = R.drawable.ic_stop, heightDp = 64, radiusDp = 22, display = true, sizeSp = 22f) {
+                    Player.stopByUser(this)
+                },
+                lp(),
+            )
+            if (reto == null) {
+                val muteText = if (now.groupId != null) "Silenciar el grupo" else "Silenciar a $sender"
+                page.addView(button(muteText, Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_mute, heightDp = 52, radiusDp = 18) {
+                    muteSender(now)
+                }, lp(topDp = 12))
+            }
+            val note = when {
+                reto?.kind == Retos.FASTEST -> "¡Rápido! Gana quien lo detenga primero."
+                reto != null -> "¡Sonó para todos a la vez! Se corta solo a los 10 segundos."
+                else -> "Se corta solo a los 10 segundos. Tú decides, siempre."
+            }
+            page.addView(label(note, 13f, Palette.SUB).apply { gravity = Gravity.CENTER }, lp(topDp = 12))
+        }
         page.addView(TimeBar(this, Palette.LINE, Palette.ACCENT, now.startedAt, now.durationMs), lp(MATCH, dp(6), topDp = 24))
 
         val pageScroll = ScrollView(this).apply {
@@ -1355,6 +2661,7 @@ class MainActivity : Activity(), Store.Listener {
             label("Sin cuenta, sin número de teléfono y sin anuncios.", 12f, Palette.SUB).apply { gravity = Gravity.CENTER },
             lp(topDp = 10),
         )
+        page.addView(legalNote(), lp(topDp = 6))
 
         return ScrollView(this).apply {
             isFillViewport = true
@@ -1423,6 +2730,11 @@ class MainActivity : Activity(), Store.Listener {
 
     /** Comparte el propio APK: con Quick Share llega al otro celular y se instala sin navegador. */
     private fun shareApp() {
+        if (BuildConfig.STORE_BUILD) {
+            val text = "¡Juguemos Friend Game! 🔊 Bájala de Google Play: https://play.google.com/store/apps/details?id=$packageName"
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Pasar Friend Game"))
+            return
+        }
         val intent = Intent(Intent.ACTION_SEND)
             .setType(ApkProvider.MIME)
             .putExtra(Intent.EXTRA_STREAM, ApkProvider.URI)
@@ -1437,8 +2749,9 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun shareCode() {
-        val text = "¡Juguemos Friend Game! 🔊 Agrégame con mi código: ${Codes.pretty(Store.myCode)}\n" +
-            "Instala la app (Android, ábrelo en Chrome): $INSTALL_PAGE"
+        val install = if (BuildConfig.STORE_BUILD) "Bájala de Google Play: https://play.google.com/store/apps/details?id=$packageName"
+        else "Instala la app (Android, ábrelo en Chrome): $INSTALL_PAGE"
+        val text = "¡Juguemos Friend Game! 🔊 Agrégame con mi código: ${Codes.pretty(Store.myCode)}\n" + install
         val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         startActivity(Intent.createChooser(intent, "Compartir mi código"))
     }
@@ -1459,6 +2772,7 @@ class MainActivity : Activity(), Store.Listener {
         runInBackground({
             if (file != null) Relay.publishFileTopic(target.topic, payload, file) else Relay.publishTopic(target.topic, payload)
         }) {
+            Points.onSoundSent()
             val sent = Sent(target.topic, toName, playbackId, label)
             lastSent = sent
             render()
@@ -1591,12 +2905,13 @@ class MainActivity : Activity(), Store.Listener {
         }
         confirm(
             "¿Unirte a «${invite.name}»?",
-            "Las personas del grupo podrán mandarte sonidos. Puedes silenciarlo o salirte cuando quieras.",
+            if (invite.community) "Es una comunidad: chat, ranking y retos. Sus sonidos solo suenan en los retos. Puedes silenciarla o salirte cuando quieras."
+            else "Las personas del grupo podrán mandarte sonidos. Puedes silenciarlo o salirte cuando quieras.",
         ) {
             val group = Groups.join(invite)
             selectedTarget = "g:${group.id}"
             tab = Tab.GROUPS
-            supportOpen = false
+            pages.clear()
             render()
             runInBackground({ Groups.announceJoin(group) }) { toast("Te uniste a «${group.name}»") }
         }
@@ -1604,6 +2919,9 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun groupOptions(group: Group) {
         val options = mutableListOf<Pair<String, () -> Unit>>()
+        options += "💬 Chat" to { openChat(Chats.groupKey(group.id)) }
+        options += "🏆 Ranking" to { openPage(PAGE_RANKING + Chats.groupKey(group.id)) }
+        options += "⚡ Crear un reto" to { showCreateReto(Chats.groupKey(group.id)) }
         options += "📱 Invitar con QR" to { showInvite(group) }
         options += "👥 Ver miembros" to { showMembers(group) }
         options += (if (group.muted) "🔊 Volver a recibir sus sonidos" else "🔇 Silenciar el grupo") to {
@@ -1627,6 +2945,7 @@ class MainActivity : Activity(), Store.Listener {
                     runInBackground({ Groups.leave(group) }) { toast("Saliste de «${group.name}»") }
                 }
             }
+            options += "🚩 Denunciar el grupo" to { reportGroup(group) }
         }
         AlertDialog.Builder(this)
             .setTitle(group.name)
@@ -1665,6 +2984,7 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun acceptRequest(friend: Friend) {
         Store.putFriend(friend.copy(state = Friend.FRIEND))
+        Points.onNewFriend(friend.code)
         selectedTarget = "f:${friend.code}"
         val payload = Relay.payload("acc")
         runInBackground({ Relay.publish(friend.code, payload) }) {
@@ -1696,19 +3016,33 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun friendOptions(friend: Friend) {
         val options = mutableListOf<Pair<String, () -> Unit>>()
+        val lock = Locks.activeWith(friend.code)
         when (friend.state) {
             Friend.FRIEND -> {
-                options += (if (friend.muted) "🔊 Volver a recibir sus sonidos" else "🔇 Silenciar sus sonidos") to {
-                    Store.putFriend(friend.copy(muted = !friend.muted))
-                    if (!friend.muted) Player.stopIfFrom(friend.code)
-                }
-                options += "✏️ Cambiar nombre" to { renameFriend(friend) }
-                options += "👋 Eliminar amigo" to {
-                    confirm("¿Eliminar a ${friend.name}?", "Ya no se podrán mandar sonidos hasta que se vuelvan a agregar.") {
-                        removeFriend(friend)
+                options += "💬 Chat" to { openChat(Chats.friendKey(friend.code)) }
+                options += "⚡ Crear un reto" to { showCreateReto(Chats.friendKey(friend.code)) }
+                if (lock != null) {
+                    // Durante el candado no se puede silenciar, eliminar ni bloquear: es el acuerdo.
+                    options += "🔒 Candado activo hasta las ${Locks.untilText(lock)}" to {
+                        info("Candado con ${friend.name}", lockRules(lock))
+                    }
+                } else {
+                    options += "🔒 Proponer un candado" to { showProposeLock(friend) }
+                    options += (if (friend.muted) "🔊 Volver a recibir sus sonidos" else "🔇 Silenciar sus sonidos") to {
+                        Store.putFriend(friend.copy(muted = !friend.muted))
+                        if (!friend.muted) Player.stopIfFrom(friend.code)
                     }
                 }
-                options += "🚫 Bloquear" to { block(friend) }
+                options += "✏️ Cambiar nombre" to { renameFriend(friend) }
+                if (lock == null) {
+                    options += "👋 Eliminar amigo" to {
+                        confirm("¿Eliminar a ${friend.name}?", "Ya no se podrán mandar sonidos hasta que se vuelvan a agregar.") {
+                            removeFriend(friend)
+                        }
+                    }
+                    options += "🚫 Bloquear" to { block(friend) }
+                    options += "🚩 Denunciar" to { report(friend.code, friend.name) }
+                }
             }
             Friend.OUTGOING -> {
                 options += "📨 Reenviar solicitud" to { sendRequest(friend.code) }
@@ -1718,6 +3052,7 @@ class MainActivity : Activity(), Store.Listener {
                 options += "✅ Aceptar" to { acceptRequest(friend) }
                 options += "✖️ Rechazar" to { Store.removeFriend(friend.code) }
                 options += "🚫 Bloquear" to { block(friend) }
+                options += "🚩 Denunciar" to { report(friend.code, friend.name) }
             }
             Friend.BLOCKED -> options += "✅ Desbloquear (quitar de la lista)" to { Store.removeFriend(friend.code) }
         }
@@ -1849,6 +3184,7 @@ class MainActivity : Activity(), Store.Listener {
         val saved = booleanArrayOf(false)
         val dialog = textDialog("¿Cómo se llama este audio?", CustomAudio.HINT, imported.suggestedLabel, "Nombre", "Guardar") { name ->
             Store.putCustomSound(imported.sound.copy(label = name))
+            Points.onCustomAdded()
             saved[0] = true
             toast("🎤 Audio agregado: ya puedes mandarlo")
             true
@@ -2004,6 +3340,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun confirmResetCode() {
+        if (lockBlocks()) return
         confirm(
             "¿Cambiar tu código?",
             "Se borrarán tus amigos y grupos, y quien tenga tu código viejo ya no podrá escribirte. Útil si tu código llegó a alguien que no querías.",
@@ -2016,6 +3353,8 @@ class MainActivity : Activity(), Store.Listener {
                 Store.groups().map { Groups.goodbye(it) }
             Player.stop()
             Store.resetCode()
+            Points.clearScores()
+            pages.clear()
             selectedTarget = null
             ListenService.restart(this)
             runInBackground({
@@ -2032,15 +3371,18 @@ class MainActivity : Activity(), Store.Listener {
 
     // ------------------------------------------------------------------ Utilidades
 
-    /** Corre [work] en segundo plano; si sale bien, [done] en la pantalla; si falla, avisa. */
-    private fun runInBackground(work: () -> Unit, done: () -> Unit) {
+    /** Corre [work] en segundo plano; si sale bien, [done] en la pantalla; si falla, avisa y llama a [onError]. */
+    private fun runInBackground(work: () -> Unit, onError: () -> Unit = {}, done: () -> Unit) {
         try {
             io.execute {
                 try {
                     work()
                     ui.post(done)
                 } catch (e: Exception) {
-                    ui.post { toast(Relay.describe(e)) }
+                    ui.post {
+                        toast(Relay.describe(e))
+                        onError()
+                    }
                 }
             }
         } catch (_: Exception) {

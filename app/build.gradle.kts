@@ -14,17 +14,49 @@ val buildNumber = (System.getenv("FG_VERSION_CODE") ?: System.getenv("GITHUB_RUN
 // Enlace para donar (PayPal, Ko-fi, Mercado Pago…). Ver Donations.kt.
 val donateUrl = (System.getenv("FG_DONATE_URL") ?: "").trim().replace("\\", "").replace("\"", "")
 
+// Correo para denuncias y consultas (ver Legal.kt). Google Play pide una forma de denunciar.
+val contactEmail = (System.getenv("FG_CONTACT_EMAIL") ?: "").trim().replace("\\", "").replace("\"", "")
+
+// Clave de subida para Google Play: va en secretos de GitHub, nunca en el repo (ver docs/PLAY_STORE.md).
+val uploadKeystore = System.getenv("FG_UPLOAD_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
+
 android {
     namespace = "com.friendgame.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.friendgame.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
         buildConfigField("String", "DONATE_URL", "\"$donateUrl\"")
+        buildConfigField("String", "CONTACT_EMAIL", "\"$contactEmail\"")
+    }
+
+    // Dos versiones de la app:
+    // - github: la de siempre (APK en GitHub, se actualiza sola, se pasa por Quick Share, donación por enlace).
+    // - play: para Google Play (sin actualización propia ni instalar APKs, sin pagos externos).
+    flavorDimensions += "store"
+    productFlavors {
+        create("github") {
+            dimension = "store"
+            isDefault = true
+            buildConfigField("boolean", "STORE_BUILD", "false")
+        }
+        create("play") {
+            dimension = "store"
+            // Nombre de paquete propio: com.friendgame.app podría estar tomado en Play y no se
+            // puede cambiar después de publicar.
+            applicationId = "io.github.chiquidg1234.friendgame"
+            buildConfigField("boolean", "STORE_BUILD", "true")
+            buildConfigField("String", "DONATE_URL", "\"\"")
+        }
+    }
+
+    sourceSets {
+        // Términos y privacidad: los mismos textos que se publican en GitHub Pages.
+        getByName("main").assets.srcDirs("src/main/assets", rootProject.file("docs/legal"))
     }
 
     buildFeatures {
@@ -42,17 +74,27 @@ android {
             keyAlias = "friendgame"
             keyPassword = "friendgame"
         }
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("FG_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("FG_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("FG_UPLOAD_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("friendgame")
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("friendgame")
         }
     }
+
+    productFlavors.getByName("github").signingConfig = signingConfigs.getByName("friendgame")
+    // Sin clave de subida, la versión de Play sale sin firmar (Play no la acepta así).
+    productFlavors.getByName("play").signingConfig =
+        if (uploadKeystore != null) signingConfigs.getByName("upload") else null
+    buildTypes.getByName("debug").signingConfig = signingConfigs.getByName("friendgame")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

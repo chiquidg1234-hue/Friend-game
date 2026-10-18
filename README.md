@@ -1,6 +1,6 @@
 # 🔊 Friend Game
 
-Una app Android para mandarle sonidos al celular de tus amigos: una bocina, una sirena, un pato o tus propios audios. Solo te pueden mandar sonidos las personas que tú aceptaste, y siempre puedes detenerlos.
+Una app Android para mandarle sonidos al celular de tus amigos: una bocina, una sirena, un pato o tus propios audios. También tiene chat, retos que suenan para todos a la vez, candados acordados entre dos, comunidades, puntos, niveles y ranking. Solo te pueden mandar sonidos las personas que tú aceptaste, y siempre puedes detenerlos (salvo durante un candado que los dos aceptaron).
 
 ## 📲 Instalar
 
@@ -20,7 +20,7 @@ Funciona en Android 8 o más nuevo. Si algo falla al instalar, lee [docs/INSTALA
 
 ## 🎮 Cómo se juega
 
-La app tiene cuatro pestañas abajo: **Sonar**, **Grupos**, **Amigos** y **Ajustes**. La primera vez te pregunta tu nombre.
+La app tiene cinco pestañas abajo: **Sonar**, **Chats**, **Grupos**, **Amigos** y **Tú** (tus puntos, logros, ranking y los Ajustes). La primera vez te pregunta tu nombre.
 
 1. **Comparte tu código.** En **Amigos** está tu código tipo `ABCD-EFGH-JKMN-PQRS`. El botón **Compartir** lo manda por WhatsApp junto con el enlace para instalar.
 2. **Agrega a un amigo.** En **Amigos**, toca **Agregar amigo** y pega su código. Le llega una solicitud (la pestaña Amigos le muestra un numerito).
@@ -47,6 +47,31 @@ Quien crea el grupo lo administra:
 
 Estos cambios van firmados con una clave que solo tiene el celular de quien administra, así que nadie más puede hacerlos.
 
+### Chat
+
+En **Chats** están las conversaciones con cada amigo y cada grupo. Los mensajes llegan con notificación y la pestaña muestra cuántos no leíste. Mantén presionado un mensaje para copiarlo o denunciar a quien lo mandó.
+
+### ⚡ Retos
+
+En un chat toca **⚡** (o **Crear un reto** en Sonar) y elige:
+
+- **Sonido sorpresa**: a la hora que elijas (en 1, 5, 10, 15, 30 o 60 minutos) suena en los celulares de todos los del chat a la vez.
+- **El más rápido**: suena para todos y gana quien lo detenga primero. Cada uno ve la tabla de tiempos y los primeros ganan puntos.
+
+Cada celular agenda su propia alarma, así que suena aunque la app esté cerrada. Para que sea puntual en Android 12 o más nuevo, permite **Alarmas puntuales** en Tú → Ajustes.
+
+### 🔒 Candado
+
+Con un amigo, toca **🔒** en su chat y elige cuánto dura (5, 10, 15, 30 o 60 minutos). Si tu amigo acepta, durante ese tiempo **ninguno de los dos** puede detener, silenciar ni pausar los sonidos del otro, ni eliminarse o bloquearse. Siguen los límites de siempre: cada sonido dura como mucho 10 segundos y nadie puede mandar más de 4 cada 20 segundos. Al cumplirlo, los dos ganan puntos. **Denunciar** siempre funciona.
+
+### Comunidades
+
+En **Grupos → Crear comunidad** armas un grupo grande (hasta 50 personas) con emoji, chat, ranking y retos. A diferencia de los grupos, en una comunidad los sonidos sueltos no suenan: solo los retos, para que nadie haga sonar a 50 personas a cada rato. Se invita igual, con QR o enlace.
+
+### 🏆 Puntos, niveles y ranking
+
+Ganas puntos por mandar y recibir sonidos, escribir, crear y ganar retos, cumplir candados, sumar amigos y abrir la app cada día (con tope diario, para que no valga el spam). Con los puntos subes de nivel (de Novato a Dios del caos) y desbloqueas **8 sonidos nuevos**: Timbre, Moneda, Silbato, Gallo, Risa, Gong, Ovni y Explosión. En **Tú** ves tus logros y el ranking semanal o total con tus amigos; cada grupo y comunidad tiene su propio ranking.
+
 ### Tus propios audios
 
 En **Sonar → Tus audios** puedes:
@@ -67,7 +92,8 @@ Al final de la pestaña **Sonar**, en **Te llegaron hace poco**, ves quién te m
 Cada quien manda en su propio celular:
 
 - **Nadie te puede mandar sonidos sin que lo aceptes.** Tu app ignora a quien no esté en tu lista de amigos.
-- **Siempre puedes detener un sonido**, desde la app o desde el botón **⏹ Detener** de la notificación. Quien lo mandó también puede cortarlo antes, pero no puede impedir que tú lo detengas.
+- **Siempre puedes detener un sonido**, desde la app o desde el botón **⏹ Detener** de la notificación. Quien lo mandó también puede cortarlo antes, pero no puede impedir que tú lo detengas. La única excepción es un **candado** que los dos aceptaron, y dura lo que acordaron.
+- Puedes **denunciar** a una persona o un grupo: queda bloqueado al instante.
 - Un sonido nunca dura más de **10 segundos** en tu celular, aunque el archivo sea más largo.
 - **Pausa la recepción** con el interruptor **Recibir sonidos** en Ajustes o con **Pausar recepción** en la notificación.
 - Con el botón **⋯** de un amigo puedes **silenciarlo**, **eliminarlo** o **bloquearlo**. A quien bloqueas tampoco le suenan sus sonidos dentro de un grupo.
@@ -83,12 +109,12 @@ Cada quien manda en su propio celular:
 
 La app deja un aviso fijo ("Listo para recibir sonidos") mientras escucha, y suena aunque la pantalla esté apagada o el celular en reposo. Algunos celulares cierran las apps en segundo plano para ahorrar batería. Si es tu caso:
 
-- La pestaña Sonar muestra el aviso **Para que suene con la pantalla apagada**. Toca **Permitir** (también está en **Ajustes → Pantalla apagada**).
+- La pestaña Sonar muestra el aviso **Para que suene con la pantalla apagada**. Toca **Permitir** (también está en **Tú → Ajustes → Pantalla apagada**).
 - En Xiaomi, Huawei, Samsung u otras marcas, busca también **Ajustes → Batería → Friend Game → Sin restricciones** o activa el **Inicio automático**.
 
 ## 💜 Donaciones
 
-En **Ajustes → Apoya Friend Game** hay una pantalla para donar (1, 3 o 5 USD, u otro monto). Las donaciones son voluntarias y no desbloquean nada.
+En **Tú → Ajustes → Apoya Friend Game** hay una pantalla para donar (1, 3 o 5 USD, u otro monto). Las donaciones son voluntarias y no desbloquean nada.
 
 Para activarla, pon tu enlace de pago en GitHub: **Settings → Secrets and variables → Actions → Variables → New repository variable**, nombre `FG_DONATE_URL`. La siguiente compilación ya lo trae.
 
@@ -108,9 +134,14 @@ Mientras no haya enlace, el botón dice que las donaciones se activan pronto. Pa
 
 | Archivo | Qué hace |
 | --- | --- |
-| `MainActivity.kt` | Las pantallas: bienvenida, pestañas Sonar/Grupos/Amigos/Ajustes, «te llegó un sonido» y Apoyar |
+| `MainActivity.kt` | Las pantallas: bienvenida, pestañas Sonar/Chats/Grupos/Amigos/Tú, chat, ranking, Ajustes, «te llegó un sonido» y Apoyar |
 | `Ui.kt` | Colores, fuentes y piezas de la interfaz (botones, tarjetas, avatares) |
 | `Donations.kt` | Enlace de donación configurable |
+| `Chats.kt` | Chat con amigos y grupos |
+| `Retos.kt` | Retos: alarma en todos los celulares y tabla de tiempos |
+| `Locks.kt` | Candado acordado entre dos amigos |
+| `Points.kt` | Puntos, niveles, logros y ranking |
+| `Legal.kt` | Términos, privacidad y denuncias (textos en `docs/legal/`) |
 | `ListenService.kt` | Servicio que mantiene la conexión y reacciona a los mensajes |
 | `Relay.kt` | Envía mensajes y audios al servidor ntfy |
 | `Player.kt` | Reproduce un sonido a la vez, con detener y límite de 10 s |
@@ -130,10 +161,12 @@ Cada `push` también corre una prueba de punta a punta (`.github/workflows/e2e.y
 Para compilar en tu computadora necesitas JDK 17 y el Android SDK:
 
 ```bash
-./gradlew assembleRelease
-# APK en app/build/outputs/apk/release/app-release.apk
+./gradlew assembleGithubRelease
+# APK en app/build/outputs/apk/github/release/app-github-release.apk
 ```
 
-**Antes de publicar en Google Play:** lee [docs/PLAY_STORE.md](docs/PLAY_STORE.md).
+Hay dos versiones (*flavors*): `github` (la de este repositorio) y `play` (para Google Play, sin actualización propia ni pagos externos). `./gradlew assembleGithubRelease` arma el APK y `./gradlew bundlePlayRelease` el paquete para Play.
+
+**Para publicar en Google Play:** sigue el paso a paso de [docs/PLAY_STORE.md](docs/PLAY_STORE.md). Los [términos de uso](docs/legal/terminos.html) y la [política de privacidad](docs/legal/privacidad.html) están en `docs/legal/`.
 
 **Sobre la clave de firma:** `signing/friendgame.jks` está en el repo a propósito. Así cualquier compilación firma igual y las actualizaciones se instalan encima. Para una app entre amigos instalada a mano está bien. Si algún día la publicas en Google Play, crea una clave nueva y guárdala fuera del repo, por ejemplo como secreto de GitHub.

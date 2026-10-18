@@ -11,7 +11,11 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.SystemClock
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -331,5 +335,84 @@ class TimeBar(
             canvas.drawRoundRect(rect, radius, radius, paint)
         }
         if (fraction < 1f) postInvalidateOnAnimation()
+    }
+}
+
+/**
+ * Texto que cambia solo cada segundo (cuentas regresivas). Se pinta sin cambiar el texto de una
+ * vista, por la misma razón que [TimeBar]; TalkBack lee [description], que no cambia.
+ */
+class LiveText(
+    context: Context,
+    sizeSp: Float,
+    color: Int,
+    bold: Boolean,
+    description: String,
+    private val center: Boolean = false,
+    private val text: () -> String,
+) : View(context) {
+    private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, context.resources.displayMetrics)
+        typeface = Fonts.body(context, if (bold) 800 else 400)
+    }
+    private var shown = text()
+    private var layout: StaticLayout? = null
+    private val tick = object : Runnable {
+        override fun run() {
+            refresh()
+            postDelayed(this, 1000)
+        }
+    }
+
+    init {
+        contentDescription = description
+    }
+
+    private fun build(width: Int): StaticLayout =
+        StaticLayout.Builder.obtain(shown, 0, shown.length, paint, width.coerceAtLeast(1))
+            .setAlignment(if (center) Layout.Alignment.ALIGN_CENTER else Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 1.1f)
+            .build()
+
+    override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+        shown = text()
+        val natural = paint.measureText(shown).toInt() + paddingLeft + paddingRight + 1
+        val width = when (MeasureSpec.getMode(widthSpec)) {
+            MeasureSpec.EXACTLY -> MeasureSpec.getSize(widthSpec)
+            MeasureSpec.AT_MOST -> minOf(natural, MeasureSpec.getSize(widthSpec))
+            else -> natural
+        }
+        val built = build(width - paddingLeft - paddingRight)
+        layout = built
+        setMeasuredDimension(width, built.height + paddingTop + paddingBottom)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        canvas.save()
+        canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
+        layout?.draw(canvas)
+        canvas.restore()
+    }
+
+    private fun refresh() {
+        val value = text()
+        if (value == shown || width == 0) return
+        shown = value
+        val built = build(width - paddingLeft - paddingRight)
+        val resized = built.height != layout?.height
+        layout = built
+        if (resized) requestLayout()
+        invalidate()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        postDelayed(tick, 1000)
+    }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(tick)
+        super.onDetachedFromWindow()
     }
 }

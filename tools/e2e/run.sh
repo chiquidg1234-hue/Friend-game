@@ -5,7 +5,7 @@ set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-APK="${APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}"
+APK="${APK:-$ROOT/app/build/outputs/apk/github/debug/app-github-debug.apk}"
 PKG=com.friendgame.app
 SERVER="${SERVER:-https://ntfy.sh}"
 OUT="$ROOT/e2e-out"
@@ -53,6 +53,10 @@ publish_file() {
   curl -s -o /dev/null -w '%{http_code}' -T "$2" "$SERVER/fgame-$1?filename=sonido.ogg&message=$msg"
 }
 sound_json() { echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"}"; }
+# Semana como la cuenta la app (ISO: empieza el lunes), para mandar puntos de "esta semana".
+WEEK_ID=$(python3 -c 'import datetime; y, w, _ = datetime.date.today().isocalendar(); print(f"{y}-{w}")')
+# Ajustes está dentro de la pestaña Tú.
+open_settings() { $UI tab Tú && $UI tap "Ajustes" && $UI wait "Recibir sonidos" 10; }
 stop_json() { echo "{\"fg\":1,\"t\":\"stop\",\"from\":\"$1\",\"id\":\"$2\"}"; }
 
 echo "== Instalando $APK"
@@ -160,7 +164,7 @@ sleep 2
 check "Queda en el historial de sonidos" $UI see "Pantalla apagada"
 
 echo "== 6d. Probar y revisar el sonido"
-check "Pestaña Ajustes" $UI tab Ajustes
+check "Abre Ajustes (en la pestaña Tú)" open_settings
 shot "ajustes"
 check "Botón Probar y revisar el sonido" $UI tap "Probar y revisar el sonido"
 check "Suena la sirena de prueba" $UI playing 10
@@ -314,7 +318,7 @@ else
 fi
 
 echo "== 9e. Apoyar con una donación"
-check "Pestaña Ajustes" $UI tab Ajustes
+check "Abre Ajustes" open_settings
 check "Tarjeta Apoya Friend Game" $UI tap "Apoya Friend Game"
 check "Muestra los montos" $UI wait "Elige cuánto" 10
 check "Elige 5 USD" $UI tapexact "5 USD"
@@ -326,8 +330,94 @@ $UI tapexact "Cerrar"
 adb shell input keyevent KEYCODE_BACK
 check "Atrás vuelve a Ajustes" $UI wait "Tu celular" 10
 
+echo "== 9f. Chat con Ana"
+publish "$MYCODE" "{\"fg\":1,\"t\":\"msg\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"m1abcdefgh\",\"text\":\"Hola Robot, ¿jugamos?\",\"pts\":120,\"wk\":30,\"wid\":\"$WEEK_ID\",\"lvl\":2}" >/dev/null
+check "Llega la notificación del mensaje" sh -c "for i in \$(seq 1 20); do adb shell dumpsys notification --noredact | grep -q 'jugamos' && exit 0; sleep 1; done; exit 1"
+$UI tab Sonar
+check "La pestaña Chats avisa el mensaje nuevo" $UI wait "Pestaña Chats, 1 mensaje nuevo" 10
+check "Pestaña Chats" $UI tab Chats
+shot "chats"
+check "Abre el chat con Ana" $UI tap "Chat con Ana"
+check "Se ve el mensaje de Ana" $UI wait "jugamos" 10
+$UI tapclass android.widget.EditText
+adb shell input text "Dale"
+check "Botón Enviar" $UI tap "Enviar mensaje"
+check "A Ana le llega el mensaje" $INBOX "$OUT/inbox-ana.jsonl" msg from="$MYCODE" text=Dale --wait 20
+check "El mensaje queda en el chat" $UI wait "Dale" 5
+shot "chat"
+
+echo "== 9g. Retos"
+publish "$MYCODE" "{\"fg\":1,\"t\":\"reto\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"r1abcdefgh\",\"k\":\"rapido\",\"s\":\"campana\",\"in\":20}" >/dev/null
+check "Aparece el reto de Ana en el chat" $UI wait "Reto: El más rápido" 15
+check "Muestra la cuenta regresiva" $UI wait "Suena en" 5
+shot "reto"
+check "A la hora del reto suena para todos" $UI playing 45
+check "Muestra la pantalla del reto" $UI wait "Reto · El más rápido" 6
+shot "reto-sonando"
+check "Lo detiene" $UI tapexact "Detener"
+check "Se detiene" $UI silent 3
+check "Le manda su tiempo a Ana" $INBOX "$OUT/inbox-ana.jsonl" retores from="$MYCODE" id=r1abcdefgh --wait 20
+publish "$MYCODE" "{\"fg\":1,\"t\":\"retores\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"r1abcdefgh\",\"ms\":9500}" >/dev/null
+check "Anota el tiempo de Ana" $UI wait "Ana lo detuvo en" 15
+check "El robot crea un reto" $UI tap "Crear un reto"
+check "Elige 1 minuto" $UI tapexact "1 min"
+check "Botón Crear reto" $UI tapexact "Crear reto"
+check "A Ana le llega el reto" $INBOX "$OUT/inbox-ana.jsonl" reto from="$MYCODE" in=60 --wait 20
+check "Botón Cancelar reto" $UI tap "Cancelar reto"
+check "Confirma" $UI tapexact "Sí"
+check "A Ana le llega que se canceló" $INBOX "$OUT/inbox-ana.jsonl" retono from="$MYCODE" --wait 20
+
+echo "== 9h. Candado con Ana"
+publish "$MYCODE" "{\"fg\":1,\"t\":\"lockreq\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"l1abcdefgh\",\"min\":1}" >/dev/null
+check "Aparece la propuesta de candado" $UI wait "Ana propone un candado" 15
+shot "candado"
+check "Acepta el candado" $UI tapexact "Aceptar"
+check "Confirma" $UI tapexact "Sí"
+check "A Ana le llega que aceptó" $INBOX "$OUT/inbox-ana.jsonl" lockacc from="$MYCODE" id=l1abcdefgh --wait 20
+check "El chat muestra el candado activo" $UI wait "Candado · quedan" 10
+publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana lk1 custom 'Con candado')" >/dev/null
+check "Suena el sonido de Ana" $UI playing 25
+check "No muestra Detener: muestra el candado" $UI wait "Acordaste un candado con Ana" 6
+shot "candado-sonando"
+$UI tap "Candado activo"
+adb shell input keyevent KEYCODE_BACK
+check "Con candado no se puede detener" $UI playing 1
+$UI silent 12
+check "Al terminar el minuto, el candado se cumple" $UI wait "Candado cumplido" 75
+adb shell input keyevent KEYCODE_BACK
+
+echo "== 9i. Comunidades"
+check "Pestaña Grupos" $UI tab Grupos
+check "Botón Crear comunidad" $UI tap "Crear comunidad"
+$UI tapclass android.widget.EditText
+adb shell input text "Barrio"
+check "Botón Crear" $UI tapexact "Crear"
+check "Muestra el QR de la comunidad" $UI wait "Invitar a «Barrio»" 10
+CINVITE=$($UI find 'https://github\.com/\S*#g=\S*')
+CID=$(echo "$CINVITE" | sed -n 's/.*#g=\([a-z0-9]*\).*/\1/p')
+check "La invitación dice que es comunidad" sh -c "echo '$CINVITE' | grep -q 'c=1'"
+$UI tapexact "Cerrar"
+check "Aparece como comunidad" $UI see "Comunidad · 1 miembro"
+publish "g-$CID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$DANI\",\"name\":\"Dani\",\"g\":\"$CID\"}" >/dev/null
+sleep 4
+publish "g-$CID" "$(sound_json "$DANI" Dani cm1 bocina Bocina)" >/dev/null
+check "En una comunidad los sonidos sueltos no suenan" $UI never 8
+
+echo "== 9j. Puntos, logros y ranking"
+check "Pestaña Tú" $UI tab Tú
+check "Muestra los puntos" $UI wait "puntos" 10
+shot "perfil"
+check "Ganó el logro de su primer sonido" $UI see "Primer susto: Manda tu primer sonido, conseguido"
+check "Ana aparece en el ranking" $UI see "Ana, 30 puntos"
+check "Ranking completo" $UI tap "Ver ranking completo"
+check "Toca Total" $UI tapexact "Total"
+check "Ana tiene 120 puntos en total" $UI wait "Ana, 120 puntos" 5
+shot "ranking"
+adb shell input keyevent KEYCODE_BACK
+check "En Sonar hay sonidos por desbloquear" sh -c "$UI tab Sonar && $UI see 'bloqueado hasta el nivel 9'"
+
 echo "== 10. Pausar la recepción"
-$UI tab Ajustes
+open_settings
 $UI top
 check "Toca el interruptor" $UI tapclass android.widget.Switch
 check "Queda en pausa" $UI wait "En pausa" 10
@@ -339,6 +429,17 @@ check "Vuelve a activar" $UI tapclass android.widget.Switch
 check "Se reconecta" $UI wait "En línea" 60
 check "Lo mandado durante la pausa no suena al reactivar" $UI never 5
 shot "final"
+
+echo "== 10b. Términos y privacidad"
+open_settings
+check "Abre los términos de uso" $UI tap "Términos de uso"
+check "Muestra las reglas" $UI wait "Reglas de uso" 10
+shot "terminos"
+$UI tapexact "Entendido"
+check "Abre la política de privacidad" $UI tap "Política de privacidad"
+check "Explica qué datos usa" $UI wait "Qué datos usa la app" 10
+$UI tapexact "Entendido"
+$UI tab Sonar
 
 echo "== 11. Pasar la app a un amigo (Quick Share)"
 check "Pestaña Amigos" $UI tab Amigos

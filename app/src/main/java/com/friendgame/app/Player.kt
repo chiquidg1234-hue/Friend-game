@@ -32,6 +32,8 @@ object Player {
         /** Clave del sonido integrado ("sirena"…) o "custom". */
         val soundKey: String = "",
         val groupId: String? = null,
+        /** Si suena por un reto, su id (al detenerlo se manda el tiempo en «El más rápido»). */
+        val retoId: String? = null,
     ) {
         val isPreview: Boolean get() = fromCode.isEmpty()
 
@@ -77,6 +79,21 @@ object Player {
 
     fun stop() {
         main.post { stopOnMain() }
+    }
+
+    /**
+     * La persona tocó Detener (en la app o en la notificación). No hace nada si hay un candado
+     * con quien lo mandó. En un reto, cuenta cuánto tardó.
+     */
+    fun stopByUser(context: Context) {
+        val app = context.applicationContext
+        main.post {
+            val current = now ?: return@post
+            if (Locks.blocksStop(current)) return@post
+            val elapsed = SystemClock.elapsedRealtime() - current.startedAt
+            stopOnMain()
+            current.retoId?.let { Retos.onStopped(app, it, elapsed) }
+        }
     }
 
     /** Señal de "detener" del remitente: solo corta su propio sonido, nunca otro. */

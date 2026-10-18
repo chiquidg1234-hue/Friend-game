@@ -9,7 +9,7 @@ import org.json.JSONObject
  */
 object Groups {
 
-    fun create(name: String): Group {
+    fun create(name: String, community: Boolean = false, emoji: String = ""): Group {
         val (publicKey, secret) = GroupKeys.newKeyPair()
         val group = Group(
             id = Codes.newCode(),
@@ -18,8 +18,11 @@ object Groups {
             adminKey = publicKey,
             adminSecret = secret,
             members = listOf(Member(Store.myCode, Store.myName)),
+            community = community,
+            emoji = emoji,
         )
         Store.putGroup(group)
+        Points.onGroupJoined(group.id)
         return group
     }
 
@@ -31,8 +34,11 @@ object Groups {
             adminCode = invite.adminCode,
             adminKey = invite.adminKey,
             members = listOf(Member(Store.myCode, Store.myName)),
+            community = invite.community,
+            emoji = invite.emoji,
         )
         Store.putGroup(group)
+        Points.onGroupJoined(group.id)
         return group
     }
 
@@ -63,6 +69,8 @@ object Groups {
             .put("g", group.id)
             .put("name", group.name)
             .put("members", Store.membersJson(group.members))
+            .put("c", group.community)
+            .put("e", group.emoji)
         Relay.publishTopic(Relay.groupTopic(group.id), Relay.signed("groster", body, group.adminSecret))
     }
 

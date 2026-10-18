@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Genera los sonidos integrados de Friend Game (sintetizados, sin licencias de terceros).
 
-Uso:  python3 tools/generate_sounds.py
+Uso:  python3 tools/generate_sounds.py [nombre ...]
+Sin nombres genera todos; con nombres, solo esos (así los demás quedan iguales).
 Requiere numpy y ffmpeg (con libvorbis). Escribe los .ogg en app/src/main/assets/sounds/.
 """
 import os
 import subprocess
+import sys
 import tempfile
 import wave
 
@@ -172,6 +174,83 @@ def grillos():
     return np.concatenate(parts)
 
 
+# ---- Sonidos que se desbloquean subiendo de nivel ----
+
+
+def timbre():
+    def ding(freq, dur):
+        t = t_axis(dur)
+        x = np.sin(2 * np.pi * freq * t) + 0.35 * np.sin(2 * np.pi * freq * 3 * t) * np.exp(-t * 4)
+        return x * np.exp(-t * 2.2) * env(len(t), 0.003, 0.08)
+    return np.concatenate([ding(659, 0.7), ding(523, 1.5)])
+
+
+def silbato():
+    t = t_axis(1.3)
+    trill = 1 + 0.06 * np.sign(np.sin(2 * np.pi * 28 * t))
+    x = np.sin(2 * np.pi * phase_from_freq(2900 * trill))
+    breath = lowpass(rng.standard_normal(len(t)), 5000) * 0.15
+    am = np.where((t > 0.42) & (t < 0.52), 0.0, 1.0)
+    return (x + breath) * am * env(len(t), 0.02, 0.08)
+
+
+def moneda():
+    parts = []
+    for _ in range(2):
+        t1 = t_axis(0.07)
+        t2 = t_axis(0.38)
+        parts += [square(988 * t1) * 0.6, square(1319 * t2) * 0.6 * np.exp(-t2 * 6), silence(0.12)]
+    return lowpass(np.concatenate(parts), 8000)
+
+
+def gong():
+    t = t_axis(3.0)
+    x = np.zeros(len(t))
+    for ratio, amp, decay in ((1.0, 1.0, 0.8), (1.47, 0.6, 1.1), (2.09, 0.45, 1.5), (2.56, 0.3, 1.9), (3.9, 0.2, 2.6)):
+        freq = 98 * ratio * (1 + 0.004 * np.sin(2 * np.pi * 0.7 * t))
+        x += amp * np.sin(2 * np.pi * phase_from_freq(freq)) * np.exp(-t * decay)
+    swell = np.minimum(1, t / 0.06)
+    return x * swell * env(len(t), 0.004, 0.3)
+
+
+def gallo():
+    parts = []
+    shape = ((0.12, 600, 700), (0.14, 700, 950), (0.5, 950, 880), (0.35, 880, 500))
+    for dur, f0, f1 in shape:
+        t = t_axis(dur)
+        freq = np.linspace(f0, f1, len(t)) * (1 + 0.02 * np.sin(2 * np.pi * 30 * t))
+        x = saw(phase_from_freq(freq)) + 0.5 * square(phase_from_freq(freq * 2))
+        parts.append(lowpass(x, 2600) * env(len(t), 0.01, 0.02))
+    return np.concatenate(parts) * 0.9
+
+
+def explosion():
+    t = t_axis(2.2)
+    noise = rng.standard_normal(len(t))
+    rumble = lowpass(lowpass(noise, 180), 180) * 6
+    crack = (noise - lowpass(noise, 1500)) * np.exp(-t * 9)
+    am = np.minimum(1, t / 0.01) * np.exp(-t * 1.6)
+    return (rumble * am + crack * 0.8)
+
+
+def risa():
+    parts = []
+    for i in range(6):
+        t = t_axis(0.13)
+        freq = (330 - i * 14) * (1 + 0.15 * np.exp(-t * 30))
+        x = saw(phase_from_freq(freq))
+        vowel = lowpass(x, 1100) + 0.4 * (x - lowpass(x, 2400))
+        parts += [vowel * np.sin(np.pi * t / t[-1]) ** 0.6, silence(0.06)]
+    return np.concatenate(parts)
+
+
+def ovni():
+    t = t_axis(2.4)
+    freq = 900 + 500 * np.sin(2 * np.pi * 7 * t) * np.linspace(0.2, 1, len(t)) + 300 * np.sin(2 * np.pi * 0.5 * t)
+    x = np.sin(2 * np.pi * phase_from_freq(freq)) + 0.25 * np.sin(2 * np.pi * phase_from_freq(freq * 1.5))
+    return x * env(len(t), 0.15, 0.4)
+
+
 SOUNDS = {
     "bocina": bocina,
     "sirena": sirena,
@@ -185,6 +264,14 @@ SOUNDS = {
     "pedorreta": pedorreta,
     "tada": tada,
     "grillos": grillos,
+    "timbre": timbre,
+    "silbato": silbato,
+    "moneda": moneda,
+    "gong": gong,
+    "gallo": gallo,
+    "explosion": explosion,
+    "risa": risa,
+    "ovni": ovni,
 }
 
 
@@ -209,7 +296,9 @@ def write_ogg(name, samples):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    for name, fn in SOUNDS.items():
+    wanted = sys.argv[1:] or list(SOUNDS)
+    for name in wanted:
+        fn = SOUNDS[name]
         path = write_ogg(name, fn())
         print(f"{name:10s} {os.path.getsize(path) // 1024:4d} KB")
 
