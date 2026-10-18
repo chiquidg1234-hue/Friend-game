@@ -2999,6 +2999,11 @@ class MainActivity : Activity(), Store.Listener {
             shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             return
         }
+        if (overlay.visibility != View.VISIBLE) {
+            // Si estabas escribiendo en el chat, el teclado tapaba el botón Detener.
+            composerInput.clearFocus()
+            hideKeyboard(composerInput)
+        }
         overlay.visibility = View.VISIBLE
         shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
 
