@@ -14,6 +14,9 @@ INBOX="python3 $HERE/inbox.py"
 TONE="$HERE/tono_20s.ogg"
 ADMIN="python3 $HERE/fake_admin.py"
 mkdir -p "$OUT"
+# Al salir (también antes de tiempo) se cortan los "curl" que escuchan en segundo plano: si no,
+# GitHub espera a que terminen y la prueba se queda colgada hasta el límite de tiempo.
+trap 'kill $(jobs -p) 2>/dev/null' EXIT
 FAILS=0
 STEP=0
 
@@ -128,8 +131,6 @@ check "Muestra la pantalla de 'te llegó un sonido'" $UI wait "Te llegó un soni
 check "Muestra quién lo mandó" $UI wait "de Ana" 3
 shot "sonando"
 check "Botón Detener" $UI tapexact "Detener"
-adb logcat -d -s FriendGame:I AndroidRuntime:E | tail -40
-if [ -n "${E2E_UNTIL:-}" ]; then exit "$FAILS"; fi
 check "Se detiene al tocar Detener" $UI silent 3
 
 echo "== 6. Ningún sonido dura más de 10 segundos"

@@ -104,7 +104,6 @@ class MainActivity : Activity(), Store.Listener {
     private var renderedScreen = ""
     private var systemBars = IntArray(4)
     private var imeBottom = 0
-    private var progressFill: View? = null
     private var cancelRecording: (() -> Unit)? = null
     /** OnBackInvokedCallback (Android 13+); se guarda como Any para no cargar la clase antes. */
     private var backCallback: Any? = null
@@ -156,7 +155,6 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onStart() {
         super.onStart()
-        android.util.Log.i("FriendGame", "onStart")
         Store.addListener(this)
         render()
         Updater.check(this)
@@ -168,9 +166,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     override fun onStop() {
-        android.util.Log.i("FriendGame", "onStop")
         Store.removeListener(this)
-        ui.removeCallbacks(progressTick)
         // Android no deja usar el micrófono en segundo plano: la grabación se cancela.
         cancelRecording?.invoke()
         super.onStop()
@@ -197,7 +193,6 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     override fun onStoreChanged() {
-        android.util.Log.i("FriendGame", "onStoreChanged posted=$renderPosted now=${Player.now?.label}")
         if (renderPosted) return
         renderPosted = true
         ui.post {
@@ -1175,9 +1170,6 @@ class MainActivity : Activity(), Store.Listener {
 
     /** Mientras suena algo que te mandaron, ocupa toda la pantalla con el botón para detenerlo. */
     private fun renderOverlay() {
-        android.util.Log.i("FriendGame", "renderOverlay now=${Player.now?.label} preview=${Player.now?.isPreview}")
-        ui.removeCallbacks(progressTick)
-        progressFill = null
         overlay.removeAllViews()
         val now = Player.now
         if (now == null || now.isPreview) {
@@ -1238,32 +1230,13 @@ class MainActivity : Activity(), Store.Listener {
             label("Se corta solo a los 10 segundos. Tú decides, siempre.", 13f, Palette.SUB).apply { gravity = Gravity.CENTER },
             lp(topDp = 12),
         )
-        val track = FrameLayout(this).apply { background = rounded(Palette.LINE, 3) }
-        val fill = View(this).apply { background = rounded(Palette.ACCENT, 3) }
-        track.addView(fill, FrameLayout.LayoutParams(0, MATCH))
-        page.addView(track, lp(MATCH, dp(6), topDp = 24))
-        progressFill = fill
+        page.addView(TimeBar(this, Palette.LINE, Palette.ACCENT, now.startedAt, now.durationMs), lp(MATCH, dp(6), topDp = 24))
 
         val pageScroll = ScrollView(this).apply {
             isFillViewport = true
             addView(page, ViewGroup.LayoutParams(MATCH, WRAP))
         }
         overlay.addView(pageScroll, FrameLayout.LayoutParams(MATCH, MATCH))
-        ui.post(progressTick)
-    }
-
-    private val progressTick = object : Runnable {
-        override fun run() {
-            val fill = progressFill ?: return
-            val now = Player.now ?: return
-            val track = fill.parent as? View ?: return
-            val elapsed = SystemClock.elapsedRealtime() - now.startedAt
-            val fraction = (elapsed.toFloat() / now.durationMs).coerceIn(0f, 1f)
-            val params = fill.layoutParams
-            params.width = (track.width * fraction).toInt()
-            fill.layoutParams = params
-            ui.postDelayed(this, 50)
-        }
     }
 
     private fun muteSender(now: Player.NowPlaying) {
@@ -1954,7 +1927,9 @@ class MainActivity : Activity(), Store.Listener {
             override fun run() {
                 if (finished) return
                 val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000
-                status.text = "Grabando… $seconds s de 8"
+                // Solo cuando cambia: reescribir el texto seguido no deja leer la pantalla a TalkBack.
+                val text = "Grabando… $seconds s de 8"
+                if (status.text.toString() != text) status.text = text
                 ui.postDelayed(this, 250)
             }
         }

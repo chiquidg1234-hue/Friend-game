@@ -3,10 +3,14 @@ package com.friendgame.app
 import android.content.Context
 import android.content.res.AssetManager
 import android.content.res.ColorStateList
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.os.SystemClock
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -294,4 +298,38 @@ fun Context.addTile(iconRes: Int, text: String, onClick: () -> Unit): View = col
     addView(icon(iconRes, Palette.ACCENT_TEXT, 26), LinearLayout.LayoutParams(dp(26), dp(26)))
     addView(title(text, 15f, Palette.TEXT, 600).apply { gravity = Gravity.CENTER }, lp(topDp = 6))
     setOnClickListener { onClick() }
+}
+
+/**
+ * Barra que se llena sola desde [startedAt] (reloj elapsedRealtime) durante [durationMs]. Solo se
+ * vuelve a pintar: cambiar el tamaño de una vista varias veces por segundo no deja que TalkBack ni
+ * las pruebas lean la pantalla, porque nunca queda quieta.
+ */
+class TimeBar(
+    context: Context,
+    private val trackColor: Int,
+    private val fillColor: Int,
+    private val startedAt: Long,
+    private val durationMs: Long,
+) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val radius = height / 2f
+        rect.set(0f, 0f, width.toFloat(), height.toFloat())
+        paint.color = trackColor
+        canvas.drawRoundRect(rect, radius, radius, paint)
+        val fraction = ((SystemClock.elapsedRealtime() - startedAt).toFloat() / durationMs.coerceAtLeast(1)).coerceIn(0f, 1f)
+        if (fraction > 0f) {
+            rect.right = width * fraction
+            paint.color = fillColor
+            canvas.drawRoundRect(rect, radius, radius, paint)
+        }
+        if (fraction < 1f) postInvalidateOnAnimation()
+    }
 }
