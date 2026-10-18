@@ -38,13 +38,13 @@ object Relay {
      * Mensaje base: siempre lleva quién lo manda, para que el otro pueda contestar, y sus puntos,
      * para el ranking.
      */
-    fun payload(type: String): JSONObject = Points.attach(
-        JSONObject()
-            .put("fg", PROTOCOL_VERSION)
-            .put("t", type)
-            .put("from", Store.myCode)
-            .put("name", Store.myName)
-    )
+    fun payload(type: String): JSONObject = Points.attach(base(type))
+
+    private fun base(type: String): JSONObject = JSONObject()
+        .put("fg", PROTOCOL_VERSION)
+        .put("t", type)
+        .put("from", Store.myCode)
+        .put("name", Store.myName)
 
     /**
      * Mensaje firmado por el admin de un grupo: los datos van como texto en "body" y la firma en
@@ -52,7 +52,8 @@ object Relay {
      */
     fun signed(type: String, body: JSONObject, secret: String): JSONObject {
         val text = body.toString()
-        return payload(type).put("body", text).put("sig", GroupKeys.sign(secret, text))
+        // Sin puntos: la lista de miembros tiene que caber en un mensaje (4 KB).
+        return base(type).put("body", text).put("sig", GroupKeys.sign(secret, text))
     }
 
     fun publish(toCode: String, payload: JSONObject) = publishTopic(topicFor(toCode), payload)

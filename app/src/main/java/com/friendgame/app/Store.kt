@@ -45,7 +45,7 @@ data class Group(
     val muted: Boolean = false,
     /**
      * Comunidad: grupo grande con chat, ranking y retos. Sus sonidos solo suenan en los retos,
-     * para que nadie haga sonar a 50 personas a cada rato.
+     * para que nadie haga sonar a 40 personas a cada rato.
      */
     val community: Boolean = false,
     val emoji: String = "",
@@ -54,7 +54,7 @@ data class Group(
 
     companion object {
         /** La lista firmada de miembros tiene que caber en un mensaje del servidor (4 KB). */
-        const val MAX_MEMBERS = 50
+        const val MAX_MEMBERS = 40
     }
 }
 
@@ -660,7 +660,12 @@ object Store {
 
     private fun saveLocks(list: List<Lock>) {
         val array = JSONArray()
-        list.sortedBy { it.created }.takeLast(MAX_LOCKS).forEach {
+        // Los activos nunca se borran; si hay demasiados, se van primero los terminados más viejos.
+        val sorted = list.sortedBy { it.created }
+        val extra = sorted.size - MAX_LOCKS
+        val drop = if (extra <= 0) emptySet() else sorted.filter { !it.isActive && it.state != Lock.ASKED && it.state != Lock.OFFERED }
+            .take(extra).map { it.id }.toSet()
+        sorted.filter { it.id !in drop }.forEach {
             array.put(
                 JSONObject()
                     .put("id", it.id)

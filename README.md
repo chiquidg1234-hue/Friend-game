@@ -66,7 +66,7 @@ Con un amigo, toca **🔒** en su chat y elige cuánto dura (5, 10, 15, 30 o 60 
 
 ### Comunidades
 
-En **Grupos → Crear comunidad** armas un grupo grande (hasta 50 personas) con emoji, chat, ranking y retos. A diferencia de los grupos, en una comunidad los sonidos sueltos no suenan: solo los retos, para que nadie haga sonar a 50 personas a cada rato. Se invita igual, con QR o enlace.
+En **Grupos → Crear comunidad** armas un grupo grande (hasta 40 personas) con emoji, chat, ranking y retos. A diferencia de los grupos, en una comunidad los sonidos sueltos no suenan: solo los retos, para que nadie haga sonar a 40 personas a cada rato. Se invita igual, con QR o enlace.
 
 ### 🏆 Puntos, niveles y ranking
 

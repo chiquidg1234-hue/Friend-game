@@ -282,10 +282,12 @@ class ListenService : Service() {
             "gkick" -> onGroupKicked(from, payload)
             "msg" -> if (friend != null) Chats.receive(this, key, from, friend.name, payload, event.optString("id"), sentAt(event))
             "reto" -> if (friend != null && !friend.muted) Retos.receive(this, key, from, friend.name, payload, sentAgoMs(event))
-            "retores" -> if (friend != null) Retos.onResult(from, friend.name, payload)
+            "retores" -> if (friend != null) Retos.onResult(key, from, friend.name, payload)
             "retono" -> Retos.onCancelled(this, from, payload)
-            "lockreq" -> if (friend != null) Locks.onRequest(this, from, friend.name, payload)
-            "lockacc" -> if (friend != null) Locks.onAccepted(this, from, payload, sentAgoMs(event))
+            "lockreq" -> if (friend != null) Locks.onRequest(this, from, friend.name, payload, sentAgoMs(event))
+            "lockacc" -> if (friend != null && !Locks.onAccepted(this, from, payload, sentAgoMs(event))) {
+                sendQuietly(from, Relay.payload("lockno").put("id", payload.optString("id")))
+            }
             "lockno" -> Locks.onRejected(from, payload)
         }
     }
@@ -311,9 +313,10 @@ class ListenService : Service() {
                 onSound(from, sender, group, payload, event)
             }
             "stop" -> Player.stopIfMatches(payload.optString("id"), from)
-            "msg" -> if (!blocked) Chats.receive(this, key, from, sender, payload, event.optString("id"), sentAt(event))
-            "reto" -> if (!blocked && !group.muted) Retos.receive(this, key, from, sender, payload, sentAgoMs(event))
-            "retores" -> if (!blocked) Retos.onResult(from, sender, payload)
+            // Chat y retos solo de quienes están en la lista de miembros (no de alguien con un enlace viejo).
+            "msg" -> if (member != null && !blocked) Chats.receive(this, key, from, sender, payload, event.optString("id"), sentAt(event))
+            "reto" -> if (member != null && !blocked && !group.muted) Retos.receive(this, key, from, sender, payload, sentAgoMs(event))
+            "retores" -> if (member != null && !blocked) Retos.onResult(key, from, sender, payload)
             "retono" -> Retos.onCancelled(this, from, payload)
             "gjoin" -> {
                 val isNew = group.members.none { it.code == from }

@@ -51,13 +51,18 @@ object Locks {
         return Relay.payload("lockreq").put("id", lock.id).put("min", minutes)
     }
 
-    fun onRequest(context: Context, from: String, name: String, payload: JSONObject) {
+    /** [sentAgoMs]: hace cuánto la mandó, según el servidor (una propuesta vieja que llega tarde ya venció). */
+    fun onRequest(context: Context, from: String, name: String, payload: JSONObject, sentAgoMs: Long) {
         val id = payload.optString("id").takeIf { it.matches(Regex("[a-z0-9]{8,24}")) } ?: return
         val minutes = payload.optInt("min")
-        if (minutes !in 1..MAX_MINUTES || Store.lock(id) != null) return
-        // Solo una propuesta pendiente por amigo: la nueva reemplaza a la anterior.
-        pendingWith(from)?.let { old -> Store.updateLock(old.id) { it.copy(state = Lock.REJECTED) } }
-        Store.putLock(Lock(id, from, minutes, Lock.ASKED, System.currentTimeMillis()))
+        if (minutes !in 1..MAX_MINUTES || Store.lock(id) != null || sentAgoMs >= ASK_VALID_MS) return
+        val now = System.currentTimeMillis()
+        val asked = Store.locks().filter { it.friend == from && it.state == Lock.ASKED && isPending(it) }
+        // Contra el spam: una propuesta por minuto.
+        if (asked.any { now - it.created < 60_000L }) return
+        // Solo una propuesta pendiente de ese amigo: la nueva reemplaza a la anterior.
+        asked.forEach { old -> Store.updateLock(old.id) { it.copy(state = Lock.REJECTED) } }
+        Store.putLock(Lock(id, from, minutes, Lock.ASKED, now - sentAgoMs))
         val key = Chats.friendKey(from)
         val unread = key != Chats.visibleKey
         Chats.card(key, ChatMessage.LOCK, id, from, name, unread)
@@ -74,16 +79,23 @@ object Locks {
         return Relay.payload("lockacc").put("id", id).put("min", current.minutes)
     }
 
-    fun onAccepted(context: Context, from: String, payload: JSONObject, sentAgoMs: Long) {
+    /**
+     * El amigo aceptó. Devuelve false si esa propuesta ya no sirve (venció o la retiraste): hay
+     * que avisarle con "lockno" para que el candado no quede activo solo de su lado.
+     */
+    fun onAccepted(context: Context, from: String, payload: JSONObject, sentAgoMs: Long): Boolean {
         val id = payload.optString("id")
-        val current = Store.lock(id)?.takeIf { it.friend == from && it.state == Lock.OFFERED && isPending(it) } ?: return
+        val existing = Store.lock(id)?.takeIf { it.friend == from }
+        if (existing != null && (existing.state == Lock.ACTIVE || existing.state == Lock.DONE)) return true
+        val current = existing?.takeIf { it.state == Lock.OFFERED && isPending(it) } ?: return false
         val lock = Store.updateLock(id) {
             it.copy(state = Lock.ACTIVE, until = System.currentTimeMillis() + current.minutes * 60_000L - sentAgoMs)
-        } ?: return
+        } ?: return false
         startListening(context, from)
         val name = Store.friend(from)?.name ?: "Tu amigo"
         Chats.info(Chats.friendKey(from), "🔒 $name aceptó el candado: hasta las ${untilText(lock)}")
         Notifs.lockStarted(context, Chats.friendKey(from), name, untilText(lock))
+        return true
     }
 
     /** El acuerdo vale para los dos: se vuelve a escuchar a ese amigo. */
@@ -103,7 +115,14 @@ object Locks {
 
     fun onRejected(from: String, payload: JSONObject) {
         val id = payload.optString("id")
-        val lock = Store.lock(id)?.takeIf { it.friend == from && isPending(it) } ?: return
+        val found = Store.lock(id)?.takeIf { it.friend == from } ?: return
+        if (found.isActive) {
+            // Lo aceptaste pero su propuesta ya no valía de su lado: el candado no corre para ninguno.
+            Store.updateLock(id) { it.copy(state = Lock.REJECTED) }
+            Chats.info(Chats.friendKey(from), "El candado no se activó: la propuesta ya había vencido")
+            return
+        }
+        val lock = found.takeIf { isPending(it) } ?: return
         Store.updateLock(id) { it.copy(state = Lock.REJECTED) }
         val name = Store.friend(from)?.name ?: "Tu amigo"
         Chats.info(

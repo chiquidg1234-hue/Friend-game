@@ -169,6 +169,7 @@ object Retos {
                 val group = Chats.group(reto.chat)
                 val info = Player.NowPlaying(
                     "reto-$id", reto.from, "Reto en $title", sound.label, sound.key, group?.id, retoId = id,
+                    loop = reto.kind == FASTEST,
                 )
                 Notifs.soundReceived(context, "⚡ Reto en $title", sound.label, canStop = true)
                 Player.play(context, Player.Source.Asset(sound.asset), info, incoming = true)
@@ -196,12 +197,15 @@ object Retos {
         }.start()
     }
 
-    fun onResult(from: String, name: String, payload: JSONObject) {
+    /** Tiempo de otra persona. Solo vale si llega por el mismo chat del reto y antes de cerrar la tabla. */
+    fun onResult(chatKey: String, from: String, name: String, payload: JSONObject) {
         val id = payload.optString("id")
         val ms = payload.optLong("ms", -1)
         if (ms !in 0..Player.MAX_PLAY_MS) return
         val reto = Store.reto(id) ?: return
-        if (reto.kind != FASTEST || reto.state == Reto.CANCELLED || reto.results.any { it.code == from }) return
+        if (reto.chat != chatKey || reto.kind != FASTEST) return
+        if (reto.state != Reto.WAITING && reto.state != Reto.RANG) return
+        if (reto.results.any { it.code == from }) return
         Store.updateReto(id) { it.copy(results = it.results + RetoResult(from, name, ms)) }
         Chats.info(reto.chat, "$name lo detuvo en ${seconds(ms)}")
     }

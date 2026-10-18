@@ -122,7 +122,11 @@ class MainActivity : Activity(), Store.Listener {
     private val page: String? get() = pages.lastOrNull()
     private val chatKey: String? get() = page?.takeIf { it.startsWith(PAGE_CHAT) }?.removePrefix(PAGE_CHAT)
     private var rankingWeekly = true
-    private var lastChatSize = -1
+    /** Último mensaje del chat dibujado: si cambia, se baja a lo nuevo. */
+    private var chatTail = ""
+    private var lastChatTail = ""
+    /** La pantalla está a la vista (entre onStart y onStop). */
+    private var started = false
     /** Próximo momento en que algo vence y hay que redibujar. */
     private var nextDeadline = Long.MAX_VALUE
     private var lastSendTextAt = 0L
@@ -193,6 +197,7 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onStart() {
         super.onStart()
+        started = true
         Store.addListener(this)
         if (Store.myName.isNotBlank()) {
             Points.onDailyOpen()
@@ -211,6 +216,7 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     override fun onStop() {
+        started = false
         Store.removeListener(this)
         ui.removeCallbacks(clock)
         Chats.visibleKey = null
@@ -367,7 +373,8 @@ class MainActivity : Activity(), Store.Listener {
         topBar.removeAllViews()
         nextDeadline = Long.MAX_VALUE
         content.setPadding(dp(20), dp(20), dp(20), dp(28))
-        Chats.visibleKey = chat
+        // Solo cuenta como "a la vista" si la app está abierta: si no, sus mensajes deben avisar.
+        Chats.visibleKey = if (started) chat else null
         when {
             current == null -> when (tab) {
                 Tab.SOUND -> renderSound()
@@ -389,10 +396,9 @@ class MainActivity : Activity(), Store.Listener {
         renderedScreen = screen
         if (chat != null) {
             // En el chat se baja a lo último cuando llega algo nuevo o al abrirlo.
-            val size = content.childCount
-            if (!sameScreen || size != lastChatSize) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+            if (!sameScreen || chatTail != lastChatTail) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
             else scroll.post { scroll.scrollTo(0, y) }
-            lastChatSize = size
+            lastChatTail = chatTail
         } else if (sameScreen) {
             scroll.post { scroll.scrollTo(0, y) }
         } else {
@@ -1534,8 +1540,10 @@ class MainActivity : Activity(), Store.Listener {
         val group = Chats.group(key)
         val friend = Chats.friend(key)
         val name = Chats.title(key) ?: return
-        Store.markChatRead(key)
-        Notifs.cancelChat(this, key)
+        if (started) {
+            Store.markChatRead(key)
+            Notifs.cancelChat(this, key)
+        }
 
         // Encabezado fijo: no se va con el scroll.
         val head = row().apply {
@@ -1592,7 +1600,9 @@ class MainActivity : Activity(), Store.Listener {
         topBar.addView(divider(Palette.LINE), lp(MATCH, dp(1)))
 
         content.setPadding(dp(14), dp(12), dp(14), dp(16))
-        val messages = Store.chat(key).takeLast(120)
+        val all = Store.chat(key)
+        val messages = all.takeLast(120)
+        chatTail = key + "/" + (all.lastOrNull()?.id ?: "") + "/" + all.size
         if (messages.isEmpty()) {
             val hint = if (friend != null) "Escribe el primer mensaje 👋\nCon ⚡ creas un reto y con 🔒 propones un candado."
             else "Escribe el primer mensaje 👋\nCon ⚡ creas un reto para todo el grupo."
@@ -1972,6 +1982,13 @@ class MainActivity : Activity(), Store.Listener {
             "detener, silenciar ni pausar los sonidos del otro, ni eliminarse o bloquearse.\n\n" +
             "Cada sonido sigue durando como mucho 10 segundos y nadie puede mandar más de 4 cada 20 segundos. " +
             "Si alguien te molesta de verdad, «Denunciar» siempre funciona."
+    }
+
+    /** true (y avisa) si hay un candado con [friend] (pudo empezar con el menú abierto). */
+    private fun lockedWith(friend: Friend): Boolean {
+        val lock = Locks.activeWith(friend.code) ?: return false
+        toast("🔒 Tienes un candado con ${friend.name} hasta las ${Locks.untilText(lock)}")
+        return true
     }
 
     /** true (y avisa) si un candado impide cambiar cómo se reciben los sonidos. */
@@ -3029,18 +3046,20 @@ class MainActivity : Activity(), Store.Listener {
                 } else {
                     options += "🔒 Proponer un candado" to { showProposeLock(friend) }
                     options += (if (friend.muted) "🔊 Volver a recibir sus sonidos" else "🔇 Silenciar sus sonidos") to {
-                        Store.putFriend(friend.copy(muted = !friend.muted))
-                        if (!friend.muted) Player.stopIfFrom(friend.code)
+                        if (!lockedWith(friend)) {
+                            Store.putFriend(friend.copy(muted = !friend.muted))
+                            if (!friend.muted) Player.stopIfFrom(friend.code)
+                        }
                     }
                 }
                 options += "✏️ Cambiar nombre" to { renameFriend(friend) }
                 if (lock == null) {
                     options += "👋 Eliminar amigo" to {
                         confirm("¿Eliminar a ${friend.name}?", "Ya no se podrán mandar sonidos hasta que se vuelvan a agregar.") {
-                            removeFriend(friend)
+                            if (!lockedWith(friend)) removeFriend(friend)
                         }
                     }
-                    options += "🚫 Bloquear" to { block(friend) }
+                    options += "🚫 Bloquear" to { if (!lockedWith(friend)) block(friend) }
                     options += "🚩 Denunciar" to { report(friend.code, friend.name) }
                 }
             }
@@ -3323,6 +3342,8 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun editServer() {
+        // Cambiar de servidor cortaría al amigo del candado.
+        if (lockBlocks()) return
         textDialog(
             "Servidor",
             "Avanzado. Tú y tus amigos deben usar el mismo servidor ntfy. Por defecto: ${Store.DEFAULT_SERVER}",
