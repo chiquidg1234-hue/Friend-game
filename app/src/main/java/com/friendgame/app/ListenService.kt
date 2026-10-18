@@ -267,7 +267,10 @@ class ListenService : Service() {
             return
         }
         val friend = Store.friend(from)?.takeIf { it.state == Friend.FRIEND }
-        if (friend != null) Points.updateScore(from, friend.name, payload)
+        if (friend != null) {
+            Points.updateScore(from, friend.name, payload)
+            Looks.updateProfile(from, payload)
+        }
         val key = Chats.friendKey(from)
         when (payload.optString("t")) {
             "req" -> onFriendRequest(from, name)
@@ -302,7 +305,10 @@ class ListenService : Service() {
         val member = group.members.firstOrNull { it.code == from }
         val sender = member?.name ?: name
         val blocked = Store.friend(from)?.state == Friend.BLOCKED
-        if (member != null) Points.updateScore(from, sender, payload)
+        if (member != null) {
+            Points.updateScore(from, sender, payload)
+            Looks.updateProfile(from, payload)
+        }
         val key = Chats.groupKey(group.id)
         when (payload.optString("t")) {
             "snd" -> {
@@ -439,6 +445,9 @@ class ListenService : Service() {
     private fun onSound(from: String, senderName: String, group: Group?, payload: JSONObject, event: JSONObject) {
         val kind = payload.optString("s")
         val label = payload.optString("label").trim().take(30).ifEmpty { Sounds.byKey(kind)?.label ?: "Sonido" }
+        // Poderes: solo cambian cómo se ve y se siente; quien recibe lo puede detener igual.
+        val power = payload.optString("pw").takeIf { it == Powers.SUPER || it == Powers.ECO } ?: ""
+        val startMs = if (kind == "custom") payload.optInt("st").coerceIn(0, CustomAudio.MAX_MS.toInt()) else 0
         val shownName = if (group != null) "$senderName · ${group.name}" else senderName
         val sentAt = event.optLong("time")
         if (sentAt < sessionStart || serverNow - sentAt > MAX_SOUND_AGE_S) {
@@ -466,14 +475,20 @@ class ListenService : Service() {
                 Player.Source.Asset(sound.asset)
             }
             Notifs.soundReceived(this, shownName, label, canStop = group != null || Locks.activeWith(from) == null)
-            vibrate()
+            vibrate(strong = power == Powers.SUPER)
             if (isInCall()) {
                 Store.addHistory("$shownName · $label (no sonó: estabas en una llamada)")
                 return
             }
             val reason = SoundCheck.silentReason(this)
             Store.addHistory(if (reason == null) "$shownName · $label" else "$shownName · $label (puede no haberse oído: $reason)")
-            Player.play(this, source, Player.NowPlaying(payload.optString("id"), from, shownName, label, kind, group?.id))
+            Player.play(
+                this, source,
+                Player.NowPlaying(
+                    payload.optString("id"), from, shownName, label, kind, group?.id,
+                    loop = power == Powers.ECO, power = power, startMs = startMs,
+                ),
+            )
             played = true
             Points.onSoundHeard()
         } finally {
@@ -493,14 +508,15 @@ class ListenService : Service() {
         return true
     }
 
-    private fun vibrate() {
+    private fun vibrate(strong: Boolean = false) {
         val vibrator = if (Build.VERSION.SDK_INT >= 31) {
             getSystemService(VibratorManager::class.java)?.defaultVibrator
         } else {
             getSystemService(Vibrator::class.java)
         }
         try {
-            vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 150, 100, 150), -1))
+            val pattern = if (strong) longArrayOf(0, 400, 120, 400, 120, 700) else longArrayOf(0, 150, 100, 150)
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
         } catch (_: Exception) {
         }
     }

@@ -9,11 +9,16 @@ import java.io.File
 import java.io.IOException
 import java.util.Locale
 
-/** Importa audios propios: MP3, OGG, WAV o M4A, máximo 8 segundos y 2 MB. */
+/**
+ * Importa audios propios: MP3, OGG, WAV o M4A de hasta 2 MB. Pueden durar hasta un minuto (un
+ * audio descargado, una nota de voz): se elige desde dónde suena y suenan como mucho 10 segundos.
+ */
 object CustomAudio {
     const val MAX_BYTES = 2_000_000L
-    const val MAX_MS = 8_000L
-    const val HINT = "MP3, OGG, WAV o M4A · máx. 8 segundos · máx. 2 MB"
+    /** Las grabaciones con el micrófono se cortan a los 8 segundos. */
+    const val RECORD_MS = 8_000L
+    const val MAX_MS = 60_000L
+    const val HINT = "MP3, OGG, WAV o M4A · hasta 1 minuto y 2 MB · suena 10 segundos"
 
     val PICKER_MIME_TYPES = arrayOf(
         "audio/mpeg", "audio/mp3", "audio/ogg", "application/ogg", "audio/opus",
@@ -23,7 +28,7 @@ object CustomAudio {
 
     class ImportError(message: String) : Exception(message)
 
-    class Imported(val sound: CustomSound, val suggestedLabel: String)
+    class Imported(val sound: CustomSound, val suggestedLabel: String, val durationMs: Long = 0)
 
     private fun dir(context: Context) = File(context.filesDir, "custom").apply { mkdirs() }
 
@@ -84,10 +89,10 @@ object CustomAudio {
         if (durationMs > MAX_MS + 300) {
             out.delete()
             val seconds = String.format(Locale.US, "%.1f", durationMs / 1000.0)
-            throw ImportError("Dura $seconds segundos. El máximo es 8.")
+            throw ImportError("Dura $seconds segundos. El máximo es un minuto: recórtalo o elige otro.")
         }
         val label = displayName.substringBeforeLast('.').replace('_', ' ').trim().take(24).ifEmpty { "Mi audio" }
-        return Imported(sound, label)
+        return Imported(sound, label, durationMs)
     }
 
     private fun extensionFor(name: String, mime: String): String? {
@@ -105,7 +110,7 @@ object CustomAudio {
         }
     }
 
-    private fun durationOf(file: File): Long? {
+    fun durationOf(file: File): Long? {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(file.absolutePath)

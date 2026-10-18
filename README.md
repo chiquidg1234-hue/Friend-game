@@ -1,6 +1,6 @@
 # 🔊 Friend Game
 
-Una app Android para mandarle sonidos al celular de tus amigos: una bocina, una sirena, un pato o tus propios audios. También tiene chat, retos que suenan para todos a la vez, candados acordados entre dos, comunidades, puntos, niveles y ranking. Solo te pueden mandar sonidos las personas que tú aceptaste, y siempre puedes detenerlos (salvo durante un candado que los dos aceptaron).
+Una app Android para mandarle sonidos al celular de tus amigos: una bocina, una sirena, un pato o tus propios audios. También tiene chat, retos que suenan para todos a la vez, candados acordados entre dos, comunidades, puntos, niveles, ranking, mascota, poderes y mucha personalización. Solo te pueden mandar sonidos las personas que tú aceptaste, y siempre puedes detenerlos (salvo durante un candado que los dos aceptaron).
 
 ## 📲 Instalar
 
@@ -70,16 +70,37 @@ En **Grupos → Crear comunidad** armas un grupo grande (hasta 40 personas) con 
 
 ### 🏆 Puntos, niveles y ranking
 
-Ganas puntos por mandar y recibir sonidos, escribir, crear y ganar retos, cumplir candados, sumar amigos y abrir la app cada día (con tope diario, para que no valga el spam). Con los puntos subes de nivel (de Novato a Dios del caos) y desbloqueas **8 sonidos nuevos**: Timbre, Moneda, Silbato, Gallo, Risa, Gong, Ovni y Explosión. En **Tú** ves tus logros y el ranking semanal o total con tus amigos; cada grupo y comunidad tiene su propio ranking.
+Ganas puntos por mandar y recibir sonidos, escribir, crear y ganar retos, cumplir candados, sumar amigos y abrir la app cada día (con tope diario, para que no valga el spam). Con los puntos subes de nivel (de Novato a Dios del caos) y desbloqueas colores, temas de chat y mascotas. En **Tú** ves tus logros y el ranking semanal o total con tus amigos; cada grupo y comunidad tiene su propio ranking.
+
+### 🎨 Personalización
+
+- **Botones de sonido:** mantén presionado cualquier botón → **Personalizar botón** para cambiarle el emoji (de la lista o el que escribas), el color y el nombre. También a tus audios.
+- **Tu avatar:** en **Tú**, toca tu foto para elegir emoji y color. Tus amigos lo ven en el chat, el ranking y cuando les suena algo tuyo.
+- **Decorar el chat:** en cada chat, el botón ⭐ cambia el tema (fondo y globos). Es solo para ti.
+- Los colores degradados (Atardecer, Océano, Neón, Fuego, Galaxia, Oro) y algunos temas se desbloquean subiendo de nivel.
+
+### 🐣 Mascota
+
+En **Tú → Tu mascota** adoptas un gato, perro, zorro o rana (panda, pulpo, dragón y unicornio se desbloquean por nivel). Nace como huevo y crece con los puntos que ganas: bebé, joven, adulta y legendaria 👑. Si pasa un día sin comer le da hambre; alimentarla cuesta 5 puntos. Tus amigos la ven junto a tu nombre en el ranking.
+
+### 🌟 Poderes
+
+Se compran con puntos (gastarlos no te baja de nivel ni en el ranking):
+
+- **Súper sonido** (30): tu próximo sonido llega con una pantalla dorada y vibración fuerte.
+- **Eco** (20): tu próximo sonido se repite hasta que lo detengan (máximo 10 segundos).
+- **Doble puntos** (40): si ganas tu próximo «El más rápido», ganas el doble.
+
+Ningún poder le quita el control a quien recibe: siempre puede detener, silenciar o bloquear. Un sonido "imposible de detener" sin permiso del otro no está permitido en Google Play (y no sería justo): para eso está el **candado**, que los dos aceptan.
 
 ### Tus propios audios
 
 En **Sonar → Tus audios** puedes:
 
 - **Grabar** un audio con el micrófono (se detiene solo a los 8 segundos).
-- **Subir** un archivo: MP3, OGG, WAV o M4A (las notas de voz de WhatsApp también sirven), máximo **8 segundos** y **2 MB**.
+- **Subir** un archivo que descargaste: MP3, OGG, WAV o M4A (las notas de voz de WhatsApp también sirven), de hasta **1 minuto** y **2 MB**. Si dura más de 10 segundos, eliges **desde dónde suena** (la parte graciosa) y suenan 10 segundos desde ahí.
 
-Mantén presionado uno de tus audios para escucharlo, cambiarle el nombre o borrarlo.
+Mantén presionado uno de tus audios para escucharlo, elegir la parte que suena, personalizar su botón, cambiarle el nombre o borrarlo.
 
 Tus audios solo los puedes mandar tú, a amigos que te aceptaron o a tus grupos.
 
@@ -141,6 +162,7 @@ Mientras no haya enlace, el botón dice que las donaciones se activan pronto. Pa
 | `Retos.kt` | Retos: alarma en todos los celulares y tabla de tiempos |
 | `Locks.kt` | Candado acordado entre dos amigos |
 | `Points.kt` | Puntos, niveles, logros y ranking |
+| `Looks.kt` | Personalización (botones, avatar, temas), mascota y poderes |
 | `Legal.kt` | Términos, privacidad y denuncias (textos en `docs/legal/`) |
 | `ListenService.kt` | Servicio que mantiene la conexión y reacciona a los mensajes |
 | `Relay.kt` | Envía mensajes y audios al servidor ntfy |

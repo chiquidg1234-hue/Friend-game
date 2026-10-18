@@ -30,7 +30,15 @@ En `app/build.gradle.kts` hay dos *flavors*:
 - **`github`**: la de siempre. Se descarga de GitHub, se actualiza sola, se pasa por Quick Share y deja donar con un enlace (`FG_DONATE_URL`).
 - **`play`**: la que se sube a Google Play. No trae nada de lo anterior.
 
-Las dos comparten todo lo demás: chat, retos, candados, grupos, comunidades, puntos y ranking.
+Las dos comparten todo lo demás: chat, retos, candados, grupos, comunidades, puntos, ranking, personalización, mascota y poderes.
+
+### Sobre los poderes y el "sonido que no se puede detener"
+
+Google Play exige que la gente controle su celular y prohíbe apps que faciliten el acoso. Un sonido que el otro no puede detener **sin haberlo aceptado** pondría la app en riesgo de rechazo o de que la bajen. Por eso:
+
+- Los **poderes** (Súper sonido, Eco, Doble puntos) cambian cómo se ve y se siente el sonido, pero quien lo recibe siempre puede detenerlo, silenciar o bloquear.
+- La única forma de que un sonido no se pueda detener es el **candado**, que los dos aceptan, dura poco, mantiene el máximo de 10 segundos por sonido y deja denunciar siempre.
+- Los puntos no se compran con dinero. Si algún día se venden puntos o poderes, tendría que ser con la facturación de Google Play y declararlo en la ficha.
 
 ## 2. Paso a paso para publicar
 
@@ -103,7 +111,7 @@ En el menú **Política → Contenido de la app**:
 - **Clasificación de contenido**: completa el cuestionario. Marca que los usuarios **pueden interactuar** y **compartir contenido** (chat y audios).
 - **Público objetivo**: **13 años o más** (no marques menores de 13: eso activa la política de Familias).
 - **Seguridad de los datos**:
-  - Se **recopilan y comparten**: nombre (nombre visible), mensajes (chat), audio (audios propios) y otro contenido (puntos). Para la **funcionalidad de la app**.
+  - Se **recopilan y comparten**: nombre (nombre visible), mensajes (chat), audio (audios propios) y otro contenido (puntos, avatar y mascota). Para la **funcionalidad de la app**.
   - Los datos viajan **cifrados en tránsito**.
   - No hay forma de pedir el borrado en un servidor porque no hay cuentas; se borra con **Cambiar mi código** o desinstalando. Indícalo así.
   - Menciona que pasa por **ntfy.sh**, un servicio de terceros.

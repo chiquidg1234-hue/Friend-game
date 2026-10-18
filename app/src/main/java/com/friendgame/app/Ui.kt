@@ -262,11 +262,12 @@ fun Context.soundTile(
     color: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    swatch: Looks.Swatch? = null,
 ): View = column().apply {
     gravity = Gravity.CENTER
     minimumHeight = dp(88)
     setPadding(dp(6), dp(8), dp(6), dp(8))
-    background = clickable(rounded(color, 22), 0x40150C2C)
+    background = clickable(swatch?.drawable(context, 22) ?: rounded(color, 22), 0x40150C2C)
     isClickable = true
     isFocusable = true
     addView(label(emoji, 28f).apply {

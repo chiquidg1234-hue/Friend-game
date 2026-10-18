@@ -13,6 +13,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.media.AudioManager
 import android.media.MediaRecorder
@@ -373,6 +374,7 @@ class MainActivity : Activity(), Store.Listener {
         topBar.removeAllViews()
         nextDeadline = Long.MAX_VALUE
         content.setPadding(dp(20), dp(20), dp(20), dp(28))
+        content.background = null
         // Solo cuenta como "a la vista" si la app está abierta: si no, sus mensajes deben avisar.
         Chats.visibleKey = if (started) chat else null
         when {
@@ -571,7 +573,7 @@ class MainActivity : Activity(), Store.Listener {
         val groups = Store.groups()
 
         val header = row()
-        header.addView(avatar(Store.myName, Palette.YELLOW, sizeDp = 44))
+        header.addView(personAvatar(Store.myCode, Store.myName, 44).apply { setOnClickListener { openTab(Tab.ME) } })
         val hello = column()
         hello.addView(title("Hola, ${Store.myName}", 22f, weight = 600).apply {
             maxLines = 1
@@ -623,54 +625,50 @@ class MainActivity : Activity(), Store.Listener {
         if (target == null) addNoTargets() else addTargetChips(all, target)
 
         if (target != null) {
-            add(
+            val extras = row()
+            extras.addView(
                 button(
                     "Crear un reto", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_bolt,
                     heightDp = 44, radiusDp = 14, sizeSp = 14f, iconColor = Palette.YELLOW,
                 ) { showCreateReto(target.key) },
-                10,
+                lp(0, WRAP, weight = 1f),
             )
+            extras.addView(space(8))
+            addPowerButton(extras)
+            add(extras, 10)
         }
 
-        add(sectionTitle("Sonidos", "Mantén presionado para oírlo tú"), 22)
-        val myLevel = Points.level().number
+        add(sectionTitle("Sonidos", "Mantén presionado para personalizar"), 22)
         grid(Sounds.all.map { sound ->
-            val locked = sound.level > myLevel
-            soundTile(sound.emoji, if (locked) "🔒 Nivel ${sound.level}" else sound.label, sound.color,
+            val look = Looks.button(sound.key)
+            val name = look.label ?: sound.label
+            soundTile(look.emoji ?: sound.emoji, name, sound.color,
                 onClick = {
-                    when {
-                        locked -> {
-                            val missing = Points.LEVELS[sound.level - 1].min - Points.total()
-                            toast("${sound.emoji} ${sound.label} se desbloquea en el nivel ${sound.level} (te faltan $missing puntos). Mantén presionado para oírlo.")
-                        }
-                        target == null -> Player.preview(this, Player.Source.Asset(sound.asset), sound.label)
-                        else -> sendSound(target, sound.key, sound.label, null)
-                    }
+                    if (target == null) Player.preview(this, Player.Source.Asset(sound.asset), name)
+                    else sendSound(target, sound.key, name, null)
                 },
-                onLongClick = { Player.preview(this, Player.Source.Asset(sound.asset), sound.label) },
-            ).apply {
-                if (locked) {
-                    alpha = 0.45f
-                    contentDescription = "${sound.label}, bloqueado hasta el nivel ${sound.level}"
-                }
-            }
+                onLongClick = { soundOptions(sound) },
+                swatch = Looks.swatch(look.swatch),
+            )
         })
 
         add(sectionTitle("Tus audios"), 22)
         val mine = Store.customSounds().map { custom ->
             val source = Player.Source.FromFile(custom.file(this))
-            soundTile("🎤", custom.label, Palette.CUSTOM,
+            val look = Looks.button("c:${custom.id}")
+            soundTile(look.emoji ?: "🎤", custom.label, Palette.CUSTOM,
                 onClick = {
-                    if (target == null) Player.preview(this, source, custom.label)
+                    if (target == null) Player.preview(this, source, custom.label, custom.startMs)
                     else sendSound(target, "custom", custom.label, custom)
                 },
                 onLongClick = { customOptions(custom) },
+                swatch = Looks.swatch(look.swatch),
             )
         } + addTile(R.drawable.ic_mic, "Grabar") { recordAudio() } +
             addTile(R.drawable.ic_upload, "Subir") { pickAudio() }
         grid(mine)
-        val hint = if (Store.customSounds().isEmpty()) "Graba tu voz o sube un audio: ${CustomAudio.HINT}."
-        else "${CustomAudio.HINT}. Mantén presionado uno tuyo para escucharlo, cambiarle el nombre o borrarlo."
+        val hint = if (Store.customSounds().isEmpty()) "Graba tu voz o sube un audio que descargaste: ${CustomAudio.HINT}."
+        else "${CustomAudio.HINT}. Mantén presionado uno tuyo para escucharlo, elegir la parte que suena, personalizarlo o borrarlo."
         add(label(hint, 12f, Palette.SUB), 8)
 
         addHistory()
@@ -1066,7 +1064,7 @@ class MainActivity : Activity(), Store.Listener {
         }
         val active = friend.state == Friend.FRIEND
         line.addView(
-            avatar(friend.name, if (active) Palette.avatar(friend.code) else Palette.SURFACE2, if (active) Palette.INK else Palette.SUB, 40),
+            if (active) personAvatar(friend.code, friend.name, 40) else avatar(friend.name, Palette.SURFACE2, Palette.SUB, 40),
         )
         val texts = column()
         texts.addView(label(friend.name, 16f, bold = true).apply {
@@ -1513,7 +1511,7 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun chatAvatar(key: String, sizeDp: Int): View {
         val group = Chats.group(key)
-        if (group == null) return avatar(Chats.title(key) ?: "?", Palette.avatar(Chats.codeOf(key)), sizeDp = sizeDp)
+        if (group == null) return personAvatar(Chats.codeOf(key), Chats.title(key) ?: "?", sizeDp)
         val badge = FrameLayout(this).apply {
             background = rounded(if (group.isAdmin) Palette.YELLOW else Palette.avatar(group.id), sizeDp / 3)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -1596,10 +1594,18 @@ class MainActivity : Activity(), Store.Listener {
                 openPage(PAGE_RANKING + key)
             })
         }
+        head.addView(space(6))
+        head.addView(iconButton(R.drawable.ic_star, "Decorar el chat", Palette.SURFACE2, Palette.ACCENT_TEXT, 40) { chooseChatTheme(key) })
         topBar.addView(head, lp())
         topBar.addView(divider(Palette.LINE), lp(MATCH, dp(1)))
 
         content.setPadding(dp(14), dp(12), dp(14), dp(16))
+        val theme = Looks.chatTheme(key)
+        content.background = if (theme.background.size > 1) {
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, theme.background)
+        } else {
+            ColorDrawable(theme.background[0])
+        }
         val all = Store.chat(key)
         val messages = all.takeLast(120)
         chatTail = key + "/" + (all.lastOrNull()?.id ?: "") + "/" + all.size
@@ -1626,18 +1632,18 @@ class MainActivity : Activity(), Store.Listener {
                 }
                 else -> {
                     val sameSender = message.from == previous
-                    add(bubble(key, message, showName = group != null && !sameSender), if (sameSender) 4 else 10)
+                    add(bubble(key, message, theme, showName = group != null && !sameSender), if (sameSender) 4 else 10)
                     previous = message.from
                 }
             }
         }
     }
 
-    private fun bubble(key: String, message: ChatMessage, showName: Boolean): View {
+    private fun bubble(key: String, message: ChatMessage, theme: Looks.Theme, showName: Boolean): View {
         val mine = message.from == Store.myCode
         val line = row().apply { gravity = if (mine) Gravity.END else Gravity.START }
         val box = column().apply {
-            background = rounded(if (mine) Palette.ACCENT else Palette.SURFACE, 18)
+            background = rounded(if (mine) theme.mine else theme.theirs, 18)
             setPadding(dp(12), dp(8), dp(12), dp(6))
             isLongClickable = true
             contentDescription = (if (mine) "Tú" else message.name) + ": " + message.text
@@ -1647,11 +1653,12 @@ class MainActivity : Activity(), Store.Listener {
             }
         }
         if (showName && !mine) box.addView(label(message.name, 12f, Palette.avatar(message.from), bold = true), LinearLayout.LayoutParams(WRAP, WRAP))
-        box.addView(label(message.text, 15f, if (mine) Palette.INK else Palette.TEXT).apply {
+        val textColor = if (mine) theme.mineText else theme.theirsText
+        box.addView(label(message.text, 15f, textColor).apply {
             maxWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
         }, LinearLayout.LayoutParams(WRAP, WRAP))
         box.addView(
-            label(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(message.time)), 10f, if (mine) 0xB3150C2C.toInt() else Palette.SUB)
+            label(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(message.time)), 10f, (textColor and 0x00FFFFFF) or 0xB3000000.toInt())
                 .apply { gravity = Gravity.END },
             LinearLayout.LayoutParams(MATCH, WRAP),
         )
@@ -1775,7 +1782,7 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun showCreateReto(key: String) {
         val name = Chats.title(key) ?: return
-        val sounds = Sounds.unlocked(Points.level().number)
+        val sounds = Sounds.all
         var kind = Retos.FASTEST
         var minutes = Retos.DEFAULT_DELAY_MIN
         var sound = sounds.firstOrNull { it.key == "sirena" } ?: sounds.first()
@@ -2014,13 +2021,20 @@ class MainActivity : Activity(), Store.Listener {
 
         val hero = card(Palette.SURFACE, 24, 18)
         val head = row()
-        head.addView(avatar(Store.myName, Palette.YELLOW, sizeDp = 64))
+        head.addView(personAvatar(Store.myCode, Store.myName, 64).apply {
+            isClickable = true
+            contentDescription = "Cambiar tu avatar"
+            setOnClickListener { editAvatar() }
+        })
         val texts = column()
         texts.addView(title(Store.myName, 22f, weight = 600).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, lp())
         texts.addView(label("Nivel ${level.number} · ${level.name}", 14f, Palette.YELLOW, bold = true), lp())
+        texts.addView(label("Cambiar avatar", 13f, Palette.ACCENT_TEXT, bold = true).apply {
+            setOnClickListener { editAvatar() }
+        }, lp(topDp = 2))
         head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(14) })
         hero.addView(head, lp())
         hero.addView(title("$total puntos", 30f), lp(topDp = 14))
@@ -2048,6 +2062,31 @@ class MainActivity : Activity(), Store.Listener {
         stat("${Points.stat("retos_won")}", "retos ganados")
         add(stats, 10)
 
+        add(sectionTitle("Tu mascota"), 22)
+        addPetCard()
+
+        val powers = row().apply {
+            background = clickable(rounded(Palette.SURFACE2, 20))
+            setPadding(dp(16), dp(14), dp(14), dp(14))
+            isClickable = true
+            setOnClickListener { showPowers() }
+        }
+        powers.addView(label("🌟", 26f).apply { includeFontPadding = false })
+        val powerTexts = column()
+        powerTexts.addView(label("Poderes", 16f, bold = true), lp())
+        val armed = Powers.armed
+        powerTexts.addView(
+            label(
+                (if (armed != null) "${armed.emoji} ${armed.name} listo · " else "") +
+                    "${Points.balance()} puntos para gastar",
+                13f, Palette.SUB,
+            ),
+            lp(),
+        )
+        powers.addView(powerTexts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        powers.addView(icon(R.drawable.ic_chevron, Palette.FAINT, 16))
+        add(powers, 12)
+
         add(sectionTitle("Ranking con tus amigos", "Esta semana"), 22)
         val people = Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
         add(rankingList(Points.ranking(people, weekly = true).take(5)), 10)
@@ -2064,15 +2103,18 @@ class MainActivity : Activity(), Store.Listener {
         add(sectionTitle("Logros", "$got de ${Points.LOGROS.size}"), 24)
         grid(Points.LOGROS.map { logroTile(it) })
 
-        add(sectionTitle("Sonidos por nivel"), 24)
+        add(sectionTitle("Desbloqueas subiendo de nivel", "Colores, temas y mascotas"), 24)
         val list = card(padDp = 0)
-        Sounds.all.filter { it.level > 1 }.forEach { sound ->
+        val unlockables = Looks.SWATCHES.filter { it.level > 1 }.map { Triple(it.level, "🎨", "Color ${it.name} para botones y avatar") } +
+            Looks.THEMES.filter { it.level > 1 }.map { Triple(it.level, "💬", "Tema de chat ${it.name}") } +
+            Pets.SPECIES.filter { it.level > 1 }.map { Triple(it.level, it.emoji, "Mascota ${it.name}") }
+        unlockables.sortedBy { it.first }.forEach { (needed, emoji, text) ->
             if (list.childCount > 0) list.addView(divider(), dividerLp())
-            val unlocked = sound.level <= level.number
+            val unlocked = needed <= level.number
             val line = row().apply { setPadding(dp(16), dp(10), dp(16), dp(10)) }
-            line.addView(label(sound.emoji, 22f))
-            line.addView(label(sound.label, 15f, bold = true), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-            line.addView(label(if (unlocked) "✅ Desbloqueado" else "🔒 Nivel ${sound.level}", 13f, if (unlocked) Palette.OK else Palette.SUB, bold = true))
+            line.addView(label(emoji, 20f))
+            line.addView(label(text, 14f, bold = true), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+            line.addView(label(if (unlocked) "✅" else "🔒 Nivel $needed", 13f, if (unlocked) Palette.OK else Palette.SUB, bold = true))
             list.addView(line, lp())
         }
         add(list, 10)
@@ -2087,6 +2129,7 @@ class MainActivity : Activity(), Store.Listener {
             "🥇 Ganar «El más rápido»: +15 (2.º +8, 3.º +4)",
             "🔒 Cumplir un candado: +20",
             "🤝 Amigo nuevo: +10 · 📅 Abrir la app cada día: +5",
+            "🛍️ Gasta puntos en tu mascota y en poderes: no bajas de nivel ni en el ranking",
         ).forEach { help.addView(label(it, 13f, Palette.SUB), lp(topDp = 6)) }
         add(help, 20)
 
@@ -2151,9 +2194,10 @@ class MainActivity : Activity(), Store.Listener {
             line.addView(label(medals.getOrElse(i) { "${i + 1}" }, if (i < 3) 22f else 15f, Palette.SUB, bold = true).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(dp(34), WRAP))
-            line.addView(avatar(entry.name, Palette.avatar(entry.code), sizeDp = 36), LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(6) })
+            line.addView(personAvatar(entry.code, entry.name, 36), LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginStart = dp(6) })
             val texts = column()
-            texts.addView(label(if (entry.isMe) "Tú" else entry.name, 15f, bold = true).apply {
+            val pet = Looks.profile(entry.code)?.pet?.let { Pets.emojiFor(it) }
+            texts.addView(label((if (entry.isMe) "Tú" else entry.name) + if (pet != null) " $pet" else "", 15f, bold = true).apply {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }, lp())
@@ -2198,6 +2242,493 @@ class MainActivity : Activity(), Store.Listener {
             ),
             10,
         )
+    }
+
+    // ------------------------------------------------------------------ Personalización
+
+    /** Avatar de una persona: su emoji y color si los eligió, o su inicial. */
+    private fun personAvatar(code: String, name: String, sizeDp: Int): TextView {
+        val profile = Looks.profile(code)
+        val swatch = Looks.swatch(profile?.swatch)
+        val emoji = profile?.emoji.orEmpty()
+        val view = if (emoji.isNotEmpty()) {
+            label(emoji, sizeDp * 0.48f).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+        } else {
+            avatar(name, swatch?.main ?: Palette.avatar(code), sizeDp = sizeDp)
+        }
+        view.background = swatch?.oval(this) ?: oval(Palette.avatar(code))
+        return view
+    }
+
+    private fun soundOptions(sound: Sound) {
+        val look = Looks.button(sound.key)
+        val name = look.label ?: sound.label
+        val options = mutableListOf<Pair<String, () -> Unit>>(
+            "▶️ Escucharlo" to { Player.preview(this, Player.Source.Asset(sound.asset), name) },
+            "🎨 Personalizar botón" to { customizeButton(sound.key, sound.emoji, sound.color, sound.label, editName = true) },
+        )
+        if (look.emoji != null || look.swatch != null || look.label != null) {
+            options += "↩️ Volver al original" to { Looks.setButton(sound.key, Looks.Look()) }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(name)
+            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Filas de opciones de [columns] por fila (emojis). */
+    private fun optionGrid(items: List<String>, selected: String, columns: Int = 8, onPick: (String) -> Unit): View {
+        val box = column()
+        items.chunked(columns).forEach { chunk ->
+            val line = row()
+            chunk.forEach { item ->
+                val chosen = item == selected
+                line.addView(label(item, 22f).apply {
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    background = clickable(rounded(if (chosen) Palette.ACCENT_SOFT else Palette.SURFACE, 12, if (chosen) Palette.ACCENT else null))
+                    isClickable = true
+                    isSelected = chosen
+                    contentDescription = item + if (chosen) ", elegido" else ""
+                    setOnClickListener { onPick(item) }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(2), dp(2), dp(2), dp(2)) })
+            }
+            repeat(columns - chunk.size) { line.addView(View(this), LinearLayout.LayoutParams(0, dp(42), 1f)) }
+            box.addView(line, lp())
+        }
+        return box
+    }
+
+    /** Fila de colores: los que todavía no desbloqueaste salen con candado. */
+    private fun swatchRow(selected: String?, withDefault: Int?, onPick: (Looks.Swatch?) -> Unit): View {
+        val (scroller, line) = chipRow()
+        val level = Points.level().number
+        fun dot(swatch: Looks.Swatch?, chosen: Boolean, locked: Boolean, description: String, onClick: () -> Unit) {
+            val cell = FrameLayout(this).apply {
+                background = swatch?.oval(this@MainActivity)?.apply { if (chosen) setStroke(dp(3), Palette.TEXT) }
+                    ?: oval(withDefault ?: Palette.SURFACE2, if (chosen) Palette.TEXT else null)
+                alpha = if (locked) 0.4f else 1f
+                isClickable = true
+                isSelected = chosen
+                contentDescription = description + if (chosen) ", elegido" else if (locked) ", bloqueado" else ""
+                setOnClickListener { onClick() }
+            }
+            if (locked) {
+                cell.addView(label("🔒", 14f).apply { gravity = Gravity.CENTER }, FrameLayout.LayoutParams(MATCH, MATCH))
+            }
+            line.addView(cell, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(8) })
+        }
+        if (withDefault != null) dot(null, selected == null, false, "Color de fábrica") { onPick(null) }
+        Looks.SWATCHES.forEach { swatch ->
+            val locked = swatch.level > level
+            dot(swatch, swatch.key == selected, locked, "Color ${swatch.name}") {
+                if (locked) toast("🔒 El color ${swatch.name} se desbloquea en el nivel ${swatch.level}") else onPick(swatch)
+            }
+        }
+        return scroller
+    }
+
+    /** Elige emoji, color y (en los sonidos integrados) nombre de un botón. */
+    private fun customizeButton(key: String, defaultEmoji: String, defaultColor: Int, defaultLabel: String, editName: Boolean) {
+        val current = Looks.button(key)
+        var emoji = current.emoji ?: defaultEmoji
+        var swatch = Looks.swatch(current.swatch)
+        val nameInput = if (editName) {
+            editText(current.label ?: defaultLabel, "Nombre del botón").apply { filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24)) }
+        } else {
+            null
+        }
+        val preview = FrameLayout(this)
+        val emojis = FrameLayout(this)
+        val colors = FrameLayout(this)
+        lateinit var refresh: () -> Unit
+        refresh = {
+            preview.removeAllViews()
+            val name = nameInput?.text?.toString()?.trim()?.ifEmpty { null } ?: defaultLabel
+            preview.addView(soundTile(emoji, name, defaultColor, {}, {}, swatch).apply { isClickable = false; isLongClickable = false },
+                FrameLayout.LayoutParams(dp(130), WRAP, Gravity.CENTER_HORIZONTAL))
+            emojis.removeAllViews()
+            emojis.addView(optionGrid((listOf(defaultEmoji) + Looks.EMOJIS).distinct(), emoji) {
+                emoji = it
+                refresh()
+            })
+            colors.removeAllViews()
+            colors.addView(swatchRow(swatch?.key, defaultColor) {
+                swatch = it
+                refresh()
+            })
+        }
+        refresh()
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        body.addView(preview, lp())
+        if (nameInput != null) body.addView(nameInput, lp(topDp = 12))
+        body.addView(caps("Emoji"), lp(topDp = 14))
+        body.addView(emojis, lp(topDp = 6))
+        body.addView(button("✏️ Escribir otro emoji", Palette.SURFACE, Palette.TEXT, heightDp = 40, radiusDp = 12, sizeSp = 13f) {
+            textDialog("Tu emoji", "Escribe o pega el emoji que quieras.", "", "😀", "Listo") { typed ->
+                val clean = Looks.cleanEmoji(typed)
+                if (clean == null) {
+                    toast("Pon un emoji (o hasta 4 caracteres)")
+                    false
+                } else {
+                    emoji = clean
+                    refresh()
+                    true
+                }
+            }
+        }, lp(topDp = 6))
+        body.addView(caps("Color"), lp(topDp = 14))
+        body.addView(colors, lp(topDp = 6))
+        body.addView(label("Los colores con 🔒 se desbloquean subiendo de nivel.", 12f, Palette.SUB), lp(topDp = 8))
+        AlertDialog.Builder(this)
+            .setTitle("Personalizar botón")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Guardar") { _, _ ->
+                val name = nameInput?.text?.toString()?.trim()?.ifEmpty { null }
+                Looks.setButton(
+                    key,
+                    Looks.Look(emoji.takeIf { it != defaultEmoji }, swatch?.key, name?.takeIf { it != defaultLabel }),
+                )
+                toast("🎨 Botón personalizado")
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Para audios largos: desde dónde suena (10 segundos desde ahí, también en el celular de tus amigos). */
+    private fun chooseStart(custom: CustomSound) {
+        val file = custom.file(this)
+        val duration = CustomAudio.durationOf(file)
+        if (duration == null) {
+            toast("No se pudo leer ese audio.")
+            return
+        }
+        if (duration <= Player.MAX_PLAY_MS + 500) {
+            info("Elegir la parte que suena", "Este audio dura ${clockText(duration)}: suena completo.")
+            return
+        }
+        var start = custom.startMs.coerceIn(0, (duration - 1000).toInt())
+        val text = label("", 15f, Palette.YELLOW, bold = true)
+        fun update() {
+            text.text = "Desde ${clockText(start.toLong())} hasta ${clockText(minOf(start + Player.MAX_PLAY_MS, duration))}"
+        }
+        update()
+        val bar = android.widget.SeekBar(this).apply {
+            max = ((duration - 1000) / 100).toInt()
+            progress = start / 100
+            contentDescription = "Desde dónde suena"
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: android.widget.SeekBar?, value: Int, fromUser: Boolean) {
+                    start = value * 100
+                    update()
+                }
+
+                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
+
+                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) = Unit
+            })
+        }
+        val play = button("Escuchar desde ahí", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_nav_sound, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
+            Player.preview(this, Player.Source.FromFile(file), custom.label, start)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("¿Desde dónde suena «${custom.label}»?")
+            .setView(padded(
+                label("El audio dura ${clockText(duration)}. Elige la parte graciosa: suenan 10 segundos desde ahí, en tu celular y en el de tus amigos.", 14f),
+                text, bar, play,
+            ))
+            .setPositiveButton("Guardar") { _, _ ->
+                Player.stop()
+                Store.putCustomSound(custom.copy(startMs = start))
+                toast("✂️ Listo: suena desde ${clockText(start.toLong())}")
+            }
+            .setNegativeButton("Cancelar") { _, _ -> Player.stop() }
+            .show()
+    }
+
+    private fun clockText(ms: Long): String {
+        val seconds = ms / 1000
+        return "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+
+    /** En Sonar: el poder listo para el próximo sonido, o el acceso a la tienda de poderes. */
+    private fun addPowerButton(line: LinearLayout) {
+        val armed = Powers.armed
+        line.addView(
+            button(
+                if (armed != null) "${armed.emoji} ${armed.name} listo" else "Poderes", if (armed != null) Palette.YELLOW else Palette.SURFACE,
+                if (armed != null) Palette.INK else Palette.TEXT, iconRes = R.drawable.ic_star, heightDp = 44, radiusDp = 14, sizeSp = 14f,
+                iconColor = if (armed != null) Palette.INK else Palette.YELLOW,
+            ) { showPowers() },
+            lp(0, WRAP, weight = 1f),
+        )
+    }
+
+    private fun showPowers() {
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        body.addView(
+            label("Tienes ${Points.balance()} puntos para gastar. Gastarlos no te baja de nivel ni en el ranking.", 13f, Palette.SUB),
+            lp(),
+        )
+        lateinit var dialog: AlertDialog
+        Powers.ALL.forEach { power ->
+            val ready = if (power.key == Powers.DOUBLE) Powers.doubleReady else Powers.armed?.key == power.key
+            val item = card(Palette.SURFACE, 18, 12)
+            val head = row()
+            head.addView(label(power.emoji, 26f).apply { includeFontPadding = false })
+            val texts = column()
+            texts.addView(label("${power.name} · ${power.cost} puntos", 15f, bold = true), lp())
+            texts.addView(label(power.text, 12f, Palette.SUB), lp())
+            head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(10) })
+            item.addView(head, lp())
+            item.addView(
+                button(
+                    if (ready) "Listo · devolver puntos" else "Usar", if (ready) Palette.SURFACE2 else Palette.YELLOW,
+                    if (ready) Palette.TEXT else Palette.INK, heightDp = 40, radiusDp = 12, sizeSp = 13f,
+                ) {
+                    when {
+                        ready -> {
+                            Powers.cancel(power)
+                            toast("Te devolvimos ${power.cost} puntos")
+                        }
+                        power.key != Powers.DOUBLE && Powers.armed != null -> toast("Ya tienes un poder listo para tu próximo sonido")
+                        Powers.buy(power) -> toast(
+                            "${power.emoji} ${power.name} listo" + if (power.key == Powers.DOUBLE) " para tu próximo reto" else ": va en tu próximo sonido",
+                        )
+                        else -> toast("Te faltan ${power.cost - Points.balance()} puntos")
+                    }
+                    dialog.dismiss()
+                },
+                lp(topDp = 10),
+            )
+            body.addView(item, lp(topDp = 10))
+        }
+        body.addView(
+            label("Los poderes no le quitan el control a nadie: quien recibe siempre puede detener el sonido, silenciar o bloquear.", 12f, Palette.SUB),
+            lp(topDp = 12),
+        )
+        dialog = AlertDialog.Builder(this)
+            .setTitle("🌟 Poderes")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setNegativeButton("Cerrar", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun editAvatar() {
+        var emoji = Looks.myEmoji
+        var swatch = Looks.swatch(Looks.mySwatch) ?: Looks.SWATCHES[2]
+        val preview = FrameLayout(this)
+        val emojis = FrameLayout(this)
+        val colors = FrameLayout(this)
+        lateinit var refresh: () -> Unit
+        refresh = {
+            preview.removeAllViews()
+            val face = if (emoji.isNotEmpty()) label(emoji, 34f).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+            } else avatar(Store.myName, swatch.main, sizeDp = 72)
+            face.background = swatch.oval(this)
+            preview.addView(face, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER_HORIZONTAL))
+            emojis.removeAllViews()
+            emojis.addView(optionGrid(listOf("Aa") + Looks.EMOJIS, emoji.ifEmpty { "Aa" }) {
+                emoji = if (it == "Aa") "" else it
+                refresh()
+            })
+            colors.removeAllViews()
+            colors.addView(swatchRow(swatch.key, null) { picked ->
+                if (picked != null) swatch = picked
+                refresh()
+            })
+        }
+        refresh()
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        body.addView(preview, lp())
+        body.addView(label("Tus amigos lo ven en el chat, el ranking y cuando les suena algo tuyo. «Aa» usa tu inicial.", 12f, Palette.SUB), lp(topDp = 10))
+        body.addView(caps("Emoji"), lp(topDp = 14))
+        body.addView(emojis, lp(topDp = 6))
+        body.addView(caps("Color"), lp(topDp = 14))
+        body.addView(colors, lp(topDp = 6))
+        AlertDialog.Builder(this)
+            .setTitle("Tu avatar")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton("Guardar") { _, _ -> Looks.setMyAvatar(emoji, swatch.key) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun chooseChatTheme(key: String) {
+        val level = Points.level().number
+        val current = Looks.chatTheme(key)
+        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        lateinit var dialog: AlertDialog
+        Looks.THEMES.forEach { theme ->
+            val locked = theme.level > level
+            val item = row().apply {
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, if (theme.background.size > 1) theme.background else intArrayOf(theme.background[0], theme.background[0])).apply {
+                    cornerRadius = dp(16).toFloat()
+                    if (theme.key == current.key) setStroke(dp(3), Palette.ACCENT)
+                }
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                alpha = if (locked) 0.5f else 1f
+                isClickable = true
+                contentDescription = "Tema ${theme.name}" + if (locked) ", se desbloquea en el nivel ${theme.level}" else ""
+                setOnClickListener {
+                    if (locked) {
+                        toast("🔒 El tema ${theme.name} se desbloquea en el nivel ${theme.level}")
+                    } else {
+                        Looks.setChatTheme(key, theme)
+                        dialog.dismiss()
+                    }
+                }
+            }
+            item.addView(label(theme.name, 15f, theme.theirsText, bold = true), lp(0, WRAP, weight = 1f))
+            item.addView(label("Hola", 13f, theme.theirsText).apply {
+                background = rounded(theme.theirs, 12)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) })
+            item.addView(label(if (locked) "🔒 ${theme.level}" else "¡Hola!", 13f, theme.mineText).apply {
+                background = rounded(theme.mine, 12)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+            }, LinearLayout.LayoutParams(WRAP, WRAP))
+            body.addView(item, lp(topDp = 8))
+        }
+        body.addView(label("El tema es solo para ti: cada uno decora su chat como quiere.", 12f, Palette.SUB), lp(topDp = 12))
+        dialog = AlertDialog.Builder(this)
+            .setTitle("🎨 Decorar el chat")
+            .setView(ScrollView(this).apply { addView(body) })
+            .setNegativeButton("Cerrar", null)
+            .create()
+        dialog.show()
+    }
+
+    // ------------------------------------------------------------------ Mascota
+
+    private fun addPetCard() {
+        val species = Pets.current
+        val box = card(Palette.SURFACE, 24, 16)
+        if (species == null) {
+            val head = row()
+            head.addView(label("🥚", 40f).apply { includeFontPadding = false })
+            val texts = column()
+            texts.addView(title("Adopta una mascota", 18f, weight = 600), lp())
+            texts.addView(label("Crece con los puntos que ganas y tus amigos la ven junto a tu nombre.", 13f, Palette.SUB), lp())
+            head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+            box.addView(head, lp())
+            box.addView(button("Adoptar", Palette.YELLOW, Palette.INK, heightDp = 44, radiusDp = 14, sizeSp = 14f) { adoptPet() }, lp(topDp = 12))
+            add(box, 12)
+            return
+        }
+        val stage = Pets.stage()
+        val next = Pets.next(stage)
+        val mood = Pets.mood()
+        val head = row()
+        head.addView(label(Pets.emoji(species, stage.number), 46f).apply {
+            includeFontPadding = false
+            isClickable = true
+            contentDescription = "Acariciar a ${Pets.name}"
+            setOnClickListener { toast("${Pets.name} ${Pets.reaction()} 💕") }
+        })
+        val texts = column()
+        texts.addView(title(Pets.name, 20f, weight = 600), lp())
+        texts.addView(label("${species.name} · ${stage.name}", 13f, Palette.YELLOW, bold = true), lp())
+        texts.addView(label("${mood.face} ${mood.text}", 13f, if (mood == Pets.Mood.HAPPY) Palette.OK else Palette.YELLOW, bold = true), lp())
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        head.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB) { petOptions() })
+        box.addView(head, lp())
+        if (next != null) {
+            box.addView(progressBar((Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp), Palette.OK), lp(MATCH, dp(8), topDp = 12))
+            box.addView(label("Le faltan ${next.xp - Pets.xp} puntos para ser ${next.name.lowercase()}", 12f, Palette.SUB), lp(topDp = 4))
+        } else {
+            box.addView(label("👑 ¡Llegó a legendaria!", 13f, Palette.YELLOW, bold = true), lp(topDp = 8))
+        }
+        val actions = row()
+        actions.addView(button("Alimentar · ${Pets.FEED_COST} pts", Palette.OK, Palette.INK, heightDp = 42, radiusDp = 14, sizeSp = 13f) {
+            when {
+                Pets.ateRecently() -> toast("${Pets.name} ya comió. Vuelve en un rato.")
+                Pets.feed() -> toast("🍖 ¡Ñam! ${Pets.name} está feliz")
+                else -> toast("Te faltan puntos: tienes ${Points.balance()}")
+            }
+        }, lp(0, WRAP, weight = 1f))
+        actions.addView(space(8))
+        actions.addView(button("Acariciar", Palette.SURFACE2, Palette.TEXT, heightDp = 42, radiusDp = 14, sizeSp = 13f) {
+            toast("${Pets.name} ${Pets.reaction()} 💕")
+        }, lp(0, WRAP, weight = 1f))
+        box.addView(actions, lp(topDp = 12))
+        add(box, 12)
+    }
+
+    private fun petOptions() {
+        val options = listOf<Pair<String, () -> Unit>>(
+            "✏️ Cambiar nombre" to {
+                textDialog("Nombre de tu mascota", null, Pets.name, "Nombre", "Guardar") { name ->
+                    Pets.rename(name)
+                    true
+                }
+            },
+            "🔄 Adoptar otra" to { adoptPet() },
+        )
+        AlertDialog.Builder(this)
+            .setTitle(Pets.name)
+            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun adoptPet() {
+        val level = Points.level().number
+        var chosen = Pets.SPECIES.first()
+        val choices = FrameLayout(this)
+        val nameInput = editText("", "Nombre (opcional)").apply { filters = arrayOf<InputFilter>(InputFilter.LengthFilter(16)) }
+        lateinit var refresh: () -> Unit
+        refresh = {
+            choices.removeAllViews()
+            val box = column()
+            Pets.SPECIES.chunked(4).forEach { chunk ->
+                val line = row()
+                chunk.forEach { species ->
+                    val locked = species.level > level
+                    val selected = species.key == chosen.key
+                    val cell = column().apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(4), dp(8), dp(4), dp(8))
+                        background = clickable(rounded(if (selected) Palette.ACCENT_SOFT else Palette.SURFACE, 14, if (selected) Palette.ACCENT else null))
+                        alpha = if (locked) 0.45f else 1f
+                        isClickable = true
+                        contentDescription = species.name + if (locked) ", se desbloquea en el nivel ${species.level}" else ""
+                        setOnClickListener {
+                            if (locked) toast("🔒 ${species.name} se desbloquea en el nivel ${species.level}") else {
+                                chosen = species
+                                refresh()
+                            }
+                        }
+                    }
+                    cell.addView(label(if (locked) "🔒" else species.emoji, 26f).apply { gravity = Gravity.CENTER }, lp())
+                    cell.addView(label(species.name, 11f, bold = true).apply { gravity = Gravity.CENTER }, lp())
+                    line.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+                }
+                box.addView(line, lp())
+            }
+            choices.addView(box)
+        }
+        refresh()
+        val warning = if (Pets.current != null) "Tu mascota actual se va y la nueva empieza como huevo." else
+            "Empieza como huevo y crece con los puntos que ganes desde hoy."
+        AlertDialog.Builder(this)
+            .setTitle("Adopta una mascota")
+            .setView(padded(choices, nameInput, label(warning, 12f, Palette.SUB)))
+            .setPositiveButton("Adoptar") { _, _ ->
+                Pets.adopt(chosen, nameInput.text.toString())
+                toast("🥚 ¡Adoptaste a ${Pets.name}! Gana puntos para que crezca.")
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     // ------------------------------------------------------------------ Reglas, privacidad y denuncias
@@ -2480,8 +3011,20 @@ class MainActivity : Activity(), Store.Listener {
         }
         val reto = now.retoId?.let { Store.reto(it) }
         val locked = Locks.blocksStop(now)
+        val superSound = now.power == Powers.SUPER
+        // Súper sonido: pantalla dorada; se detiene igual que cualquier otro.
+        overlay.background = if (superSound) {
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF4A3300.toInt(), 0xFF6B1450.toInt(), 0xFF1A0B38.toInt()))
+        } else {
+            ColorDrawable(Palette.OVERLAY)
+        }
         page.addView(View(this), lp(MATCH, 0, weight = 1f))
-        val heading = if (reto != null) "Reto · ${Retos.kindOf(reto.kind).title}" else "Te llegó un sonido"
+        val heading = when {
+            reto != null -> "Reto · ${Retos.kindOf(reto.kind).title}"
+            superSound -> "🌟 ¡Súper sonido! 🌟"
+            now.power == Powers.ECO -> "🔁 Te llegó un sonido con eco"
+            else -> "Te llegó un sonido"
+        }
         page.addView(caps(heading).apply { textSize = 13f }, LinearLayout.LayoutParams(WRAP, WRAP))
 
         val stage = FrameLayout(this)
@@ -2490,7 +3033,7 @@ class MainActivity : Activity(), Store.Listener {
         val tile = label(sound?.emoji ?: "🎤", 72f).apply {
             gravity = Gravity.CENTER
             includeFontPadding = false
-            background = rounded(sound?.color ?: Palette.CUSTOM, 44)
+            background = if (superSound) Looks.swatch("oro")!!.drawable(context, 44) else rounded(sound?.color ?: Palette.CUSTOM, 44)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         stage.addView(tile, FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER))
@@ -2505,7 +3048,7 @@ class MainActivity : Activity(), Store.Listener {
             background = rounded(Palette.SURFACE, 999)
             setPadding(dp(8), dp(8), dp(16), dp(8))
         }
-        from.addView(avatar(sender, Palette.avatar(now.fromCode), sizeDp = 32))
+        from.addView(personAvatar(now.fromCode, sender, 32))
         from.addView(
             label(if (reto != null) now.fromName else "de ${now.fromName}", 16f, bold = true),
             LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(10) },
@@ -2780,16 +3323,21 @@ class MainActivity : Activity(), Store.Listener {
         val playbackId = Codes.random(12)
         val payload = Relay.payload("snd").put("id", playbackId).put("s", kind).put("label", label)
         target.groupId?.let { payload.put("g", it) }
+        if (custom != null && custom.startMs > 0) payload.put("st", custom.startMs)
         val file = custom?.file(this)
         if (file != null && !file.exists()) {
             toast("No encuentro ese audio, súbelo otra vez.")
             return
         }
+        // Un poder listo (Súper sonido, Eco) se usa en este sonido; si no sale, vuelve a quedar listo.
+        val power = Powers.take()
+        if (power != null) payload.put("pw", power.key)
         val toName = if (target.groupId != null) "el grupo ${target.name}" else target.name
         runInBackground({
             if (file != null) Relay.publishFileTopic(target.topic, payload, file) else Relay.publishTopic(target.topic, payload)
-        }) {
+        }, onError = { power?.let { Powers.restore(it) } }) {
             Points.onSoundSent()
+            if (power != null) toast("${power.emoji} ${power.name} enviado")
             val sent = Sent(target.topic, toName, playbackId, label)
             lastSent = sent
             render()
@@ -2811,7 +3359,9 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun customOptions(custom: CustomSound) {
         val options = listOf<Pair<String, () -> Unit>>(
-            "▶️ Escucharlo" to { Player.preview(this, Player.Source.FromFile(custom.file(this)), custom.label) },
+            "▶️ Escucharlo" to { Player.preview(this, Player.Source.FromFile(custom.file(this)), custom.label, custom.startMs) },
+            "🎨 Personalizar botón" to { customizeButton("c:${custom.id}", "🎤", Palette.CUSTOM, custom.label, editName = false) },
+            "✂️ Elegir la parte que suena" to { chooseStart(custom) },
             "✏️ Cambiar nombre" to { renameCustom(custom) },
             "🗑 Borrar" to { deleteCustom(custom) },
         )
@@ -3202,10 +3752,13 @@ class MainActivity : Activity(), Store.Listener {
         }
         val saved = booleanArrayOf(false)
         val dialog = textDialog("¿Cómo se llama este audio?", CustomAudio.HINT, imported.suggestedLabel, "Nombre", "Guardar") { name ->
-            Store.putCustomSound(imported.sound.copy(label = name))
+            val sound = imported.sound.copy(label = name)
+            Store.putCustomSound(sound)
             Points.onCustomAdded()
             saved[0] = true
-            toast("🎤 Audio agregado: ya puedes mandarlo")
+            // Si es largo (una canción, un audio descargado), se elige la parte que suena.
+            if (imported.durationMs > Player.MAX_PLAY_MS + 500) ui.post { chooseStart(sound) }
+            else toast("🎤 Audio agregado: ya puedes mandarlo")
             true
         }
         dialog.setOnDismissListener {
@@ -3264,7 +3817,7 @@ class MainActivity : Activity(), Store.Listener {
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             recorder.setAudioEncodingBitRate(96_000)
             recorder.setAudioSamplingRate(44_100)
-            recorder.setMaxDuration(CustomAudio.MAX_MS.toInt())
+            recorder.setMaxDuration(CustomAudio.RECORD_MS.toInt())
             recorder.setOutputFile(file.absolutePath)
             recorder.prepare()
             recorder.start()
@@ -3375,6 +3928,7 @@ class MainActivity : Activity(), Store.Listener {
             Player.stop()
             Store.resetCode()
             Points.clearScores()
+            Looks.clearProfiles()
             pages.clear()
             selectedTarget = null
             ListenService.restart(this)

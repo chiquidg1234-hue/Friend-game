@@ -9,6 +9,8 @@ import java.util.Calendar
 /**
  * Puntos, niveles, logros y el ranking con tus amigos. Todo se calcula en tu celular; tus puntos
  * viajan en cada mensaje que mandas, así tus amigos y tus grupos pueden armar el ranking.
+ * Los puntos ganados cuentan para el nivel y el ranking; los que gastas (mascota, poderes) solo
+ * bajan lo que te queda para gastar.
  */
 object Points {
 
@@ -122,6 +124,25 @@ object Points {
 
     fun stat(name: String): Int = prefs.getInt("stat_$name", 0)
 
+    /** Puntos que te quedan para gastar en la mascota y los poderes. */
+    @Synchronized
+    fun balance(): Int = (total() - prefs.getInt("spent", 0)).coerceAtLeast(0)
+
+    /** Gasta [points] si alcanzan. No cambia el nivel ni el ranking. */
+    @Synchronized
+    fun spend(points: Int): Boolean {
+        if (balance() < points) return false
+        prefs.edit().putInt("spent", prefs.getInt("spent", 0) + points).apply()
+        Store.notifyChanged()
+        return true
+    }
+
+    @Synchronized
+    fun refund(points: Int) {
+        prefs.edit().putInt("spent", (prefs.getInt("spent", 0) - points).coerceAtLeast(0)).apply()
+        Store.notifyChanged()
+    }
+
     val streak: Int get() = if (prefs.getString("last_day", "") in listOf(today(), yesterday())) stat("streak") else 0
 
     fun hasLogro(key: String): Boolean = prefs.getBoolean("logro_$key", false)
@@ -160,9 +181,11 @@ object Points {
             .apply()
         val after = level()
         if (after.number > before.number) {
-            val unlocked = Sounds.all.filter { it.level == after.number }
+            val unlocked = Looks.SWATCHES.filter { it.level == after.number }.map { "color ${it.name}" } +
+                Looks.THEMES.filter { it.level == after.number }.map { "tema ${it.name}" } +
+                Pets.SPECIES.filter { it.level == after.number }.map { "mascota ${it.emoji} ${it.name}" }
             celebrations += "🎉 ¡Subiste a nivel ${after.number}: ${after.name}!" +
-                if (unlocked.isEmpty()) "" else " Desbloqueaste " + unlocked.joinToString { "${it.emoji} ${it.label}" }
+                if (unlocked.isEmpty()) "" else " Desbloqueaste: " + unlocked.joinToString()
         }
         Store.notifyChanged()
         return true
@@ -219,10 +242,14 @@ object Points {
     /** [place] empieza en 1. Solo cuenta si jugaron al menos dos. */
     fun onRetoPlace(place: Int, players: Int) {
         if (players < 2) return
-        val points = Rule.RETO_PLACE.getOrNull(place - 1) ?: return
+        var points = Rule.RETO_PLACE.getOrNull(place - 1) ?: return
         if (place == 1) {
             bump("retos_won")
             unlock("reto_win")
+            if (Powers.takeDouble()) {
+                points *= 2
+                celebrations += "✖️ Poder Doble puntos: ganaste $points puntos"
+            }
         }
         add(points, "reto_place", 6)
     }

@@ -61,7 +61,8 @@ data class Group(
 /** Un sonido recibido, para el historial. */
 data class HistoryEntry(val time: Long, val text: String)
 
-data class CustomSound(val id: String, val label: String, val ext: String) {
+/** Audio propio. [startMs]: desde dónde suena (para usar la parte graciosa de un audio largo). */
+data class CustomSound(val id: String, val label: String, val ext: String, val startMs: Int = 0) {
     fun file(context: Context) = CustomAudio.fileFor(context, this)
 }
 
@@ -166,6 +167,9 @@ object Store {
             prefs = context.applicationContext.getSharedPreferences("friendgame", Context.MODE_PRIVATE)
             chatPrefs = context.applicationContext.getSharedPreferences("friendgame-chats", Context.MODE_PRIVATE)
             Points.init(context)
+            Looks.init(context)
+            Pets.init(context)
+            Powers.init(context)
         }
     }
 
@@ -429,7 +433,7 @@ object Store {
         val array = JSONArray(prefs.getString("custom_sounds", "[]") ?: "[]")
         return (0 until array.length()).mapNotNull { i ->
             val o = array.optJSONObject(i) ?: return@mapNotNull null
-            CustomSound(o.optString("id"), o.optString("label"), o.optString("ext"))
+            CustomSound(o.optString("id"), o.optString("label"), o.optString("ext"), o.optInt("st"))
         }
     }
 
@@ -451,7 +455,7 @@ object Store {
 
     private fun saveCustomSounds(list: List<CustomSound>) {
         val array = JSONArray()
-        list.forEach { array.put(JSONObject().put("id", it.id).put("label", it.label).put("ext", it.ext)) }
+        list.forEach { array.put(JSONObject().put("id", it.id).put("label", it.label).put("ext", it.ext).put("st", it.startMs)) }
         prefs.edit().putString("custom_sounds", array.toString()).apply()
         notifyChanged()
     }

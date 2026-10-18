@@ -414,7 +414,38 @@ check "Toca Total" $UI tapexact "Total"
 check "Ana tiene 120 puntos en total" $UI wait "Ana, 120 puntos" 5
 shot "ranking"
 adb shell input keyevent KEYCODE_BACK
-check "En Sonar hay sonidos por desbloquear" sh -c "$UI tab Sonar && $UI see 'bloqueado hasta el nivel 9'"
+
+echo "== 9k. Personalizar un botón, adoptar una mascota y usar un poder"
+check "Pestaña Sonar" $UI tab Sonar
+check "Mantener presionada la Bocina" $UI longtap "Bocina"
+check "Opción Personalizar botón" $UI tap "Personalizar botón"
+check "Elige el emoji 🐸" $UI tapexact "🐸"
+check "Guarda" $UI tapexact "Guardar"
+check "El botón ahora tiene la rana" $UI see "🐸"
+shot "boton-personalizado"
+check "Pestaña Tú" $UI tab Tú
+check "Botón Adoptar" $UI tap "Adoptar"
+check "Confirma la adopción" $UI tapexact "Adoptar"
+check "Aparece la mascota" $UI see "Huevo"
+shot "mascota"
+check "Pestaña Sonar" $UI tab Sonar
+check "Abre los poderes" $UI tap "Poderes"
+check "Ve el poder Eco" $UI wait "Eco · 20 puntos" 10
+shot "poderes"
+# El segundo botón "Usar" es el de Eco (el primero es Súper sonido).
+check "Compra Eco" sh -c "python3 - <<'PY'
+import subprocess, sys
+sys.path.insert(0, '$HERE')
+import ui
+nodes = [n for n in ui.nodes() if (n.get('text') or '').strip().lower() == 'usar' and ui.on_screen(n)]
+if len(nodes) < 2: sys.exit(1)
+ui.tap_node(nodes[1])
+PY"
+check "Queda listo para el próximo sonido" $UI wait "Eco listo" 10
+check "Elige a Ana" $UI tap "Mandar a Ana"
+check "Toca la Bocina (ahora la rana)" $UI tap "🐸"
+check "A Ana le llega el sonido con el poder Eco" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina pw=eco --wait 20
+check "El sonido lleva el avatar y la mascota" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" pw=eco pet=gato:0 --wait 5
 
 echo "== 10. Pausar la recepción"
 open_settings

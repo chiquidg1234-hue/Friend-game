@@ -38,7 +38,7 @@ object Relay {
      * Mensaje base: siempre lleva quién lo manda, para que el otro pueda contestar, y sus puntos,
      * para el ranking.
      */
-    fun payload(type: String): JSONObject = Points.attach(base(type))
+    fun payload(type: String): JSONObject = Looks.attach(Points.attach(base(type)))
 
     private fun base(type: String): JSONObject = JSONObject()
         .put("fg", PROTOCOL_VERSION)

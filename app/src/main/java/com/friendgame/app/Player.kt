@@ -36,6 +36,10 @@ object Player {
         val retoId: String? = null,
         /** Se repite hasta que lo detengan o pasen 10 s (en «El más rápido» hay que alcanzar a tocarlo). */
         val loop: Boolean = false,
+        /** Poder con el que lo mandaron ("super", "eco") o "". */
+        val power: String = "",
+        /** Audio propio: desde qué milisegundo suena (el remitente elige la parte que quiere). */
+        val startMs: Int = 0,
     ) {
         val isPreview: Boolean get() = fromCode.isEmpty()
 
@@ -75,8 +79,8 @@ object Player {
     }
 
     /** Escuchar un sonido en tu propio celular antes de mandarlo. */
-    fun preview(context: Context, source: Source, label: String) {
-        play(context, source, NowPlaying(Codes.random(12), "", "", label))
+    fun preview(context: Context, source: Source, label: String, startMs: Int = 0) {
+        play(context, source, NowPlaying(Codes.random(12), "", "", label, startMs = startMs))
     }
 
     fun stop() {
@@ -118,7 +122,7 @@ object Player {
         appContext = app
         val alarm = incoming && SoundCheck.useAlarm(app)
         // Si el reproductor falla con el volumen de alarma, se intenta otra vez con el multimedia.
-        val mp = start(app, source, alarm, info.loop) ?: (if (alarm) start(app, source, false, info.loop) else null)
+        val mp = start(app, source, alarm, info) ?: (if (alarm) start(app, source, false, info) else null)
         if (mp == null) {
             if (incoming) {
                 Store.lastProblem = "No se pudo reproducir «${info.label}» en este celular."
@@ -129,13 +133,14 @@ object Player {
         if (incoming) Store.lastProblem = ""
         player = mp
         info.startedAt = SystemClock.elapsedRealtime()
-        info.durationMs = if (info.loop) MAX_PLAY_MS else mp.duration.toLong().takeIf { it > 0 }?.coerceAtMost(MAX_PLAY_MS) ?: MAX_PLAY_MS
+        info.durationMs = if (info.loop) MAX_PLAY_MS
+        else (mp.duration.toLong() - info.startMs).takeIf { it > 0 }?.coerceAtMost(MAX_PLAY_MS) ?: MAX_PLAY_MS
         now = info
         main.postDelayed(timeout, MAX_PLAY_MS)
         Store.notifyChanged()
     }
 
-    private fun start(app: Context, source: Source, alarm: Boolean, loop: Boolean): MediaPlayer? {
+    private fun start(app: Context, source: Source, alarm: Boolean, info: NowPlaying): MediaPlayer? {
         val mp = MediaPlayer()
         attributes = attributesFor(alarm)
         return try {
@@ -152,8 +157,9 @@ object Player {
                 if (failed === player) stopOnMain()
                 true
             }
-            mp.isLooping = loop
+            mp.isLooping = info.loop
             mp.prepare()
+            if (info.startMs > 0 && info.startMs < mp.duration - 300) mp.seekTo(info.startMs)
             requestFocus(app)
             mp.start()
             mp
