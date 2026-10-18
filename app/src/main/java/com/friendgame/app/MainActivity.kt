@@ -3828,24 +3828,16 @@ class MainActivity : Activity(), Store.Listener {
             return
         }
         val startedAt = SystemClock.elapsedRealtime()
-        val status = title("Grabando… 0 s", 22f, weight = 600)
+        // El contador se pinta solo (LiveText): cambiar el texto cada segundo no deja leer la pantalla a TalkBack.
+        val status = LiveText(this, 22f, Palette.TEXT, true, "Grabando, hasta 8 segundos") {
+            "Grabando… ${(SystemClock.elapsedRealtime() - startedAt) / 1000} s de 8"
+        }
         var finished = false
         lateinit var dialog: AlertDialog
-        val tick = object : Runnable {
-            override fun run() {
-                if (finished) return
-                val seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000
-                // Solo cuando cambia: reescribir el texto seguido no deja leer la pantalla a TalkBack.
-                val text = "Grabando… $seconds s de 8"
-                if (status.text.toString() != text) status.text = text
-                ui.postDelayed(this, 250)
-            }
-        }
         fun finish(keep: Boolean) {
             if (finished) return
             finished = true
             cancelRecording = null
-            ui.removeCallbacks(tick)
             val ok = try {
                 recorder.stop()
                 true
@@ -3877,7 +3869,6 @@ class MainActivity : Activity(), Store.Listener {
         }
         cancelRecording = { finish(keep = false) }
         dialog.show()
-        ui.post(tick)
     }
 
     private fun askBatteryExemption() {

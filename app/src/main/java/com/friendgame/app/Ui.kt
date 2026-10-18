@@ -335,7 +335,8 @@ class TimeBar(
             paint.color = fillColor
             canvas.drawRoundRect(rect, radius, radius, paint)
         }
-        if (fraction < 1f) postInvalidateOnAnimation()
+        // 10 veces por segundo basta para que se vea fluida y pesa mucho menos que cada cuadro.
+        if (fraction < 1f) postInvalidateDelayed(100)
     }
 }
 

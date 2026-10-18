@@ -135,10 +135,9 @@ check "Se quita la pantalla de 'te llegó un sonido'" $UI absent "Te llegó un s
 echo "== 5. El robot detiene un sonido desde su propio celular"
 publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p3 custom 'Otra vez')" >/dev/null
 check "Suena otra vez" $UI playing 25
-check "Muestra la pantalla de 'te llegó un sonido'" $UI wait "Te llegó un sonido" 6
-check "Muestra quién lo mandó" $UI wait "de Ana" 3
 shot "sonando"
-check "Botón Detener" $UI tapexact "Detener"
+# Comprueba la pantalla y toca Detener con la misma lectura: el sonido dura solo 10 s.
+check "Muestra «te llegó un sonido», quién lo mandó, y Detener funciona" $UI tapwhen "Detener" 8 "Te llegó un sonido" "de Ana"
 check "Se detiene al tocar Detener" $UI silent 3
 
 echo "== 6. Ningún sonido dura más de 10 segundos"
@@ -356,9 +355,7 @@ check "Aparece el reto de Ana en el chat" $UI wait "Reto: El más rápido" 15
 check "Muestra la cuenta regresiva" $UI wait "Suena en" 5
 shot "reto"
 check "A la hora del reto suena para todos" $UI playing 45
-check "Muestra la pantalla del reto" $UI wait "Reto · El más rápido" 6
-shot "reto-sonando"
-check "Lo detiene" $UI tapexact "Detener"
+check "Muestra la pantalla del reto y lo detiene" $UI tapwhen "Detener" 8 "Reto · El más rápido"
 check "Se detiene" $UI silent 3
 check "Le manda su tiempo a Ana" $INBOX "$OUT/inbox-ana.jsonl" retores from="$MYCODE" id=r1abcdefgh --wait 20
 publish "$MYCODE" "{\"fg\":1,\"t\":\"retores\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"r1abcdefgh\",\"ms\":9500}" >/dev/null
@@ -381,11 +378,11 @@ check "A Ana le llega que aceptó" $INBOX "$OUT/inbox-ana.jsonl" lockacc from="$
 check "El chat muestra el candado activo" $UI wait "Candado · quedan" 10
 publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana lk1 custom 'Con candado')" >/dev/null
 check "Suena el sonido de Ana" $UI playing 25
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+check "Con candado, atrás no lo detiene" $UI playing 1
 check "No muestra Detener: muestra el candado" $UI wait "Acordaste un candado con Ana" 6
 shot "candado-sonando"
-$UI tap "Candado activo"
-adb shell input keyevent KEYCODE_BACK
-check "Con candado no se puede detener" $UI playing 1
 $UI silent 12
 check "Al terminar el minuto, el candado se cumple" $UI wait "Candado cumplido" 75
 adb shell input keyevent KEYCODE_BACK

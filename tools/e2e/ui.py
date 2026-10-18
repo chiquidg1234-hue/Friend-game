@@ -38,6 +38,8 @@ W, H = screen_size()
 
 def dump():
     for _ in range(4):
+        # Se borra antes: si uiautomator falla, no hay que leer la pantalla anterior como si fuera la actual.
+        adb("shell", "rm", "-f", "/sdcard/ui.xml", check=False)
         adb("shell", "uiautomator", "dump", "/sdcard/ui.xml", check=False)
         raw = adb("shell", "cat", "/sdcard/ui.xml", check=False)
         start = raw.find("<?xml")
@@ -201,6 +203,20 @@ def main():
         adb("shell", "input", "swipe", x, y, x, y, "900")
         time.sleep(1.2)
         return 0
+    if cmd == "tapwhen":
+        # tapwhen TEXTO_EXACTO SEGUNDOS [TEXTO_QUE_DEBE_ESTAR ...]: comprueba y toca con la misma
+        # lectura de pantalla (sirve mientras suena algo que dura poco).
+        wanted, timeout, required = sys.argv[2].lower(), float(sys.argv[3]), sys.argv[4:]
+        end = time.time() + timeout
+        while time.time() < end:
+            found = nodes()
+            if all(any(matches(n, r) for n in found) for r in required):
+                target = next((n for n in found if (n.get("text") or "").strip().lower() == wanted and on_screen(n)), None)
+                if target is not None:
+                    tap_node(target)
+                    return 0
+            time.sleep(0.3)
+        return 1
     if cmd == "tab":
         wanted = "pestaña " + sys.argv[2].lower()
         for node in nodes():
