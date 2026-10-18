@@ -55,6 +55,8 @@ La prueba automática (`tools/e2e/run.sh`) corre en cada push en un emulador And
 - **Lo nuevo:** chat, retos (recibir, sonar, detener, mandar el tiempo, crear, cancelar), candado (aceptar, no se puede detener, se cumple), puntos y ranking, botón personalizado, mascota y poder Eco.
 - **Otros:** donación, pausa, términos, Quick Share, que se actualiza sola, sin cierres inesperados.
 
+**Último resultado (versión 1.0.17): 181 comprobaciones bien, 0 fallos.**
+
 No se puede probar en el emulador: la cámara real (escanear el QR) ni el micrófono real. Ese paso avisa sin contar como fallo.
 
 El resultado de cada ejecución está en GitHub → **Actions → Probar en emulador**, y las capturas en https://github.com/chiquidg1234-hue/Friend-game/releases/tag/capturas
