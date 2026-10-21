@@ -218,12 +218,26 @@ def main():
             time.sleep(0.3)
         return 1
     if cmd == "tab":
+        # La app rearma la barra de abajo en cada cambio (por ejemplo, justo después de mandar
+        # un sonido): una lectura puede salir sin ella o el toque perderse. Se reintenta hasta
+        # que la pestaña quede elegida. Siempre se toca una vez: en la pestaña actual, sube al inicio.
         wanted = "pestaña " + sys.argv[2].lower()
-        for node in nodes():
-            if (node.get("content-desc") or "").lower().startswith(wanted) and on_screen(node):
+        end = time.time() + 10
+        tapped = False
+        while True:
+            node = next((n for n in nodes()
+                         if (n.get("content-desc") or "").lower().startswith(wanted) and on_screen(n)), None)
+            if node is not None:
+                if tapped and node.get("selected") == "true":
+                    return 0
+                if time.time() >= end:
+                    return 1
                 tap_node(node)
-                return 0
-        return 1
+                tapped = True
+                continue
+            if time.time() >= end:
+                return 1
+            time.sleep(1)
     if cmd == "tapclass":
         node = locate(lambda n: n.get("class") == sys.argv[2])
         if node is None:
