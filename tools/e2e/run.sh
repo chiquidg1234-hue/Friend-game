@@ -511,11 +511,13 @@ check "Vuelve al modo mandar" $UI tap "Modo mandar"
 publish "$MYCODE" "$(sound_json "$ANA" Ana rb1 pato Pato)" >/dev/null
 check "Suena el pato de Ana" $UI playing 20
 $UI silent 10
+$UI top
 check "Ofrece devolvérsela" $UI wait "Ana te hizo sonar «Pato»" 10
 shot "devolversela"
 check "Toca Devolvérsela" $UI tap "Devolvérsela"
 check "Toca la Campana para devolvérsela" $UI tap "Campana"
 check "A Ana le llega la campana" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=campana --wait 20
+$UI top
 check "Ya no ofrece devolvérsela" $UI absent "Ana te hizo sonar «Pato»" 10
 
 echo "== 10. Pausar la recepción"
