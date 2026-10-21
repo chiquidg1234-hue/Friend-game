@@ -171,6 +171,7 @@ fun Context.button(
     background = clickable(rounded(color, radiusDp, strokeColor))
     isClickable = true
     isFocusable = true
+    stateListAnimator = Anim.press()
     if (iconRes != null) {
         addView(icon(iconRes, iconColor, 18), LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(8) })
     }
@@ -203,6 +204,7 @@ fun Context.iconButton(
     background = clickable(if (color == 0) rounded(0, 14) else oval(color))
     isClickable = true
     isFocusable = true
+    stateListAnimator = Anim.press()
     contentDescription = description
     addView(icon(res, tint, 20), android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
     layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
@@ -255,6 +257,20 @@ fun Context.toggle(checked: Boolean, description: String, onChange: (Boolean) ->
     setOnCheckedChangeListener { _, value -> onChange(value) }
 }
 
+/** Mezcla [color] con blanco ([amount] > 0) o con negro ([amount] < 0). */
+fun shade(color: Int, amount: Float): Int {
+    val target = if (amount > 0) 255 else 0
+    val k = kotlin.math.abs(amount)
+    fun mix(c: Int) = (c + (target - c) * k).toInt().coerceIn(0, 255)
+    return (color and 0xFF000000.toInt()) or (mix((color shr 16) and 0xFF) shl 16) or (mix((color shr 8) and 0xFF) shl 8) or mix(color and 0xFF)
+}
+
+/** Fondo de "caramelo": más claro arriba a la izquierda y más oscuro abajo, como las mascotas 3D. */
+fun Context.candy(color: Int, radiusDp: Int = 22): GradientDrawable =
+    GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(shade(color, 0.28f), color, shade(color, -0.22f))).apply {
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+
 /** Botón de sonido: emoji grande y nombre debajo. */
 fun Context.soundTile(
     emoji: String,
@@ -267,9 +283,11 @@ fun Context.soundTile(
     gravity = Gravity.CENTER
     minimumHeight = dp(88)
     setPadding(dp(6), dp(8), dp(6), dp(8))
-    background = clickable(swatch?.drawable(context, 22) ?: rounded(color, 22), 0x40150C2C)
+    background = clickable(swatch?.drawable(context, 22) ?: candy(color, 22), 0x40150C2C)
     isClickable = true
     isFocusable = true
+    elevation = dp(3).toFloat()
+    stateListAnimator = Anim.press()
     addView(label(emoji, 28f).apply {
         gravity = Gravity.CENTER
         includeFontPadding = false
@@ -300,6 +318,7 @@ fun Context.addTile(iconRes: Int, text: String, onClick: () -> Unit): View = col
     background = clickable(border)
     isClickable = true
     isFocusable = true
+    stateListAnimator = Anim.press()
     addView(icon(iconRes, Palette.ACCENT_TEXT, 26), LinearLayout.LayoutParams(dp(26), dp(26)))
     addView(title(text, 15f, Palette.TEXT, 600).apply { gravity = Gravity.CENTER }, lp(topDp = 6))
     setOnClickListener { onClick() }

@@ -60,6 +60,7 @@ object Chats {
             Store.removeChatMessage(key, id)
             throw e
         }
+        if (!isGroup(key)) Streaks.onSent(codeOf(key))
         Points.onChatSent()
     }
 

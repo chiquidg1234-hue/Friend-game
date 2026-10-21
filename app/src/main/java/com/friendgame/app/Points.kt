@@ -44,6 +44,9 @@ object Points {
         Logro("custom", "🎤", "Mi propia voz", "Graba o sube un audio", 10),
         Logro("streak_3", "🔥", "Racha de 3", "Usa la app 3 días seguidos", 15),
         Logro("streak_7", "🌟", "Semana completa", "Usa la app 7 días seguidos", 40),
+        Logro("best_friends", "💞", "Mejores amigos", "Ten una racha de 7 días con un amigo", 40),
+        Logro("dj", "🎧", "DJ del grupo", "Comparte 3 sonidos en la Sonoteca", 20),
+        Logro("viral", "🚀", "Viral", "Que 5 amigos usen un sonido tuyo", 50),
     )
 
     /** Puntos por cada cosa, con un tope diario para que no se puedan inflar mandando spam. */
@@ -63,7 +66,16 @@ object Points {
         const val NEW_GROUP = 5
         const val LOCK_DONE = 20
         val RETO_PLACE = listOf(15, 8, 4)
+        const val QUEST_DONE = 10
+        const val SOUND_SHARED = 5
+        const val SOUND_SHARED_DAILY = 3
+        const val SOUND_FAN = 3
+        const val SOUND_FAN_DAILY = 10
     }
+
+    /** Protector de racha: si un día no abres la app, tu racha no se corta (se compra con puntos). */
+    const val FREEZE_COST = 60
+    const val MAX_FREEZES = 2
 
     /** Puntos de otra persona, según su último mensaje. */
     class Score(val code: String, val name: String, val total: Int, val week: Int, val level: Int)
@@ -117,9 +129,25 @@ object Points {
         return "%04d%02d%02d".format(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
     }
 
-    private fun yesterday(): String {
-        val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -1) }
+    private fun yesterday(): String = daysAgo(1)
+
+    private fun daysAgo(days: Int): String {
+        val c = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -days) }
         return "%04d%02d%02d".format(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+    }
+
+    /** Ya abriste la app hoy (para no recordártelo). */
+    fun openedToday(): Boolean = prefs.getString("last_day", "") == today()
+
+    /** Días desde la última vez que abriste la app (mucho si nunca). */
+    fun daysSinceOpen(): Int {
+        val last = prefs.getString("last_day", "") ?: ""
+        return try {
+            val day = java.time.LocalDate.of(last.substring(0, 4).toInt(), last.substring(4, 6).toInt(), last.substring(6, 8).toInt())
+            (java.time.LocalDate.now().toEpochDay() - day.toEpochDay()).toInt()
+        } catch (_: Exception) {
+            999
+        }
     }
 
     fun stat(name: String): Int = prefs.getInt("stat_$name", 0)
@@ -146,6 +174,38 @@ object Points {
     val streak: Int get() = if (prefs.getString("last_day", "") in listOf(today(), yesterday())) stat("streak") else 0
 
     fun hasLogro(key: String): Boolean = prefs.getBoolean("logro_$key", false)
+
+    /** Protectores de racha guardados. */
+    val freezes: Int @Synchronized get() = stat("freezes")
+
+    /** Compra un protector de racha. Devuelve false si no alcanzan los puntos o ya tienes el máximo. */
+    @Synchronized
+    fun buyFreeze(): Boolean {
+        if (freezes >= MAX_FREEZES || !spend(FREEZE_COST)) return false
+        bump("freezes")
+        Store.notifyChanged()
+        return true
+    }
+
+    /** Un protector de regalo (el cofre del día). Devuelve false si ya tienes el máximo. */
+    @Synchronized
+    fun giftFreeze(): Boolean {
+        if (freezes >= MAX_FREEZES) return false
+        bump("freezes")
+        Store.notifyChanged()
+        return true
+    }
+
+    /** Un aviso para festejar en la pantalla (rachas, misiones, cofre). */
+    @Synchronized
+    fun celebrate(text: String) {
+        celebrations += text
+        Store.notifyChanged()
+    }
+
+    /** Hay algo para festejar con confeti (logro o nivel nuevo). */
+    @Synchronized
+    fun hasBigCelebration(): Boolean = celebrations.any { it.startsWith("🎉") || it.startsWith("🏆") || it.startsWith("🎁") }
 
     /** Mensajes para festejar (logros, nivel nuevo); al leerlos se borran. */
     @Synchronized
@@ -209,11 +269,14 @@ object Points {
 
     // ---- Lo que da puntos ----
 
-    fun onSoundSent() {
+    /** Devuelve los puntos que ganó (0 si ya llegó al tope de hoy), para mostrarlos al mandar. */
+    fun onSoundSent(): Int {
         val sent = bump("sent")
-        add(Rule.SOUND_SENT, "sent", Rule.SOUND_SENT_DAILY)
+        val got = add(Rule.SOUND_SENT, "sent", Rule.SOUND_SENT_DAILY)
         unlock("first_sound")
         if (sent >= 50) unlock("sounds_50")
+        Quests.track(Quests.SEND)
+        return if (got) Rule.SOUND_SENT else 0
     }
 
     fun onSoundHeard() {
@@ -226,17 +289,20 @@ object Points {
         val sent = bump("chat")
         add(Rule.CHAT_SENT, "chat", Rule.CHAT_SENT_DAILY)
         if (sent >= 30) unlock("chat_30")
+        Quests.track(Quests.CHAT)
     }
 
     fun onRetoCreated() {
         val made = bump("retos_made")
         add(Rule.RETO_MADE, "reto_made", Rule.RETO_MADE_DAILY)
         if (made >= 3) unlock("reto_made")
+        Quests.track(Quests.RETO)
     }
 
     fun onRetoPlayed() {
         bump("retos_played")
         add(Rule.RETO_PLAYED, "reto_played", Rule.RETO_PLAYED_DAILY)
+        Quests.track(Quests.RETO)
     }
 
     /** [place] empieza en 1. Solo cuenta si jugaron al menos dos. */
@@ -284,13 +350,46 @@ object Points {
         unlock("custom")
     }
 
+    fun onQuestDone() {
+        add(Rule.QUEST_DONE)
+    }
+
+    fun onChestOpened(points: Int) {
+        bump("chests")
+        add(points)
+    }
+
+    /** Compartiste un sonido en la Sonoteca. */
+    fun onSoundShared() {
+        val shared = bump("shared")
+        add(Rule.SOUND_SHARED, "shared", Rule.SOUND_SHARED_DAILY)
+        if (shared >= 3) unlock("dj")
+        Quests.track(Quests.SHARE)
+    }
+
+    /** A alguien le gustó o usa tu sonido. [users]: cuántos lo usan ya. */
+    fun onSoundFan(users: Int) {
+        add(Rule.SOUND_FAN, "fan", Rule.SOUND_FAN_DAILY)
+        if (users >= 5) unlock("viral")
+    }
+
+    fun onFriendStreak(days: Int) {
+        if (days >= 7) unlock("best_friends")
+    }
+
     /** Al abrir la app: puntos del día y racha de días seguidos. */
     @Synchronized
     fun onDailyOpen() {
         val day = today()
         val last = prefs.getString("last_day", "")
         if (last == day) return
-        val streak = if (last == yesterday()) stat("streak") + 1 else 1
+        // Faltaste un solo día y tienes un protector: la racha sigue.
+        val saved = last == daysAgo(2) && stat("streak") > 0 && freezes > 0
+        if (saved) {
+            bump("freezes", -1)
+            celebrations += "🧊 Tu protector salvó tu racha de ${stat("streak")} días"
+        }
+        val streak = if (last == yesterday() || saved) stat("streak") + 1 else 1
         prefs.edit()
             .putString("last_day", day)
             .putInt("stat_streak", streak)

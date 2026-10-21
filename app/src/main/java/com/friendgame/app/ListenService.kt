@@ -241,6 +241,7 @@ class ListenService : Service() {
                     // Android atrasa la alarma de un reto.
                     Retos.checkDue(this)
                     Locks.finishDue()
+                    Reminders.check(this)
                 }
             }
         } finally {
@@ -277,13 +278,22 @@ class ListenService : Service() {
             "acc" -> onAccepted(from, name)
             "bye" -> onBye(from)
             "snd" -> {
-                if (friend == null || friend.muted) return
+                if (friend == null) return
+                Streaks.onReceived(from)
+                if (friend.muted) return
                 onSound(from, friend.name, null, payload, event)
             }
             "stop" -> Player.stopIfMatches(payload.optString("id"), from)
             "gmove" -> onGroupMoved(from, payload)
             "gkick" -> onGroupKicked(from, payload)
-            "msg" -> if (friend != null) Chats.receive(this, key, from, friend.name, payload, event.optString("id"), sentAt(event))
+            "msg" -> if (friend != null) {
+                Streaks.onReceived(from)
+                Chats.receive(this, key, from, friend.name, payload, event.optString("id"), sentAt(event))
+            }
+            "sndpub" -> if (friend != null && !friend.muted) Sonoteca.receive(this, from, friend.name, payload, event)
+            "sndfan" -> if (friend != null) {
+                Sonoteca.onFan(from, friend.name, payload)?.let { Notifs.sonoteca(this, payload.optString("id"), it, "Mira tus sonidos en Tú → Mercado → Sonoteca.") }
+            }
             "reto" -> if (friend != null && !friend.muted) Retos.receive(this, key, from, friend.name, payload, sentAgoMs(event))
             "retores" -> if (friend != null) Retos.onResult(key, from, friend.name, payload)
             "retono" -> Retos.onCancelled(this, from, payload)
@@ -324,6 +334,7 @@ class ListenService : Service() {
             "reto" -> if (member != null && !blocked && !group.muted) Retos.receive(this, key, from, sender, payload, sentAgoMs(event))
             "retores" -> if (member != null && !blocked) Retos.onResult(key, from, sender, payload)
             "retono" -> Retos.onCancelled(this, from, payload)
+            "sndpub" -> if (member != null && !blocked && !group.muted) Sonoteca.receive(this, from, sender, payload, event)
             "gjoin" -> {
                 val isNew = group.members.none { it.code == from }
                 if (isNew && group.isAdmin && group.members.size >= Group.MAX_MEMBERS) {
@@ -530,39 +541,9 @@ class ListenService : Service() {
 
     /** Descarga el audio propio de un amigo, solo desde nuestro servidor y con tamaño limitado. */
     private fun download(url: String): File? {
-        if (!url.startsWith(Relay.baseUrl() + "/")) return null
         cacheDir.listFiles { f -> f.name.startsWith("incoming-") }?.forEach { it.delete() }
         val out = File(cacheDir, "incoming-${System.nanoTime()}")
-        val conn = try {
-            URL(url).openConnection() as HttpURLConnection
-        } catch (_: IOException) {
-            return null
-        }
-        try {
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 20_000
-            conn.setRequestProperty("User-Agent", "FriendGame")
-            if (conn.responseCode != 200) return null
-            var total = 0L
-            conn.inputStream.use { input ->
-                out.outputStream().use { output ->
-                    val buffer = ByteArray(16 * 1024)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        total += n
-                        if (total > MAX_DOWNLOAD_BYTES) throw IOException("too big")
-                        output.write(buffer, 0, n)
-                    }
-                }
-            }
-            return out
-        } catch (_: IOException) {
-            out.delete()
-            return null
-        } finally {
-            conn.disconnect()
-        }
+        return if (Relay.download(url, out, MAX_DOWNLOAD_BYTES)) out else null
     }
 
     private fun sendQuietly(to: String, payload: JSONObject) {

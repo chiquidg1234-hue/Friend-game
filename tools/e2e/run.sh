@@ -194,6 +194,26 @@ shot "enviado"
 check "Toca Detener mi sonido" $UI tap "Detener mi sonido"
 check "A Ana le llega el detener" $INBOX "$OUT/inbox-ana.jsonl" stop from="$MYCODE" id="$SENT_ID" --wait 20
 
+echo "== 8b. Recarga: dos toques seguidos mandan un solo sonido"
+sleep 3
+$UI top
+# Los dos toques van seguidos, sin esperar a leer la pantalla: el segundo cae durante la recarga.
+check "Toca la Sirena dos veces seguidas" sh -c "python3 - <<'PY'
+import sys
+sys.path.insert(0, '$HERE')
+import ui
+node = ui.locate(lambda n: (n.get('text') or '').strip() == 'Sirena')
+if node is None: sys.exit(1)
+x1, y1, x2, y2 = ui.bounds(node)
+x, y = str((x1 + x2) // 2), str((y1 + y2) // 2)
+ui.adb('shell', 'input', 'tap', x, y)
+ui.adb('shell', 'input', 'tap', x, y)
+PY"
+check "A Ana le llega la sirena" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=sirena --wait 20
+sleep 5
+SIRENAS=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=sirena --count)
+check "…una sola vez, no dos ($SIRENAS)" test "$SIRENAS" -eq 1
+
 echo "== 9. El robot agrega a Beto con su código"
 BETO=$(new_code)
 BETO_PRETTY=$(echo "$BETO" | tr 'a-z' 'A-Z' | sed 's/.\{4\}/&-/g; s/-$//')
@@ -415,6 +435,10 @@ check "Toca Total" $UI tapexact "Total"
 check "Ana tiene 120 puntos en total" $UI wait "Ana, 120 puntos" 5
 shot "ranking"
 adb shell input keyevent KEYCODE_BACK
+check "Cumplió la misión de mandar 3 sonidos" $UI see "Misión: Manda 3 sonidos, completada"
+check "Pestaña Amigos" $UI tab Amigos
+check "Tiene racha con Ana (se mandaron algo los dos hoy)" $UI see "Racha de 1 día con Ana"
+shot "racha"
 
 echo "== 9k. Personalizar un botón, adoptar una mascota y usar un poder"
 check "Pestaña Sonar" $UI tab Sonar
@@ -447,6 +471,24 @@ check "Elige a Ana" $UI tap "Mandar a Ana"
 check "Toca la Bocina (ahora la rana)" $UI tap "🐸"
 check "A Ana le llega el sonido con el poder Eco" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina pw=eco --wait 20
 check "El sonido lleva el avatar y la mascota" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" pw=eco pet=gato:0 --wait 5
+
+echo "== 9l. Sonoteca: Ana comparte un sonido, el robot lo usa y se lo pasa a Beto"
+publish_file "$MYCODE" "$TONE" "{\"fg\":1,\"t\":\"sndpub\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"sp1abcdefgh\",\"label\":\"Tono de Ana\",\"e\":\"🎵\",\"by\":\"$ANA\",\"byn\":\"Ana\"}" >/dev/null
+check "Pestaña Sonar" $UI tab Sonar
+check "Avisa que Ana compartió un sonido" $UI wait "Ana compartió «Tono de Ana»" 30
+check "Abre la Sonoteca" $UI tap "Abrir la Sonoteca"
+check "Muestra el sonido de Ana" $UI wait "de Ana" 10
+shot "sonoteca"
+check "Lo usa" $UI tap "Usar «Tono de Ana»"
+check "A Ana le avisa que lo usa" $INBOX "$OUT/inbox-ana.jsonl" sndfan from="$MYCODE" id=sp1abcdefgh k=use --wait 20
+check "Opciones del sonido" $UI tap "Opciones de «Tono de Ana»"
+check "Pasar a mis amigos" $UI tap "Pasar a mis amigos"
+check "Pide confirmar que se puede compartir" $UI tap "Confirmo"
+check "Compartir" $UI tapexact "Compartir"
+check "A Beto le llega, con el nombre de Ana como autora" $INBOX "$OUT/inbox-beto.jsonl" sndpub from="$MYCODE" by="$ANA" id=sp1abcdefgh --wait 30
+adb shell input keyevent KEYCODE_BACK
+check "Quedó en Tus audios" $UI see "Tono de Ana"
+shot "sonoteca-usado"
 
 echo "== 10. Pausar la recepción"
 open_settings

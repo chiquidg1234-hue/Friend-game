@@ -200,17 +200,18 @@ object Looks {
  * día sin que la alimentes, le da hambre; alimentarla cuesta puntos.
  */
 object Pets {
-    class Species(val key: String, val emoji: String, val name: String, val level: Int = 1)
+    /** [food]: su comida favorita (cae cuando la alimentas; ver PetView). */
+    class Species(val key: String, val emoji: String, val name: String, val level: Int = 1, val food: String = "🍖")
 
     val SPECIES = listOf(
-        Species("gato", "🐱", "Gato"),
-        Species("perro", "🐶", "Perro"),
-        Species("zorro", "🦊", "Zorro"),
-        Species("rana", "🐸", "Rana"),
-        Species("panda", "🐼", "Panda", level = 2),
-        Species("pulpo", "🐙", "Pulpo", level = 3),
-        Species("dragon", "🐉", "Dragón", level = 5),
-        Species("unicornio", "🦄", "Unicornio", level = 7),
+        Species("gato", "🐱", "Gato", food = "🐟"),
+        Species("perro", "🐶", "Perro", food = "🍖"),
+        Species("zorro", "🦊", "Zorro", food = "🍒"),
+        Species("rana", "🐸", "Rana", food = "🐛"),
+        Species("panda", "🐼", "Panda", level = 2, food = "🎋"),
+        Species("pulpo", "🐙", "Pulpo", level = 3, food = "🦐"),
+        Species("dragon", "🐉", "Dragón", level = 5, food = "🌶️"),
+        Species("unicornio", "🦄", "Unicornio", level = 7, food = "🍓"),
     )
 
     class Stage(val number: Int, val name: String, val xp: Int)
@@ -361,6 +362,15 @@ object Powers {
             if (armed != null || !Points.spend(power.cost)) return false
             prefs.edit().putString("power_armed", power.key).apply()
         }
+        Store.notifyChanged()
+        return true
+    }
+
+    /** Un poder de regalo (el cofre del día). Devuelve false si ya hay uno listo. */
+    @Synchronized
+    fun gift(key: String): Boolean {
+        if (armed != null || byKey(key) == null || key == DOUBLE) return false
+        prefs.edit().putString("power_armed", key).apply()
         Store.notifyChanged()
         return true
     }

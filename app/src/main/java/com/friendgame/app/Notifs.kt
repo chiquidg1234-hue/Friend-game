@@ -12,9 +12,11 @@ object Notifs {
     private const val CH_SOUNDS = "sounds"
     private const val CH_SOCIAL = "friends"
     private const val CH_CHAT = "chat"
+    private const val CH_REMIND = "reminders"
 
     const val ID_SERVICE = 1
     private const val ID_SOUND = 2
+    private const val ID_REMIND = 3
     private const val ID_SOCIAL_BASE = 100
     private const val ID_CHAT_BASE = 100_000
 
@@ -35,7 +37,10 @@ object Notifs {
         val chat = NotificationChannel(CH_CHAT, "Mensajes, retos y candados", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Mensajes del chat, retos nuevos y propuestas de candado."
         }
-        nm.createNotificationChannels(listOf(service, sounds, social, chat))
+        val remind = NotificationChannel(CH_REMIND, "Recordatorios", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "A lo más uno al día, de tarde: si tu racha, la de un amigo o tu mascota te necesitan."
+        }
+        nm.createNotificationChannels(listOf(service, sounds, social, chat, remind))
     }
 
     /** Pestaña que abre la app al tocar el aviso ("FRIENDS", "GROUPS"). */
@@ -156,6 +161,23 @@ object Notifs {
 
     fun groupGone(context: Context, groupId: String, title: String) {
         social(context, "gone-$groupId", "👥 $title", "Ya no recibirás sonidos de ese grupo.", "GROUPS")
+    }
+
+    /** El recordatorio del día (ver Reminders). */
+    fun reminder(context: Context, title: String, text: String) {
+        val n = Notification.Builder(context, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_stat_sound)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(openAppIntent(context, "ME"))
+            .setAutoCancel(true)
+            .build()
+        notify(context, ID_REMIND, n)
+    }
+
+    /** A un amigo le gustó o usa un sonido que compartiste en la Sonoteca. */
+    fun sonoteca(context: Context, id: String, title: String, text: String) {
+        social(context, "fan-$id", title, text, "ME")
     }
 
     /** Tras actualizarse sola, Android cierra la app: este aviso permite volver a abrirla. */

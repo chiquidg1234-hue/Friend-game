@@ -49,6 +49,10 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Locks.kt` | Candado: proponer, aceptar, rechazar, `blocksStop` y `finishDue`. |
 | `Points.kt` | Puntos con tope diario, niveles, logros, racha, saldo para gastar y ranking (con los puntos que traen los mensajes de los demás). |
 | `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat), mascota (`Pets`) y poderes (`Powers`). |
+| `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: las 8 especies con las formas del lienzo «Friend Game · Mascotas 3D»): respira, parpadea, come, salta, tiene hambre y duerme. |
+| `Anim.kt` | Animaciones cortas (rebote al tocar, entrada de pantalla, confeti, emoji que vuela) y `PulseRings`. |
+| `Engage.kt` | Rachas con cada amigo (`Streaks`), misiones del día con cofre (`Quests`) y un recordatorio diario (`Reminders`). |
+| `Sonoteca.kt` | Sonidos que comparten tus amigos y grupos: publicar, recibir, ❤️, usar, ocultar y la lista de retiro (`docs/legal/retiros.json`). |
 | `Groups.kt`, `Invites.kt`, `GroupKeys.kt` | Grupos: crear, unirse, sacar a alguien (cambia el canal), invitaciones y firmas del admin. |
 | `Notifs.kt` | Canales y notificaciones. |
 | `Receivers.kt` | Al encender el celular y al actualizar la app; botones Detener y Pausar de las notificaciones; resultado del instalador. |
@@ -72,6 +76,8 @@ Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "w
 | `retono` | igual | `id` | El creador cancela el reto |
 | `lockreq` / `lockacc` / `lockno` | personal | `id`, `min` | Candado: propuesta, aceptación, rechazo o cancelación |
 | `pts` | personal o grupo | — | Solo actualiza puntos, avatar y mascota |
+| `sndpub` | personal o grupo | `id`, `label`, `e`, `st`, `by`, `byn`, `g?` + adjunto | Comparte un sonido en la Sonoteca (`by`: el autor original) |
+| `sndfan` | personal | `id`, `k` (`like`/`use`) | Al autor: a alguien le gustó o usa su sonido |
 | `gjoin` / `gleave` | grupo | `g` | Entrar o salir de un grupo |
 | `groster`, `gend` | grupo, firmados | `body`, `sig` | Lista de miembros, nombre y tipo (`c`, `e`), o grupo cerrado |
 | `gmove`, `gkick` | personal, firmados | `body`, `sig` | El grupo cambia de canal, o te sacaron (`full`: lleno) |
@@ -101,6 +107,9 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 - Todo lo que hable con la red va fuera del hilo principal (`runInBackground` en la pantalla, el hilo del servicio o un `Thread`).
 - Los cambios de estado de retos y candados van con `Store.updateReto` / `Store.updateLock` (bajo lock), para que no se disparen dos veces.
 - Puntos: usa las funciones de `Points` (`onSoundSent`, `onRetoPlace`…), que ya tienen tope diario. Gastar (`Points.spend`) no baja el nivel ni el ranking.
+- **Envíos:** un sonido a la vez, con 2,5 s de recarga y como mucho 4 cada 20 s al mismo destino (`MainActivity.sendWait`). No lo quites: evita colas de envíos y sonidos que el otro celular igual descartaría.
+- **Animaciones:** cortas y sobre vistas (`Anim`); lo que se mueve todo el rato se dibuja en una vista propia (`PetView`, `PulseRings`, `TimeBar`). Respeta `Anim.enabled()` (la prueba en emulador corre sin animaciones).
+- **Enganche sano:** nada se compra con dinero, perder una racha no quita nada, a lo más un recordatorio al día (18:00–21:00) y se apaga en Ajustes, sin cuentas regresivas falsas. Lo exige Google Play y el público es de 13+.
 - **Secretos:**
   - `signing/friendgame.jks` está en el repo a propósito: es solo para la versión github.
   - La clave de subida de Play va en secretos de GitHub (`FG_UPLOAD_KEYSTORE_B64` y compañía). **Nunca en el repo.**

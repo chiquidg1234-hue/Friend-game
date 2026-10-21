@@ -80,6 +80,79 @@ object Relay {
 
     /** Para audios propios: el archivo viaja como adjunto y los datos en el parámetro "message". */
     fun publishFileTopic(topic: String, payload: JSONObject, file: File) {
+        uploadFile(topic, payload, file)
+    }
+
+    /**
+     * Sube el archivo una vez y devuelve la dirección del adjunto en el servidor, para mandarlo a
+     * otros canales con [publishAttachTopic] sin volver a subirlo (Sonoteca).
+     */
+    fun publishFileTopicForUrl(topic: String, payload: JSONObject, file: File): String? = try {
+        JSONObject(uploadFile(topic, payload, file)).optJSONObject("attachment")?.optString("url")?.takeIf { it.startsWith(baseUrl() + "/") }
+    } catch (_: org.json.JSONException) {
+        null
+    }
+
+    /** Mensaje con un adjunto que ya está en el servidor ([url], de [publishFileTopicForUrl]). */
+    fun publishAttachTopic(topic: String, payload: JSONObject, url: String, filename: String) {
+        val conn = URL("${baseUrl()}/$topic").openConnection() as HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 20_000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+            conn.setRequestProperty("User-Agent", "FriendGame")
+            conn.setRequestProperty("X-Attach", url)
+            conn.setRequestProperty("X-Filename", filename)
+            val body = payload.toString().toByteArray(Charsets.UTF_8)
+            conn.setFixedLengthStreamingMode(body.size)
+            conn.outputStream.use { it.write(body) }
+            finish(conn)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /**
+     * Baja un adjunto a [out], solo desde nuestro servidor y como mucho [maxBytes]. Devuelve false
+     * (y borra lo bajado) si no se pudo.
+     */
+    fun download(url: String, out: File, maxBytes: Long): Boolean {
+        if (!url.startsWith(baseUrl() + "/")) return false
+        val conn = try {
+            URL(url).openConnection() as HttpURLConnection
+        } catch (_: IOException) {
+            return false
+        }
+        try {
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 20_000
+            conn.setRequestProperty("User-Agent", "FriendGame")
+            if (conn.responseCode != 200) return false
+            var total = 0L
+            conn.inputStream.use { input ->
+                out.outputStream().use { output ->
+                    val buffer = ByteArray(16 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        total += n
+                        if (total > maxBytes) throw IOException("too big")
+                        output.write(buffer, 0, n)
+                    }
+                }
+            }
+            return true
+        } catch (_: IOException) {
+            out.delete()
+            return false
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun uploadFile(topic: String, payload: JSONObject, file: File): String {
         val message = URLEncoder.encode(payload.toString(), "UTF-8")
         val filename = "sonido." + file.extension.ifEmpty { "mp3" }
         val url = URL("${baseUrl()}/$topic?filename=$filename&message=$message")
@@ -92,13 +165,14 @@ object Relay {
             conn.setRequestProperty("User-Agent", "FriendGame")
             conn.setFixedLengthStreamingMode(file.length())
             conn.outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
-            finish(conn)
+            return finish(conn)
         } finally {
             conn.disconnect()
         }
     }
 
-    private fun finish(conn: HttpURLConnection) {
+    /** Revisa la respuesta y devuelve su texto (el mensaje tal como lo guardó el servidor). */
+    private fun finish(conn: HttpURLConnection): String {
         val code = conn.responseCode
         if (code !in 200..299) {
             try {
@@ -107,7 +181,7 @@ object Relay {
             }
             throw HttpError(code)
         }
-        conn.inputStream.use { it.readBytes() }
+        return conn.inputStream.use { String(it.readBytes(), Charsets.UTF_8) }
     }
 
     fun describe(e: Throwable): String = when (e) {

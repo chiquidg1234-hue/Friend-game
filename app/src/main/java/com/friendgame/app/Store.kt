@@ -61,8 +61,11 @@ data class Group(
 /** Un sonido recibido, para el historial. */
 data class HistoryEntry(val time: Long, val text: String)
 
-/** Audio propio. [startMs]: desde dónde suena (para usar la parte graciosa de un audio largo). */
-data class CustomSound(val id: String, val label: String, val ext: String, val startMs: Int = 0) {
+/**
+ * Audio propio. [startMs]: desde dónde suena (para usar la parte graciosa de un audio largo).
+ * [credit]: quién lo creó, si vino de la Sonoteca.
+ */
+data class CustomSound(val id: String, val label: String, val ext: String, val startMs: Int = 0, val credit: String = "") {
     fun file(context: Context) = CustomAudio.fileFor(context, this)
 }
 
@@ -170,6 +173,10 @@ object Store {
             Looks.init(context)
             Pets.init(context)
             Powers.init(context)
+            Streaks.init(context)
+            Quests.init(context)
+            Reminders.init(context)
+            Sonoteca.init(context)
         }
     }
 
@@ -433,7 +440,7 @@ object Store {
         val array = JSONArray(prefs.getString("custom_sounds", "[]") ?: "[]")
         return (0 until array.length()).mapNotNull { i ->
             val o = array.optJSONObject(i) ?: return@mapNotNull null
-            CustomSound(o.optString("id"), o.optString("label"), o.optString("ext"), o.optInt("st"))
+            CustomSound(o.optString("id"), o.optString("label"), o.optString("ext"), o.optInt("st"), o.optString("cr"))
         }
     }
 
@@ -455,7 +462,11 @@ object Store {
 
     private fun saveCustomSounds(list: List<CustomSound>) {
         val array = JSONArray()
-        list.forEach { array.put(JSONObject().put("id", it.id).put("label", it.label).put("ext", it.ext).put("st", it.startMs)) }
+        list.forEach {
+            val o = JSONObject().put("id", it.id).put("label", it.label).put("ext", it.ext).put("st", it.startMs)
+            if (it.credit.isNotEmpty()) o.put("cr", it.credit)
+            array.put(o)
+        }
         prefs.edit().putString("custom_sounds", array.toString()).apply()
         notifyChanged()
     }

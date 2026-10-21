@@ -18,6 +18,13 @@ object Legal {
     const val TERMS_ASSET = "terminos.html"
     const val ISSUES_URL = "https://github.com/chiquidg1234-hue/Friend-game/issues"
 
+    /**
+     * Lista de retiro: sonidos de la Sonoteca denunciados (derechos de autor, contenido
+     * prohibido) y códigos de quienes reinciden. Se edita en docs/legal/retiros.json y cada
+     * celular la baja una vez al día para ocultar y borrar esos sonidos.
+     */
+    const val TAKEDOWNS_URL = "$PAGES/retiros.json"
+
     /** Correo para denuncias y consultas (variable FG_CONTACT_EMAIL al compilar). */
     val contactEmail: String get() = BuildConfig.CONTACT_EMAIL.trim()
 
