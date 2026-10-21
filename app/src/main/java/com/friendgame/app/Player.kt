@@ -2,9 +2,11 @@ package com.friendgame.app
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -14,6 +16,10 @@ import java.io.File
 /**
  * Reproduce un sonido a la vez. Cualquier sonido se puede detener siempre desde este celular
  * (app, notificación). Además quien lo mandó puede cortarlo antes con su botón de detener.
+ *
+ * Los sonidos recibidos salen por el altavoz principal y, si la persona lo aceptó
+ * ([Store.loudAccepted]), con el volumen de alarma al máximo; al terminar se devuelve el
+ * volumen que tenía.
  */
 object Player {
     /** Nadie puede tener sonando tu celular más de esto, aunque el archivo sea más largo. */
@@ -68,9 +74,8 @@ object Player {
     private var attributes: AudioAttributes = attributesFor(alarm = false)
 
     /**
-     * Con "sonar aunque esté en silencio", los sonidos de amigos usan el volumen de alarma, que
-     * Android no silencia en modo silencio ni vibración. Escuchar tus propios sonidos usa siempre
-     * el volumen multimedia.
+     * Los sonidos de amigos usan el volumen de alarma, que Android no silencia en modo silencio ni
+     * vibración. Escuchar tus propios sonidos usa el volumen multimedia, sin tocarlo.
      */
     private fun attributesFor(alarm: Boolean): AudioAttributes = AudioAttributes.Builder()
         .setUsage(if (alarm) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA)
@@ -126,9 +131,11 @@ object Player {
         stopOnMain(cancelNotification = false)
         appContext = app
         val alarm = incoming && SoundCheck.useAlarm(app)
+        if (alarm && Store.loudAccepted) raiseVolume(app)
         // Si el reproductor falla con el volumen de alarma, se intenta otra vez con el multimedia.
-        val mp = start(app, source, alarm, info) ?: (if (alarm) start(app, source, false, info) else null)
+        val mp = start(app, source, alarm, info, incoming) ?: (if (alarm) start(app, source, false, info, incoming) else null)
         if (mp == null) {
+            restoreVolume(app)
             if (incoming) {
                 Store.lastProblem = "No se pudo reproducir «${info.label}» en este celular."
                 Store.notifyChanged()
@@ -145,12 +152,15 @@ object Player {
         Store.notifyChanged()
     }
 
-    private fun start(app: Context, source: Source, alarm: Boolean, info: NowPlaying): MediaPlayer? {
+    private fun start(app: Context, source: Source, alarm: Boolean, info: NowPlaying, incoming: Boolean): MediaPlayer? {
         val mp = MediaPlayer()
         attributes = attributesFor(alarm)
         return try {
             mp.setAudioAttributes(attributes)
             mp.setWakeMode(app, PowerManager.PARTIAL_WAKE_LOCK)
+            // Si otra app dejó el celular en modo llamada (WhatsApp, Meet…), Android manda el sonido
+            // al auricular de las llamadas y casi no se oye: se pide el altavoz principal.
+            if (incoming && Build.VERSION.SDK_INT >= 28) speaker(app)?.let { mp.setPreferredDevice(it) }
             when (source) {
                 is Source.Asset -> app.assets.openFd(source.path).use { afd ->
                     mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
@@ -190,9 +200,40 @@ object Player {
         }
         appContext?.let {
             abandonFocus(it)
+            restoreVolume(it)
             if (cancelNotification && wasPlaying != null && !wasPlaying.isPreview) Notifs.cancelSound(it)
         }
         if (wasPlaying != null) Store.notifyChanged()
+    }
+
+    private fun speaker(context: Context): AudioDeviceInfo? =
+        context.getSystemService(AudioManager::class.java)?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+
+    /** Sube el volumen de alarma al máximo y guarda el que había (también en disco, por si la app se cierra). */
+    private fun raiseVolume(context: Context) {
+        val am = context.getSystemService(AudioManager::class.java) ?: return
+        try {
+            if (Store.alarmVolumeToRestore < 0) Store.alarmVolumeToRestore = am.getStreamVolume(AudioManager.STREAM_ALARM)
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+        } catch (_: Exception) {
+            // Algunos celulares no dejan cambiarlo (por ejemplo, con «No molestar»): suena con el que hay.
+        }
+    }
+
+    /**
+     * Devuelve el volumen de alarma que había antes del sonido. Se llama al terminar cada sonido y al
+     * arrancar el servicio, por si la app se cerró con algo sonando.
+     */
+    fun restoreVolume(context: Context) {
+        if (now != null) return
+        val saved = Store.alarmVolumeToRestore
+        if (saved < 0) return
+        Store.alarmVolumeToRestore = -1
+        try {
+            context.getSystemService(AudioManager::class.java)?.setStreamVolume(AudioManager.STREAM_ALARM, saved, 0)
+        } catch (_: Exception) {
+        }
     }
 
     private fun requestFocus(context: Context) {

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.NotificationManager
+import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -52,6 +53,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.text.DateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -120,6 +122,7 @@ class MainActivity : Activity(), Store.Listener {
     private lateinit var navDivider: View
     private lateinit var overlay: FrameLayout
     private var welcome: View? = null
+    private var loudDialog: AlertDialog? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
@@ -195,8 +198,8 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun onReady() {
         ListenService.start(this)
-        askNotificationPermission()
         render()
+        if (Store.loudAnswered) askNotificationPermission() else askLoud { askNotificationPermission() }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -241,6 +244,8 @@ class MainActivity : Activity(), Store.Listener {
         }
         render()
         ui.post(clock)
+        // Tras una actualización con la app abierta en segundo plano, se pregunta al volver.
+        if (Store.myName.isNotBlank() && welcome == null && !Store.loudAnswered) askLoud()
         if (!BuildConfig.STORE_BUILD) Updater.check(this)
         if (Sonoteca.takedownsDue()) {
             val app = applicationContext
@@ -1408,6 +1413,12 @@ class MainActivity : Activity(), Store.Listener {
         }
         box.addView(switchRow("Recibir sonidos", status, statusColor, Store.receiving) { checked ->
             if (lockBlocks()) return@switchRow
+            if (checked && !Store.loudAccepted) {
+                // Recibir sonidos es aceptar que suenen al máximo por el altavoz.
+                render()
+                askLoud(turnOn = true)
+                return@switchRow
+            }
             Store.receiving = checked
             if (checked) {
                 ListenService.start(this)
@@ -1417,15 +1428,20 @@ class MainActivity : Activity(), Store.Listener {
             }
         }, lp())
         box.addView(divider(), dividerLp())
-        box.addView(
-            switchRow(
-                "Sonar aunque esté en silencio",
-                if (Store.ringInSilent) "Usa el volumen de alarma: suena en silencio y en vibración"
-                else "Usa el volumen multimedia: en silencio puede no oírse",
-                Palette.SUB, Store.ringInSilent,
-            ) { if (!lockBlocks()) Store.ringInSilent = it },
+        val loud = row().apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
+        loud.addView(icon(R.drawable.ic_nav_sound, if (Store.loudAccepted) Palette.OK else Palette.SUB, 22))
+        val loudTexts = column()
+        loudTexts.addView(label("Volumen máximo por el altavoz", 16f, bold = true), lp())
+        loudTexts.addView(
+            label(
+                if (Store.loudAccepted) "Los sonidos suenan al máximo y por el altavoz principal, también en silencio. Al terminar, el volumen vuelve a como estaba."
+                else "Para recibir sonidos hay que aceptarlo: activa «Recibir sonidos».",
+                13f, Palette.SUB,
+            ),
             lp(),
         )
+        loud.addView(loudTexts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        box.addView(loud, lp())
         val problem = if (Store.receiving) currentProblem() else ""
         if (problem.isNotEmpty()) {
             val warning = row().apply { setPadding(dp(16), dp(4), dp(16), dp(10)) }
@@ -2077,11 +2093,14 @@ class MainActivity : Activity(), Store.Listener {
         val name = Chats.title(key) ?: return
         val sounds = Sounds.all
         var kind = Retos.FASTEST
-        var minutes = Retos.DEFAULT_DELAY_MIN
+        var delay = Retos.DEFAULT_DELAY_S
+        // Con «A una hora» se guarda la hora exacta: el tiempo se cuenta al tocar Crear reto.
+        var clockAt: Long? = null
         var sound = sounds.firstOrNull { it.key == "sirena" } ?: sounds.first()
         val kinds = column()
         val (timeScroll, times) = chipRow()
         val (soundScroll, soundChips) = chipRow()
+        val whenText = label("", 13f, Palette.SUB)
         lateinit var refresh: () -> Unit
         refresh = {
             kinds.removeAllViews()
@@ -2106,12 +2125,22 @@ class MainActivity : Activity(), Store.Listener {
                 kinds.addView(item, lp(topDp = 8))
             }
             times.removeAllViews()
-            Retos.DELAYS_MIN.forEach { value ->
-                times.addView(chip("$value min", value == minutes) {
-                    minutes = value
+            val at = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(clockAt ?: (System.currentTimeMillis() + delay * 1000)))
+            // Con una hora exacta, el tiempo que falta se muestra en minutos redondos.
+            val left = Retos.delayText(if (clockAt != null) maxOf(60, (delay + 30) / 60 * 60) else delay)
+            // Un tiempo elegido a mano (o una hora) va primero, marcado.
+            if (delay !in Retos.DELAYS_S || clockAt != null) {
+                val text = if (clockAt != null) "🕐 $at" else "⏱️ $left"
+                times.addView(chip(text, true) {}, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+            }
+            Retos.DELAYS_S.forEach { value ->
+                times.addView(chip(Retos.delayText(value), value == delay && clockAt == null) {
+                    delay = value
+                    clockAt = null
                     refresh()
                 }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
             }
+            whenText.text = "Suena a las $at (en $left)."
             soundChips.removeAllViews()
             sounds.forEach { option ->
                 soundChips.addView(chip("${option.emoji} ${option.label}", option.key == sound.key) {
@@ -2126,13 +2155,33 @@ class MainActivity : Activity(), Store.Listener {
         body.addView(kinds, lp())
         body.addView(caps("¿En cuánto tiempo suena?"), lp(topDp = 16))
         body.addView(timeScroll, lp(topDp = 8))
+        val custom = row()
+        custom.addView(chip("✏️ Otro tiempo", false) {
+            askRetoTime(delay) {
+                delay = it
+                clockAt = null
+                refresh()
+            }
+        }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+        custom.addView(chip("🕐 A una hora", false) {
+            askRetoClock { at ->
+                clockAt = at
+                delay = (at - System.currentTimeMillis()) / 1000
+                refresh()
+            }
+        }, LinearLayout.LayoutParams(WRAP, dp(40)))
+        body.addView(custom, lp(topDp = 8))
+        body.addView(whenText, lp(topDp = 8))
         body.addView(caps("Sonido"), lp(topDp = 16))
         body.addView(soundScroll, lp(topDp = 8))
         body.addView(label("Suena a la vez en el celular de todos los del chat, también en el tuyo.", 12f, Palette.SUB), lp(topDp = 12))
         AlertDialog.Builder(this)
             .setTitle("Nuevo reto en «$name»")
             .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Crear reto") { _, _ -> createReto(key, kind, sound.key, minutes * 60L) }
+            .setPositiveButton("Crear reto") { _, _ ->
+                val seconds = clockAt?.let { (it - System.currentTimeMillis()) / 1000 } ?: delay
+                createReto(key, kind, sound.key, seconds.coerceIn(Retos.MIN_DELAY_S, Retos.MAX_DELAY_S))
+            }
             .setNegativeButton("Cancelar", null)
             .show()
     }
@@ -2141,8 +2190,68 @@ class MainActivity : Activity(), Store.Listener {
         val payload = Retos.create(this, key, kind, soundKey, delaySeconds)
         if (chatKey != key) openChat(key)
         runInBackground({ Relay.publishTopic(Chats.topic(key), payload) }) {
-            toast("⚡ Reto creado: suena en ${delaySeconds / 60} min para todos")
+            toast("⚡ Reto creado: suena en ${Retos.delayText(delaySeconds)} para todos")
         }
+    }
+
+    /** Elegir a mano en cuánto suena el reto: horas y minutos, de 1 minuto a 6 horas. */
+    private fun askRetoTime(current: Long, onPick: (Long) -> Unit) {
+        fun field(value: Long, description: String, digits: Int) = EditText(this).apply {
+            setText(value.toString())
+            inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf<InputFilter>(InputFilter.LengthFilter(digits))
+            setSelectAllOnFocus(true)
+            setSingleLine(true)
+            textSize = 24f
+            gravity = Gravity.CENTER
+            contentDescription = description
+        }
+        val hours = field(current / 3600, "Horas del reto", 1)
+        val minutes = field(current % 3600 / 60, "Minutos del reto", 3)
+        val line = row()
+        line.addView(hours, lp(0, WRAP, weight = 1f))
+        line.addView(label("h", 18f, Palette.SUB, bold = true), LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(dp(8), 0, dp(16), 0) })
+        line.addView(minutes, lp(0, WRAP, weight = 1f))
+        line.addView(label("min", 18f, Palette.SUB, bold = true), LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(8) })
+        val body = padded(line, label("De 1 minuto a 6 horas.", 13f, Palette.SUB))
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("¿En cuánto tiempo suena?")
+            .setView(body)
+            .setPositiveButton("Listo", null)
+            .setNegativeButton("Cancelar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val total = (hours.text.toString().toLongOrNull() ?: 0) * 3600 + (minutes.text.toString().toLongOrNull() ?: 0) * 60
+                if (total < 60 || total > Retos.MAX_DELAY_S) {
+                    toast("Elige entre 1 minuto y 6 horas")
+                } else {
+                    onPick(total)
+                    dialog.dismiss()
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    /** Elegir la hora exacta del reto (dentro de las próximas 6 horas); [onPick] recibe ese momento. */
+    private fun askRetoClock(onPick: (Long) -> Unit) {
+        val now = Calendar.getInstance()
+        TimePickerDialog(this, { _, hour, minute ->
+            val target = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_MONTH, 1)
+            }
+            val seconds = (target.timeInMillis - System.currentTimeMillis()) / 1000
+            when {
+                seconds > Retos.MAX_DELAY_S -> toast("Tiene que ser dentro de las próximas 6 horas")
+                seconds < Retos.MIN_DELAY_S -> toast("Esa hora es ahora: elige una más adelante")
+                else -> onPick(target.timeInMillis)
+            }
+        }, (now.get(Calendar.HOUR_OF_DAY) + 1) % 24, now.get(Calendar.MINUTE), android.text.format.DateFormat.is24HourFormat(this)).show()
     }
 
     private fun cancelReto(reto: Reto) {
@@ -3429,7 +3538,7 @@ class MainActivity : Activity(), Store.Listener {
 
     // ------------------------------------------------------------------ Reglas, privacidad y denuncias
 
-    private fun showLegal(titleText: String, asset: String) {
+    private fun showLegal(titleText: String, asset: String, onClose: (() -> Unit)? = null) {
         val text = label(Legal.text(this, asset), 14f).apply {
             setPadding(dp(22), dp(8), dp(22), dp(8))
             movementMethod = LinkMovementMethod.getInstance()
@@ -3440,6 +3549,54 @@ class MainActivity : Activity(), Store.Listener {
             .setView(ScrollView(this).apply { addView(text) })
             .setPositiveButton("Entendido", null)
             .setNeutralButton("Abrir en la web") { _, _ -> openUrl(if (asset == Legal.TERMS_ASSET) Legal.TERMS_URL else Legal.PRIVACY_URL) }
+            .setOnDismissListener { onClose?.invoke() }
+            .show()
+    }
+
+    /**
+     * Los sonidos de amigos suenan al volumen máximo y por el altavoz principal. Se pide aceptarlo al
+     * instalar y al actualizar (hasta que responda). Quien no acepta queda con la recepción en pausa;
+     * [turnOn]: lo pidió al activar «Recibir sonidos».
+     */
+    private fun askLoud(turnOn: Boolean = false, then: () -> Unit = {}) {
+        if (loudDialog?.isShowing == true) return
+        loudDialog = AlertDialog.Builder(this)
+            .setTitle("🔊 Los sonidos suenan fuerte")
+            .setMessage(
+                "Para que siempre se escuchen, los sonidos de tus amigos suenan al volumen máximo y por el " +
+                    "altavoz principal del celular, aunque esté en silencio o en vibración.\n\n" +
+                    "• Duran como mucho 10 segundos y al terminar el volumen vuelve a como estaba.\n" +
+                    "• Siempre puedes detenerlos, silenciar o bloquear a alguien, o pausar la recepción.\n" +
+                    "• Si no lo aceptas, no te llegan sonidos. Puedes activarlos después en Ajustes.\n\n" +
+                    "Está en los Términos de uso."
+            )
+            .setCancelable(false)
+            .setPositiveButton("Acepto") { _, _ ->
+                Store.loudAccepted = true
+                Store.loudAnswered = true
+                if (turnOn) {
+                    Store.receiving = true
+                    ListenService.start(this)
+                }
+                toast("🔊 Listo: los sonidos suenan al máximo por el altavoz")
+                then()
+            }
+            .setNegativeButton("No recibir sonidos") { _, _ ->
+                if (Locks.anyActive() == null) {
+                    Store.loudAnswered = true
+                    Store.receiving = false
+                    Player.stop()
+                    ListenService.stop(this)
+                    toast("Recepción en pausa: actívala en Ajustes cuando quieras")
+                } else {
+                    // Con un candado no se puede pausar: se vuelve a preguntar cuando termine.
+                    lockBlocks()
+                }
+                then()
+            }
+            .setNeutralButton("Leer términos") { _, _ ->
+                showLegal("Términos de uso", Legal.TERMS_ASSET) { askLoud(turnOn, then) }
+            }
             .show()
     }
 

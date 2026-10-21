@@ -148,6 +148,8 @@ data class Lock(
 /** Todo lo que la app recuerda, guardado en el propio celular. */
 object Store {
     const val DEFAULT_SERVER = "https://ntfy.sh"
+    /** Versión del aviso de volumen máximo: si cambian sus condiciones, se sube y se vuelve a preguntar. */
+    const val LOUD_VERSION = 1
     private const val MAX_SEEN_IDS = 60
     private const val MAX_HISTORY = 15
     private const val MAX_CHAT = 150
@@ -240,14 +242,28 @@ object Store {
         }
 
     /**
-     * Si está activado, los sonidos usan el volumen de alarma: suenan aunque el celular esté en
-     * silencio o vibración. Lo decide quien recibe, en su propio celular.
+     * Aceptó que los sonidos de amigos suenen al volumen máximo por el altavoz (se pregunta al
+     * instalar y al actualizar; ver [LOUD_VERSION]). Quien no acepta no recibe sonidos.
      */
-    var ringInSilent: Boolean
-        get() = prefs.getBoolean("ring_in_silent", true)
+    var loudAccepted: Boolean
+        get() = prefs.getInt("loud_ok", 0) >= LOUD_VERSION
         set(value) {
-            prefs.edit().putBoolean("ring_in_silent", value).apply()
+            prefs.edit().putInt("loud_ok", if (value) LOUD_VERSION else 0).apply()
             notifyChanged()
+        }
+
+    /** Ya respondió el aviso del volumen (aceptó o eligió no recibir): no se vuelve a mostrar solo. */
+    var loudAnswered: Boolean
+        get() = prefs.getInt("loud_answered", 0) >= LOUD_VERSION
+        set(value) {
+            prefs.edit().putInt("loud_answered", if (value) LOUD_VERSION else 0).apply()
+        }
+
+    /** Volumen de alarma que había antes de subirlo al máximo para un sonido (-1: nada que devolver). */
+    var alarmVolumeToRestore: Int
+        get() = prefs.getInt("alarm_restore", -1)
+        set(value) {
+            prefs.edit().putInt("alarm_restore", value).apply()
         }
 
     /** Último problema al reproducir un sonido (se muestra en la pantalla para entender qué pasó). */

@@ -10,18 +10,19 @@ import android.os.Build
 import android.os.PowerManager
 
 /**
- * Revisa qué puede impedir que se oiga un sonido en este celular (volumen en 0, "No molestar",
- * una llamada, auriculares conectados, la batería…) y elige el volumen con el que conviene sonar.
+ * Revisa qué puede impedir que se oiga un sonido en este celular ("No molestar", una llamada,
+ * la batería…) y elige el volumen con el que conviene sonar.
  */
 object SoundCheck {
     class Item(val ok: Boolean, val text: String)
 
     /**
-     * Volumen de alarma si la persona eligió "sonar aunque esté en silencio"; pero si la alarma
-     * está en 0 y el multimedia no, se usa el multimedia para que el sonido no se pierda.
+     * Volumen de alarma: Android no lo silencia en modo silencio ni vibración, y [Player] lo sube
+     * al máximo mientras suena. Antes de aceptar ese aviso (recién actualizada), si la alarma está
+     * en 0 y el multimedia no, se usa el multimedia para que el sonido no se pierda.
      */
     fun useAlarm(context: Context): Boolean {
-        if (!Store.ringInSilent) return false
+        if (Store.loudAccepted) return true
         val am = context.getSystemService(AudioManager::class.java) ?: return true
         return !(am.getStreamVolume(AudioManager.STREAM_ALARM) == 0 && am.getStreamVolume(AudioManager.STREAM_MUSIC) > 0)
     }
@@ -31,9 +32,11 @@ object SoundCheck {
     /** Motivo corto por el que el próximo sonido no se oiría, o null si todo bien. */
     fun silentReason(context: Context): String? {
         val am = context.getSystemService(AudioManager::class.java) ?: return null
-        val alarm = useAlarm(context)
-        val stream = if (alarm) AudioManager.STREAM_ALARM else AudioManager.STREAM_MUSIC
-        if (am.getStreamVolume(stream) == 0) return "el volumen de ${streamName(alarm)} está en 0"
+        if (!Store.loudAccepted) {
+            val alarm = useAlarm(context)
+            val stream = if (alarm) AudioManager.STREAM_ALARM else AudioManager.STREAM_MUSIC
+            if (am.getStreamVolume(stream) == 0) return "el volumen de ${streamName(alarm)} está en 0"
+        }
         val nm = context.getSystemService(NotificationManager::class.java)
         if (nm?.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_NONE) {
             return "«No molestar» está en silencio total"
@@ -51,18 +54,21 @@ object SoundCheck {
 
         val am = context.getSystemService(AudioManager::class.java)
         if (am != null) {
-            val alarm = useAlarm(context)
-            val stream = if (alarm) AudioManager.STREAM_ALARM else AudioManager.STREAM_MUSIC
-            val volume = am.getStreamVolume(stream)
-            val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
-            val name = streamName(alarm)
-            list += when {
-                volume == 0 -> Item(false, "El volumen de $name está en 0: no se va a oír. Súbelo.")
-                volume * 4 <= max -> Item(false, "El volumen de $name está bajo ($volume de $max).")
-                else -> Item(true, "Volumen de $name: $volume de $max.")
-            }
-            if (Store.ringInSilent && !alarm) {
-                list += Item(false, "El volumen de alarma está en 0, así que se usa el multimedia: en silencio no sonará.")
+            val loud = Store.loudAccepted
+            if (loud) {
+                list += Item(true, "Suena al volumen máximo, también en silencio. Al terminar, el volumen vuelve a como estaba.")
+            } else {
+                val alarm = useAlarm(context)
+                val stream = if (alarm) AudioManager.STREAM_ALARM else AudioManager.STREAM_MUSIC
+                val volume = am.getStreamVolume(stream)
+                val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
+                val name = streamName(alarm)
+                list += when {
+                    volume == 0 -> Item(false, "El volumen de $name está en 0: no se va a oír. Súbelo.")
+                    volume * 4 <= max -> Item(false, "El volumen de $name está bajo ($volume de $max).")
+                    else -> Item(true, "Volumen de $name: $volume de $max.")
+                }
+                list += Item(false, "Todavía no aceptas el volumen máximo: actívalo en «Recibir sonidos».")
             }
             list += if (am.mode == AudioManager.MODE_IN_CALL) {
                 Item(false, "Estás en una llamada: durante las llamadas los sonidos no suenan.")
@@ -81,9 +87,9 @@ object SoundCheck {
             }
             val connected = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in external }
             list += when {
-                !connected -> Item(true, "El sonido sale por el altavoz del celular.")
-                alarm -> Item(true, "Hay auriculares o un parlante conectado; con volumen de alarma suena también por el altavoz.")
-                else -> Item(false, "Hay auriculares o un parlante Bluetooth conectado: el sonido sale por ahí.")
+                !connected -> Item(true, "El sonido sale por el altavoz principal del celular.")
+                Build.VERSION.SDK_INT >= 28 -> Item(true, "Hay auriculares o un parlante conectado, pero el sonido sale por el altavoz del celular.")
+                else -> Item(true, "Hay auriculares o un parlante conectado; con volumen de alarma suena también por el altavoz.")
             }
         }
 

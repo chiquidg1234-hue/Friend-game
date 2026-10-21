@@ -112,6 +112,8 @@ class ListenService : Service() {
         Store.init(this)
         Notifs.createChannels(this)
         Store.addListener(storeListener)
+        // Si la app se cerró con un sonido al máximo, el volumen de alarma vuelve a como estaba.
+        Player.restoreVolume(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

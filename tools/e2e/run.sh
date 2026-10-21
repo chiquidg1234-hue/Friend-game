@@ -57,6 +57,20 @@ sound_json() { echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"i
 WEEK_ID=$(python3 -c 'import datetime; y, w, _ = datetime.date.today().isocalendar(); print(f"{y}-{w}")')
 # Ajustes está dentro de la pestaña Tú.
 open_settings() { $UI tab Tú && $UI tap "Ajustes" && $UI wait "Recibir sonidos" 10; }
+# Volumen de alarma «actual máximo», leído de dumpsys audio.
+alarm_volume() {
+  adb shell dumpsys audio | python3 -c '
+import re, sys
+text = sys.stdin.read()
+block = text.split("- STREAM_ALARM:", 1)[-1].split("- STREAM_", 1)[0]
+cur = re.search(r"streamVolume:\s*(\d+)", block) or re.search(r"\(speaker\):\s*(\d+)", block)
+top = re.search(r"Max:\s*(\d+)", block)
+print(cur.group(1) if cur else "?", top.group(1) if top else "?")'
+}
+# Cierra el teclado si quedó abierto (atrás con el teclado cerrado sacaría de la pantalla).
+hide_keyboard() {
+  if adb shell dumpsys input_method | grep -q "mInputShown=true"; then adb shell input keyevent KEYCODE_BACK; sleep 1; fi
+}
 stop_json() { echo "{\"fg\":1,\"t\":\"stop\",\"from\":\"$1\",\"id\":\"$2\"}"; }
 
 echo "== Instalando $APK"
@@ -82,6 +96,9 @@ done
 # Con el teclado abierto la app sube el botón Empezar. Se toca sin deslizar: deslizar encima
 # del teclado escribiría letras en el nombre.
 check "Botón Empezar (visible sobre el teclado)" $UI tapexact "Empezar"
+check "Pide aceptar que suene al máximo por el altavoz" $UI wait "Los sonidos suenan fuerte" 15
+shot "volumen"
+check "Acepta" $UI tapexact "Acepto"
 check "Muestra el saludo con el nombre" $UI wait "Hola, Robot" 15
 check "Pestaña Amigos" $UI tab Amigos
 check "Muestra el código de amigo" $UI wait "Tu código de amigo" 10
@@ -153,10 +170,18 @@ adb shell input keyevent KEYCODE_SLEEP
 sleep 2
 adb shell dumpsys deviceidle force-idle >/dev/null
 adb shell cmd audio set-ringer-mode SILENT >/dev/null 2>&1 || true
+# Volumen de alarma bajo: el sonido tiene que subirlo al máximo y después devolverlo.
+adb shell cmd audio set-volume 4 1 >/dev/null 2>&1 || adb shell media volume --stream 4 --set 1 >/dev/null 2>&1 || true
+ANTES=$(alarm_volume)
+echo "Volumen de alarma antes: $ANTES"
 publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p6 custom 'Pantalla apagada')" >/dev/null
 check "Suena con la pantalla apagada y el celular en reposo (Doze)" $UI playing 30
 check "Usa el volumen de alarma, que suena aunque esté en silencio" sh -c "adb shell dumpsys audio | grep AudioPlaybackConfiguration | grep 'state:started' | grep -q USAGE_ALARM"
+SONANDO=$(alarm_volume)
+check "Mientras suena, el volumen de alarma está al máximo ($SONANDO)" test "${SONANDO% *}" = "${SONANDO#* }" -a "${SONANDO% *}" != "?"
 $UI silent 15
+DESPUES=$(alarm_volume)
+check "Al terminar, el volumen vuelve a como estaba (${ANTES% *} → ${DESPUES% *})" test "${DESPUES% *}" = "${ANTES% *}"
 adb shell cmd audio set-ringer-mode NORMAL >/dev/null 2>&1 || true
 adb shell dumpsys deviceidle unforce >/dev/null
 adb shell input keyevent KEYCODE_WAKEUP
@@ -387,6 +412,25 @@ check "A Ana le llega el reto" $INBOX "$OUT/inbox-ana.jsonl" reto from="$MYCODE"
 check "Botón Cancelar reto" $UI tap "Cancelar reto"
 check "Confirma" $UI tapexact "Sí"
 check "A Ana le llega que se canceló" $INBOX "$OUT/inbox-ana.jsonl" retono from="$MYCODE" --wait 20
+check "Crea otro reto" $UI tap "Crear un reto"
+check "Elige otro tiempo" $UI tap "Otro tiempo"
+check "Toca las horas" $UI tap "Horas del reto"
+adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL
+adb shell input text "1"
+check "Toca los minutos" $UI tap "Minutos del reto"
+adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL KEYCODE_DEL KEYCODE_DEL
+adb shell input text "30"
+check "Listo" $UI tapexact "Listo"
+check "Queda elegido 1 h 30 min" $UI wait "1 h 30 min" 8
+shot "reto-tiempo"
+check "Botón Crear reto" $UI tapexact "Crear reto"
+hide_keyboard
+R2=$($INBOX "$OUT/inbox-ana.jsonl" reto from="$MYCODE" in=5400 --wait 20)
+check "A Ana le llega el reto en 1 h 30 min (5400 s)" test -n "$R2"
+R2ID=$(echo "$R2" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)
+check "Botón Cancelar reto" $UI tap "Cancelar reto"
+check "Confirma" $UI tapexact "Sí"
+check "A Ana le llega que se canceló el de 1 h 30 min" $INBOX "$OUT/inbox-ana.jsonl" retono from="$MYCODE" id="$R2ID" --wait 20
 
 echo "== 9h. Candado con Ana"
 publish "$MYCODE" "{\"fg\":1,\"t\":\"lockreq\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"l1abcdefgh\",\"min\":1}" >/dev/null

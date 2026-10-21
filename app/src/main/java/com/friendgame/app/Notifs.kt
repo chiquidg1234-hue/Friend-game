@@ -192,7 +192,10 @@ object Notifs {
 
     /** Tras actualizarse sola, Android cierra la app: este aviso permite volver a abrirla. */
     fun appUpdated(context: Context, versionName: String) {
-        social(context, "update", "✅ Friend Game se actualizó a la versión $versionName", "Toca para abrirla.")
+        Store.init(context)
+        val text = if (Store.loudAccepted) "Toca para abrirla."
+        else "Ábrela para confirmar: ahora los sonidos suenan al volumen máximo por el altavoz."
+        social(context, "update", "✅ Friend Game se actualizó a la versión $versionName", text)
     }
 
     private fun social(context: Context, code: String, title: String, text: String, tab: String? = null) {

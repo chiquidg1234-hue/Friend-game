@@ -21,6 +21,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 - **No agregar formas de que un sonido no se pueda detener sin aceptarlo.** Google Play lo trataría como acoso o falta de control del usuario.
 - **Límites:**
   - Cada sonido suena como mucho 10 s (`Player.MAX_PLAY_MS`).
+  - **Volumen máximo por el altavoz:** los sonidos de amigos suenan con el volumen de alarma al máximo y por el altavoz principal; al terminar se devuelve el volumen. La persona lo acepta al instalar o actualizar (`Store.loudAccepted`, `LOUD_VERSION`); si no, la recepción queda en pausa. Está en los términos. Si cambian esas condiciones, sube `Store.LOUD_VERSION` para volver a preguntar.
   - Máximo 4 sonidos por persona cada 20 s (`ListenService.allowSound`).
   - Si llega un sonido durante una llamada, no suena.
 - **Versión `play`:** no puede tener pagos externos, actualización propia, instalación de APKs ni `USE_EXACT_ALARM`. Ver `app/src/play/AndroidManifest.xml`.
@@ -43,7 +44,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Store.kt` | Todo lo guardado (SharedPreferences): amigos, grupos, historial, audios propios, chats (archivo aparte), retos y candados. Avisa los cambios con `notifyChanged()`. |
 | `ListenService.kt` | Servicio en primer plano. Mantiene la conexión con ntfy, procesa cada mensaje (`handleMessage`, `handleGroupMessage`) y dispara retos atrasados en cada keepalive. |
 | `Relay.kt` | Publica en ntfy. `payload(tipo)` arma el mensaje base, con puntos, avatar y mascota; `signed()` arma los mensajes del admin de un grupo, firmados con ECDSA. |
-| `Player.kt` | Un sonido a la vez: tope de 10 s, volumen de alarma o multimedia, repetir (`loop`), empezar desde (`startMs`) y `stopByUser` (respeta el candado y anota el tiempo en los retos). |
+| `Player.kt` | Un sonido a la vez: tope de 10 s, altavoz principal (`setPreferredDevice`) y volumen de alarma al máximo que después devuelve (`restoreVolume`), repetir (`loop`), empezar desde (`startMs`) y `stopByUser` (respeta el candado y anota el tiempo en los retos). |
 | `Chats.kt` | Chat por amigo (`f:código`) o por grupo (`g:id`). |
 | `Retos.kt` | Retos: crear, recibir, alarmas (AlarmManager exacta, o aproximada si no hay permiso), sonar, tabla de tiempos y `RetoReceiver`. |
 | `Locks.kt` | Candado: proponer, aceptar, rechazar, `blocksStop` y `finishDue`. |

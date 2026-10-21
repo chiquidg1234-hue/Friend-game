@@ -19,7 +19,7 @@ Apunta a Android 16 (API 36).
   - 12 sonidos integrados, más audios propios (grabados o descargados, hasta 1 min y 2 MB).
   - En un audio largo se elige desde dónde suena.
   - Todo sonido dura como mucho 10 s.
-  - Suenan con la pantalla apagada y en silencio (volumen de alarma, si la persona lo elige).
+  - Suenan con la pantalla apagada y en silencio, **al volumen máximo y por el altavoz principal** (antes, en algunos celulares salían por el auricular de las llamadas si otra app lo dejaba en modo llamada). Al terminar, el volumen de alarma vuelve a como estaba. Se pide aceptarlo al instalar y al actualizar; quien no acepta no recibe sonidos.
   - **Recarga al mandar:** un sonido a la vez, 2,5 s entre uno y otro (barra «Recargando») y máximo 4 cada 20 s al mismo destino.
 - **Amigos:** con código, solicitud y aceptación. Se puede silenciar, bloquear o denunciar.
 - **Grupos** (todos suenan) y **comunidades** (hasta 40, chat, ranking y retos; los sonidos sueltos no suenan):
@@ -29,6 +29,7 @@ Apunta a Android 16 (API 36).
 - **Retos:**
   - **Sonido sorpresa:** suena en todos a la vez a la hora elegida.
   - **El más rápido:** gana quien detiene primero, con tabla de tiempos y puntos.
+  - El tiempo se elige con opciones rápidas (30 s a 2 h), «Otro tiempo» (horas y minutos, hasta 6 h) o «A una hora» exacta.
   - Cada celular pone su propia alarma.
 - **Candado** entre dos amigos (5–60 min, ajustable): ninguno puede detener, silenciar, pausar, eliminar ni bloquear al otro. Al cumplirlo, los dos ganan puntos.
 - **Puntos, niveles y ranking:**

@@ -79,6 +79,8 @@ class Screens {
         }
         Store.init(app)
         Store.myName = "Robot"
+        Store.loudAccepted = true
+        Store.loudAnswered = true
         val ana = "aaaabbbbccccdddd"
         val beto = "eeeeffffgggghhhh"
         Store.putFriend(Friend(ana, "Ana", Friend.FRIEND))

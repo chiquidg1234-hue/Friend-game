@@ -28,12 +28,22 @@ object Retos {
 
     fun kindOf(key: String): Kind = KINDS.firstOrNull { it.key == key } ?: KINDS[0]
 
-    /** Opciones de la pantalla, en minutos. */
-    val DELAYS_MIN = listOf(1, 5, 10, 15, 30, 60)
-    const val DEFAULT_DELAY_MIN = 10
+    /** «30 s», «5 min», «1 h 30 min». */
+    fun delayText(seconds: Long): String {
+        val parts = listOfNotNull(
+            (seconds / 3600).takeIf { it > 0 }?.let { "$it h" },
+            (seconds % 3600 / 60).takeIf { it > 0 }?.let { "$it min" },
+            (seconds % 60).takeIf { it > 0 }?.let { "$it s" },
+        )
+        return parts.joinToString(" ").ifEmpty { "0 s" }
+    }
 
-    private const val MIN_DELAY_S = 10L
-    private const val MAX_DELAY_S = 6 * 3600L
+    /** Opciones rápidas de la pantalla, en segundos (también se puede elegir otro tiempo o una hora). */
+    val DELAYS_S = listOf(30L, 60L, 5 * 60L, 10 * 60L, 15 * 60L, 30 * 60L, 3600L, 2 * 3600L)
+    const val DEFAULT_DELAY_S = 10 * 60L
+
+    const val MIN_DELAY_S = 10L
+    const val MAX_DELAY_S = 6 * 3600L
     /** Si el celular estaba apagado a la hora del reto, suena igual hasta un minuto tarde. */
     private const val LATE_GRACE_MS = 60_000L
     /** Tiempo para que lleguen los tiempos de todos antes de cerrar la tabla. */
