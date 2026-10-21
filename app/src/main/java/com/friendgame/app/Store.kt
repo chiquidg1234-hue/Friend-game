@@ -176,6 +176,7 @@ object Store {
             Streaks.init(context)
             Quests.init(context)
             Reminders.init(context)
+            Seasons.init(context)
             Sonoteca.init(context)
         }
     }

@@ -20,17 +20,23 @@ class PetRender {
         val context = RuntimeEnvironment.getApplication()
         val species = listOf("gato", "perro", "zorro", "rana", "panda", "pulpo", "dragon", "unicornio")
         val cell = 220
-        val bitmap = Bitmap.createBitmap(cell * 8, cell * 6, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(cell * 8, cell * 8, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(0xFF231848.toInt())
         species.forEachIndexed { col, key ->
-            for (row in 0 until 6) {
+            for (row in 0 until 8) {
                 val view = PetView(context)
                 view.species = key
                 view.animated = false
-                view.stage = if (row < 5) row else 3
+                view.stage = when {
+                    row < 5 -> row
+                    row == 7 -> 2
+                    else -> 3
+                }
                 view.progress = 0.8f
                 if (row == 5) view.mood = Pets.Mood.SAD
+                if (row == 6) view.season = "halloween"
+                if (row == 7) view.season = "navidad"
                 view.measure(View.MeasureSpec.makeMeasureSpec(cell, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(cell, View.MeasureSpec.EXACTLY))
                 view.layout(0, 0, cell, cell)
                 canvas.save()

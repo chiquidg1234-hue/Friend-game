@@ -53,6 +53,13 @@ class PetView(context: Context) : View(context) {
     /** Avance hacia la próxima etapa, de 0 a 1: el huevo se agrieta cuando le falta poco. */
     var progress: Float = 0f
 
+    /** Temporada (ver Seasons): "halloween" (sombrero de bruja y calabaza) o "navidad" (gorro y regalo). */
+    var season: String = ""
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** false: un solo cuadro quieto (listas, el diálogo para adoptar). */
     var animated: Boolean = true
         set(value) {
@@ -140,6 +147,7 @@ class PetView(context: Context) : View(context) {
 
         if (stage == 0) {
             drawEgg(canvas, m, t, live)
+            drawSeasonProp(canvas)
             canvas.restore()
             if (live) postInvalidateDelayed(FRAME_IDLE_MS)
             return
@@ -200,18 +208,36 @@ class PetView(context: Context) : View(context) {
             canvas.drawPath(PetArt.shellEdge.path, PetArt.shellEdge.paint)
         }
         if (stage == 4) PetArt.crown.forEach { canvas.drawPath(it.path, it.paint) }
+        // Disfraz de temporada: solo joven y adulta (el bebé lleva la cáscara y la legendaria, la corona).
+        if (stage in 2..3 && species != "unicornio") {
+            when (season) {
+                "halloween" -> PetArt.witchHat.forEach { canvas.drawPath(it.path, it.paint) }
+                "navidad" -> PetArt.santaHat.forEach { canvas.drawPath(it.path, it.paint) }
+            }
+        }
 
         // Efectos que se mueven con la mascota.
         if (eating) drawFood(canvas, m, elapsed)
         if (sad && mood == Pets.Mood.SAD && live) drawTear(canvas, m, t)
         canvas.restore()
 
+        drawSeasonProp(canvas)
         if (action == Action.JOY) drawHearts(canvas, elapsed)
         if (asleep) drawZs(canvas, t)
         if (stage == 4 && live) drawSparkles(canvas, t)
         canvas.restore()
 
         if (live) postInvalidateDelayed(if (action == Action.NONE) FRAME_IDLE_MS else FRAME_ACTION_MS)
+    }
+
+    /** La calabaza o el regalo junto a la mascota, en el piso. */
+    private fun drawSeasonProp(canvas: Canvas) {
+        val prop = when (season) {
+            "halloween" -> PetArt.pumpkin
+            "navidad" -> PetArt.gift
+            else -> return
+        }
+        prop.forEach { canvas.drawPath(it.path, it.paint) }
     }
 
     private enum class Face { OPEN, HAPPY, SAD, CLOSED }
@@ -483,6 +509,42 @@ object PetArt {
         Shape(circle(100f, 46f, 3.4f), fill(0xFFFF4FA3.toInt())),
         Shape(circle(88f, 48f, 2.4f), fill(0xFF48DBFB.toInt())),
         Shape(circle(112f, 48f, 2.4f), fill(0xFF3DDC97.toInt())),
+    )
+
+    private val PUMPKIN = Tone(0xFFFFC078.toInt(), 0xFFFF8A1F.toInt(), 0xFFC2410C.toInt())
+    private val WITCH = Tone(0xFF8F6AD8.toInt(), 0xFF4B2A8C.toInt(), 0xFF22113F.toInt())
+    private val SANTA = Tone(0xFFFF8787.toInt(), 0xFFE03131.toInt(), 0xFF9C1C1C.toInt())
+
+    /** Calabaza con cara iluminada, al lado izquierdo de la mascota. */
+    val pumpkin = listOf(
+        Shape(oval(34f, 166f, 10f, 13f), gradient(RectF(24f, 153f, 44f, 179f), PUMPKIN)),
+        Shape(oval(50f, 166f, 10f, 13f), gradient(RectF(40f, 153f, 60f, 179f), PUMPKIN)),
+        Shape(oval(42f, 166f, 10f, 14f), gradient(RectF(32f, 152f, 52f, 180f), PUMPKIN)),
+        Shape(svg("M40 151 L44 151 L45 156 L39 156 Z"), fill(0xFF5C940D.toInt())),
+        Shape(svg("M34 163 L38 158 L41 164 Z M50 163 L46 158 L43 164 Z"), fill(0xFFFFE066.toInt())),
+        Shape(svg("M33 169 L37 172 L41 169 L45 172 L50 169 L46 176 L38 176 Z"), fill(0xFFFFE066.toInt())),
+    )
+
+    /** Sombrero de bruja, sobre la cabeza. */
+    val witchHat = listOf(
+        Shape(oval(100f, 50f, 34f, 7f), gradient(RectF(66f, 43f, 134f, 57f), WITCH)),
+        Shape(svg("M78 50 Q96 34 104 4 Q108 30 124 50 Z"), gradient(RectF(78f, 4f, 124f, 50f), WITCH)),
+        Shape(svg("M80 44 L122 44 L124 50 L78 50 Z"), fill(0xFFFF9F43.toInt())),
+        Shape(svg("M97 43 L105 43 L105 51 L97 51 Z"), stroke(0xFFFFD43B.toInt(), 1.8f)),
+    )
+
+    /** Gorro de Navidad, sobre la cabeza. */
+    val santaHat = listOf(
+        Shape(svg("M74 48 Q90 16 128 20 Q118 32 126 48 Z"), gradient(RectF(74f, 16f, 128f, 48f), SANTA)),
+        Shape(oval(100f, 50f, 32f, 7f), fill(0xFFFFFFFF.toInt())),
+        Shape(circle(130f, 22f, 7f), fill(0xFFFFFFFF.toInt())),
+    )
+
+    /** Regalo, al lado izquierdo de la mascota. */
+    val gift = listOf(
+        Shape(svg("M28 154 L56 154 L56 180 L28 180 Z"), gradient(RectF(28f, 154f, 56f, 180f), SANTA)),
+        Shape(svg("M39 154 L45 154 L45 180 L39 180 Z M28 164 L56 164 L56 169 L28 169 Z"), fill(0xFFFFD43B.toInt())),
+        Shape(svg("M42 154 Q32 144 36 150 Q38 154 42 154 Q52 144 48 150 Q46 154 42 154 Z"), fill(0xFFFFD43B.toInt())),
     )
 
     val heart: Path = svg("M0 -4 C -6 -12, -18 -6, -12 4 L0 16 L12 4 C 18 -6, 6 -12, 0 -4 Z")

@@ -51,7 +51,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat), mascota (`Pets`) y poderes (`Powers`). |
 | `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: las 8 especies con las formas del lienzo «Friend Game · Mascotas 3D»): respira, parpadea, come, salta, tiene hambre y duerme. |
 | `Anim.kt` | Animaciones cortas (rebote al tocar, entrada de pantalla, confeti, emoji que vuela) y `PulseRings`. |
-| `Engage.kt` | Rachas con cada amigo (`Streaks`), misiones del día con cofre (`Quests`) y un recordatorio diario (`Reminders`). |
+| `Engage.kt` | Rachas con cada amigo (`Streaks`), misiones del día con cofre (`Quests`), un recordatorio diario (`Reminders`), «Devolvérsela» (`Replies`), quién está activo (`Presence`) y temporadas con disfraz para la mascota (`Seasons`). Ver `docs/PSICOLOGIA.md`. |
 | `Sonoteca.kt` | Sonidos que comparten tus amigos y grupos: publicar, recibir, ❤️, usar, ocultar y la lista de retiro (`docs/legal/retiros.json`). |
 | `Groups.kt`, `Invites.kt`, `GroupKeys.kt` | Grupos: crear, unirse, sacar a alguien (cambia el canal), invitaciones y firmas del admin. |
 | `Notifs.kt` | Canales y notificaciones. |
@@ -110,6 +110,7 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 - Puntos: usa las funciones de `Points` (`onSoundSent`, `onRetoPlace`…), que ya tienen tope diario. Gastar (`Points.spend`) no baja el nivel ni el ranking.
 - **Envíos:** un sonido a la vez, con 2,5 s de recarga y como mucho 4 cada 20 s al mismo destino (`MainActivity.sendWait`). No lo quites: evita colas de envíos y sonidos que el otro celular igual descartaría.
 - **Animaciones:** cortas y sobre vistas (`Anim`); lo que se mueve todo el rato se dibuja en una vista propia (`PetView`, `PulseRings`, `TimeBar`). Respeta `Anim.enabled()` (la prueba en emulador corre sin animaciones).
+- **Modo escuchar:** en Sonar, «Escuchar» hace que tocar un sonido lo escuches tú (`Player.preview`) y «Como le llega a…» lo hace sonar como a tu amigo (`NowPlaying.trialFor`: pantalla completa, alarma, poder listo) sin mandarlo.
 - **Enganche sano:** nada se compra con dinero, perder una racha no quita nada, a lo más un recordatorio al día (18:00–21:00) y se apaga en Ajustes, sin cuentas regresivas falsas. Lo exige Google Play y el público es de 13+.
 - **Secretos:**
   - `signing/friendgame.jks` está en el repo a propósito: es solo para la versión github.

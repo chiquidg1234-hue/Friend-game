@@ -490,6 +490,34 @@ adb shell input keyevent KEYCODE_BACK
 check "Quedó en Tus audios" $UI see "Tono de Ana"
 shot "sonoteca-usado"
 
+echo "== 9m. Escuchar antes de mandar, «como le llega» y devolvérsela"
+check "Pestaña Sonar" $UI tab Sonar
+ANTES=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" --count)
+check "Elige el modo escuchar" $UI tap "Modo escuchar"
+check "Avisa que así no se manda" $UI wait "no se los manda a nadie" 5
+check "Toca «Tono de Ana»" $UI tap "Tono de Ana"
+check "Lo escucha en su propio celular" $UI playing 10
+check "Lo detiene" $UI tap "Detener lo que suena"
+$UI silent 5
+check "Activa «Como le llega a Ana»" $UI tap "Como le llega a Ana"
+shot "modo-escuchar"
+check "Toca «Tono de Ana» otra vez" $UI tap "Tono de Ana"
+check "Lo muestra como le llega a Ana y Detener funciona" $UI tapwhen "Detener" 10 "Así le llega a Ana"
+check "Se detiene" $UI silent 4
+sleep 3
+DESPUES=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" --count)
+check "A Ana no le llegó nada al escuchar ($ANTES → $DESPUES)" test "$DESPUES" -eq "$ANTES"
+check "Vuelve al modo mandar" $UI tap "Modo mandar"
+publish "$MYCODE" "$(sound_json "$ANA" Ana rb1 pato Pato)" >/dev/null
+check "Suena el pato de Ana" $UI playing 20
+$UI silent 10
+check "Ofrece devolvérsela" $UI wait "Ana te hizo sonar «Pato»" 10
+shot "devolversela"
+check "Toca Devolvérsela" $UI tap "Devolvérsela"
+check "Toca la Campana para devolvérsela" $UI tap "Campana"
+check "A Ana le llega la campana" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=campana --wait 20
+check "Ya no ofrece devolvérsela" $UI absent "Ana te hizo sonar «Pato»" 10
+
 echo "== 10. Pausar la recepción"
 open_settings
 $UI top

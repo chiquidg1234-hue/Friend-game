@@ -49,13 +49,17 @@ object Notifs {
     /** Chat que abre la app al tocar el aviso ("f:código" o "g:id"). */
     const val EXTRA_CHAT = "open_chat"
 
-    private fun openAppIntent(context: Context, tab: String? = null, chat: String? = null): PendingIntent {
+    /** Devolvérsela: abre Sonar con ese destino elegido ("f:código" o "g:id"). */
+    const val EXTRA_REPLY = "reply_to"
+
+    private fun openAppIntent(context: Context, tab: String? = null, chat: String? = null, reply: String? = null): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         if (tab != null) intent.putExtra(EXTRA_TAB, tab)
         if (chat != null) intent.putExtra(EXTRA_CHAT, chat)
+        if (reply != null) intent.putExtra(EXTRA_REPLY, reply)
         return PendingIntent.getActivity(
-            context, (chat ?: tab)?.hashCode() ?: 0, intent,
+            context, (reply?.let { "reply:$it" } ?: chat ?: tab)?.hashCode() ?: 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
@@ -86,8 +90,11 @@ object Notifs {
         notify(context, ID_SERVICE, serviceNotification(context, connected))
     }
 
-    /** [canStop] false: hay un candado con quien lo mandó y no se muestra el botón Detener. */
-    fun soundReceived(context: Context, fromName: String, label: String, canStop: Boolean = true) {
+    /**
+     * [canStop] false: hay un candado con quien lo mandó y no se muestra el botón Detener.
+     * [replyTo]: a quién devolvérsela (botón «↩️ Devolvérsela», que abre Sonar con ese destino).
+     */
+    fun soundReceived(context: Context, fromName: String, label: String, canStop: Boolean = true, replyTo: String? = null) {
         val builder = Notification.Builder(context, CH_SOUNDS)
             .setSmallIcon(R.drawable.ic_stat_sound)
             .setContentTitle(if (fromName.startsWith("⚡")) fromName else "🔊 $fromName te mandó un sonido")
@@ -97,6 +104,9 @@ object Notifs {
             .setTimeoutAfter(20_000)
             .setCategory(Notification.CATEGORY_MESSAGE)
         if (canStop) builder.addAction(action(context, "⏹ Detener", ActionReceiver.ACTION_STOP, 2))
+        if (replyTo != null) {
+            builder.addAction(Notification.Action.Builder(null, "↩️ Devolvérsela", openAppIntent(context, "SOUND", reply = replyTo)).build())
+        }
         notify(context, ID_SOUND, builder.build())
     }
 

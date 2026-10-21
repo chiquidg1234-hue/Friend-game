@@ -40,6 +40,11 @@ object Player {
         val power: String = "",
         /** Audio propio: desde qué milisegundo suena (el remitente elige la parte que quiere). */
         val startMs: Int = 0,
+        /**
+         * Prueba «como le llega»: suena en tu celular igual que en el de [trialFor] (pantalla
+         * completa, volumen de alarma, 10 s, poder listo), sin mandarle nada.
+         */
+        val trialFor: String = "",
     ) {
         val isPreview: Boolean get() = fromCode.isEmpty()
 

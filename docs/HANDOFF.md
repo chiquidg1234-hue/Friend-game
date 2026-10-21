@@ -42,6 +42,8 @@ Apunta a Android 16 (API 36).
 - **Mascota 3D:** 8 especies (4 se desbloquean por nivel), dibujadas en Canvas con el diseño del lienzo «Friend Game · Mascotas 3D» (https://claude.ai/artifact/VrU56dRP4yBcrdif3oRGd1). Crece con tus puntos (huevo → bebé con cáscara → joven → adulta → legendaria con corona). Respira, parpadea, mueve la cola, come su comida favorita, salta y suelta corazones, se pone triste con hambre y duerme de 22:00 a 7:00.
 - **Mercado** (Tú → Mercado): la **Sonoteca** (compartir tus audios con amigos y grupos, ❤️, usarlos con el nombre del autor, pasarlos, ocultar y denunciar; lista de retiro por derechos de autor) y la tienda (poderes y protector de racha).
 - **Enganche sano:** misiones del día con cofre sorpresa, racha con cada amigo (🔥), protector de racha y un recordatorio diario (18:00–21:00, se apaga en Ajustes → Avisos).
+- **Escuchar antes de mandar:** en Sonar, el selector «🔊 Mandar / 🎧 Escuchar»; con «Como le llega a Ana» suena tal como a tu amigo (pantalla, alarma, poder), solo en tu celular. También en el menú de cada botón.
+- **Psicología del juego** (`docs/PSICOLOGIA.md`): «Devolvérsela» en Sonar y en el aviso, punto verde de amigo activo, temporadas con disfraz (Halloween 20 oct – 2 nov, Navidad 18 dic – 1 ene) y logro de temporada, festejo al ganar un reto y «te falta poco» para subir de nivel.
 - **Animaciones:** rebote al tocar, entrada de pantallas, confeti en logros y cofres, emoji que vuela al mandar, anillos al recibir, botones de sonido en 3D.
 - **Poderes**, que se compran con puntos: Súper sonido (pantalla dorada), Eco (se repite hasta 10 s) y Doble puntos (en el próximo reto).
 - **Legal:**

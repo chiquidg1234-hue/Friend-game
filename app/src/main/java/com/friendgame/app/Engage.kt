@@ -6,6 +6,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.MonthDay
 import kotlin.random.Random
 
 /*
@@ -245,5 +246,116 @@ object Reminders {
         }
         prefs.edit().putLong("reminded", day).apply()
         Notifs.reminder(context, title, text)
+    }
+}
+
+/**
+ * Devolvérsela (reciprocidad): si un amigo te hace sonar, durante media hora la app te ofrece
+ * devolvérsela con un toque, en la pestaña Sonar y en el aviso. Se quita al mandarle algo.
+ */
+object Replies {
+    class Incoming(val key: String, val name: String, val label: String, val time: Long)
+
+    private const val WINDOW_MS = 30 * 60_000L
+
+    @Volatile
+    private var last: Incoming? = null
+
+    /** [key]: "f:código" o "g:id", el destino al que se le devuelve. */
+    fun onIncoming(key: String, name: String, label: String) {
+        last = Incoming(key, name, label, System.currentTimeMillis())
+        Store.notifyChanged()
+    }
+
+    fun onSent(key: String) {
+        if (last?.key == key) {
+            last = null
+            Store.notifyChanged()
+        }
+    }
+
+    fun pending(): Incoming? = last?.takeIf { System.currentTimeMillis() - it.time < WINDOW_MS }
+
+    fun dismiss() {
+        last = null
+        Store.notifyChanged()
+    }
+}
+
+/**
+ * Quién está activo (prueba social): cada mensaje que llega de un amigo o de alguien de tus
+ * grupos cuenta como señal de vida. Solo se usa en tu celular; no se manda a nadie.
+ */
+object Presence {
+    private const val ACTIVE_MS = 10 * 60_000L
+    private val seen = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun seen(code: String) {
+        val before = seen.put(code, System.currentTimeMillis())
+        // Solo se redibuja cuando alguien pasa de inactivo a activo.
+        if (before == null || System.currentTimeMillis() - before > ACTIVE_MS) Store.notifyChanged()
+    }
+
+    fun activeNow(code: String): Boolean = (seen[code] ?: 0L) > System.currentTimeMillis() - ACTIVE_MS
+
+    /** "activo ahora", "activo hace 25 min" o null si no hay señales en las últimas 3 horas. */
+    fun describe(code: String): String? {
+        val at = seen[code] ?: return null
+        val minutes = (System.currentTimeMillis() - at) / 60_000L
+        return when {
+            minutes < 10 -> "activo ahora"
+            minutes < 60 -> "activo hace $minutes min"
+            minutes < 180 -> "activo hace ${minutes / 60} h"
+            else -> null
+        }
+    }
+}
+
+/**
+ * Temporadas con fecha real (escasez honesta): mientras dura, la mascota se disfraza y hay un
+ * logro que solo se gana esos días. Se dice cuándo termina; no hay cuentas regresivas falsas.
+ */
+object Seasons {
+    class Season(
+        val key: String,
+        val emoji: String,
+        val name: String,
+        private val from: MonthDay,
+        private val to: MonthDay,
+        val until: String,
+        val text: String,
+        val logro: String,
+    ) {
+        fun active(day: MonthDay = MonthDay.now()): Boolean =
+            if (from <= to) day >= from && day <= to else day >= from || day <= to
+    }
+
+    val HALLOWEEN = Season(
+        "halloween", "🎃", "Semana de Halloween", MonthDay.of(10, 20), MonthDay.of(11, 2), "el 2 de noviembre",
+        "Tu mascota se disfrazó. Manda 5 sonidos estos días y gana el logro «Truco o trato».", "halloween",
+    )
+    val NAVIDAD = Season(
+        "navidad", "🎄", "Navidad", MonthDay.of(12, 18), MonthDay.of(1, 1), "el 1 de enero",
+        "Tu mascota se abriga. Manda 5 sonidos estos días y gana el logro «Feliz ruido».", "navidad",
+    )
+
+    private val ALL = listOf(HALLOWEEN, NAVIDAD)
+
+    private lateinit var prefs: SharedPreferences
+
+    @Synchronized
+    fun init(context: Context) {
+        if (!::prefs.isInitialized) prefs = engagePrefs(context)
+    }
+
+    fun current(): Season? = ALL.firstOrNull { it.active() }
+
+    /** El aviso de la temporada en Sonar se muestra hasta que lo tocas una vez. */
+    fun seen(season: Season): Boolean = prefs.getBoolean("season_seen_${season.key}_${LocalDate.now().year}", false)
+
+    fun markSeen(season: Season) {
+        if (seen(season)) return
+        prefs.edit().putBoolean("season_seen_${season.key}_${LocalDate.now().year}", true).apply()
+        Store.notifyChanged()
     }
 }

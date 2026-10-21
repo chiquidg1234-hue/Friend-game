@@ -279,11 +279,15 @@ fun Context.soundTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     swatch: Looks.Swatch? = null,
+    /** Con borde blanco: en modo escuchar, tocarlo no lo manda. */
+    outlined: Boolean = false,
 ): View = column().apply {
     gravity = Gravity.CENTER
     minimumHeight = dp(88)
     setPadding(dp(6), dp(8), dp(6), dp(8))
-    background = clickable(swatch?.drawable(context, 22) ?: candy(color, 22), 0x40150C2C)
+    val base = swatch?.drawable(context, 22) ?: candy(color, 22)
+    if (outlined) base.setStroke(dp(3), Palette.TEXT, dp(8).toFloat(), dp(5).toFloat())
+    background = clickable(base, 0x40150C2C)
     isClickable = true
     isFocusable = true
     elevation = dp(3).toFloat()

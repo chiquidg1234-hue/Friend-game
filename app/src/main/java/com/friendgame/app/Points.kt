@@ -47,6 +47,8 @@ object Points {
         Logro("best_friends", "💞", "Mejores amigos", "Ten una racha de 7 días con un amigo", 40),
         Logro("dj", "🎧", "DJ del grupo", "Comparte 3 sonidos en la Sonoteca", 20),
         Logro("viral", "🚀", "Viral", "Que 5 amigos usen un sonido tuyo", 50),
+        Logro("halloween", "🎃", "Truco o trato", "Manda 5 sonidos en la Semana de Halloween (20 oct – 2 nov)", 30),
+        Logro("navidad", "🎄", "Feliz ruido", "Manda 5 sonidos en Navidad (18 dic – 1 ene)", 30),
     )
 
     /** Puntos por cada cosa, con un tope diario para que no se puedan inflar mandando spam. */
@@ -275,6 +277,9 @@ object Points {
         val got = add(Rule.SOUND_SENT, "sent", Rule.SOUND_SENT_DAILY)
         unlock("first_sound")
         if (sent >= 50) unlock("sounds_50")
+        Seasons.current()?.let { season ->
+            if (bump("season_${season.key}_${java.time.LocalDate.now().year}") >= 5) unlock(season.logro)
+        }
         Quests.track(Quests.SEND)
         return if (got) Rule.SOUND_SENT else 0
     }
@@ -311,6 +316,8 @@ object Points {
         var points = Rule.RETO_PLACE.getOrNull(place - 1) ?: return
         if (place == 1) {
             bump("retos_won")
+            // Pico-final: lo que más se recuerda de un juego es el momento de ganar.
+            celebrations += "🎉 ¡Ganaste el reto! Fuiste el más rápido"
             unlock("reto_win")
             if (Powers.takeDouble()) {
                 points *= 2

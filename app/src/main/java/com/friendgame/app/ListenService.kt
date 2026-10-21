@@ -271,6 +271,7 @@ class ListenService : Service() {
         if (friend != null) {
             Points.updateScore(from, friend.name, payload)
             Looks.updateProfile(from, payload)
+            Presence.seen(from)
         }
         val key = Chats.friendKey(from)
         when (payload.optString("t")) {
@@ -318,6 +319,7 @@ class ListenService : Service() {
         if (member != null) {
             Points.updateScore(from, sender, payload)
             Looks.updateProfile(from, payload)
+            Presence.seen(from)
         }
         val key = Chats.groupKey(group.id)
         when (payload.optString("t")) {
@@ -485,7 +487,9 @@ class ListenService : Service() {
                 val sound = Sounds.byKey(kind) ?: return
                 Player.Source.Asset(sound.asset)
             }
-            Notifs.soundReceived(this, shownName, label, canStop = group != null || Locks.activeWith(from) == null)
+            // Devolvérsela: a quien te hizo sonar (o a su grupo) se le puede responder con un toque.
+            val replyTo = if (group != null) Chats.groupKey(group.id) else Chats.friendKey(from)
+            Notifs.soundReceived(this, shownName, label, canStop = group != null || Locks.activeWith(from) == null, replyTo = replyTo)
             vibrate(strong = power == Powers.SUPER)
             if (isInCall()) {
                 Store.addHistory("$shownName · $label (no sonó: estabas en una llamada)")
@@ -501,6 +505,7 @@ class ListenService : Service() {
                 ),
             )
             played = true
+            Replies.onIncoming(if (group != null) Chats.groupKey(group.id) else Chats.friendKey(from), shownName, label)
             Points.onSoundHeard()
         } finally {
             // Player.play solo encola el trabajo: si ya hay sonido, el wake lock se deja vencer
