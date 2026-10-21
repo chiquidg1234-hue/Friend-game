@@ -611,6 +611,9 @@ adb shell input text "Robot"
 sleep 2
 # Esta vez con el ✓/Enter del teclado.
 adb shell input keyevent KEYCODE_ENTER
+# La versión «vieja» se compila con este mismo código: también pide aceptar el volumen.
+check "La versión vieja pide aceptar el volumen" $UI wait "Los sonidos suenan fuerte" 15
+check "Acepta" $UI tapexact "Acepto"
 check "Avisa que hay una versión nueva" $UI wait "Actualizar ahora" 90
 shot "actualizacion"
 check "Toca Actualizar ahora" $UI tap "Actualizar ahora"
