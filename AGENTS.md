@@ -94,6 +94,7 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 
 - **Prueba de punta a punta:** `tools/e2e/run.sh`. Corre en GitHub Actions (`.github/workflows/e2e.yml`) con un emulador Android 15. Simula amigos y admins con curl contra ntfy.sh real y maneja la app con `tools/e2e/ui.py` (uiautomator). Cada paso nuevo de la app debería tener su paso ahí.
 - **Revisión rápida sin el SDK de Android:** compilar el Kotlin contra un `android.jar` (por ejemplo `android-all` de Robolectric) con un `R`/`BuildConfig` de mentira.
+- **Ver cómo se ve, sin emulador:** `tools/render/run.sh` dibuja las mascotas, sus animaciones y las pantallas principales con Robolectric y gráficos nativos (deja PNG en `tools/render/out/`). Úsalo antes de subir cambios visuales.
 
 ### ⚠️ Antes de hacer push
 

@@ -22,6 +22,11 @@ Las políticas de Google cambian seguido: antes de enviar la app, revisa las pá
 | Formato AAB | ✅ GitHub Actions arma `FriendGame-play.aab` en cada compilación |
 | Nombre de paquete propio | ✅ `io.github.chiquidg1234.friendgame` (no se puede cambiar después de publicar) |
 | Gesto de atrás predictivo de Android 16 | ✅ Ya registrado |
+| Contenido de usuarios (Sonoteca): aceptar reglas antes de publicar, denunciar, bloquear, ocultar y retirar | ✅ Casilla «tengo derecho a compartirlo», «Denunciar» en cada sonido y la lista de retiro `docs/legal/retiros.json` |
+| Derechos de autor: aviso y retiro, reincidentes | ✅ Explicado en los términos (punto 7) y aplicado con la lista de retiro |
+| Premios al azar (cofre del día) | ✅ Gratis y sin compras: no es una «caja de botín» pagada |
+| Notificaciones con medida | ✅ A lo más un recordatorio al día, de 18:00 a 21:00, y se apaga en Ajustes |
+| Ícono 512 × 512 y gráfico 1024 × 500 | ✅ `store/icono-512.png` y `store/grafico-1024x500.png`; textos de la ficha en `store/ficha.md` |
 
 ### Las dos versiones de la app
 
@@ -39,6 +44,28 @@ Google Play exige que la gente controle su celular y prohíbe apps que faciliten
 - Los **poderes** (Súper sonido, Eco, Doble puntos) cambian cómo se ve y se siente el sonido, pero quien lo recibe siempre puede detenerlo, silenciar o bloquear.
 - La única forma de que un sonido no se pueda detener es el **candado**, que los dos aceptan, dura poco, mantiene el máximo de 10 segundos por sonido y deja denunciar siempre.
 - Los puntos no se compran con dinero. Si algún día se venden puntos o poderes, tendría que ser con la facturación de Google Play y declararlo en la ficha.
+
+### Sonoteca y derechos de autor
+
+La Sonoteca deja compartir audios con los amigos y grupos que cada uno eligió (no es un catálogo público). Aun así, Google la trata como **contenido generado por usuarios**, y lo más probable es que algún usuario suba un audio bajado de un sitio de «botones de sonidos» o un pedazo de una canción. Por eso:
+
+- **Antes de compartir**, la persona marca «Confirmo que tengo derecho a compartirlo». Sin esa casilla no se publica.
+- Cada sonido tiene **Denunciar** (con el motivo «Usa música o audio con derechos de autor»), **Ocultar** y **No ver nada de esta persona**. Denunciar lo oculta al instante y arma un correo con los datos (si está `FG_CONTACT_EMAIL`).
+- **Aviso y retiro:** si un titular de derechos escribe al correo de contacto con los datos del punto 7 de los términos, agrega el id del sonido a `"sounds"` en `docs/legal/retiros.json` (el id viene en el correo de la denuncia) y haz push a la rama principal. Cada celular baja esa lista una vez al día (desde GitHub Pages) y borra ese sonido.
+- **Reincidentes:** si el mismo código recibe denuncias válidas más de una vez, agrégalo a `"authors"`. Lo que comparta deja de llegar a la Sonoteca de los demás.
+- Responde los correos de retiro en pocos días y guarda una copia de cada uno (fecha, quién lo pidió, qué retiraste).
+- Los 12 sonidos de la app son originales (`tools/generate_sounds.py`): no tienen derechos de terceros.
+- En la ficha y en la app **no recomiendes sitios con audios de terceros** (como los de «botones de sonidos»): Google puede verlo como incentivar la infracción.
+
+### Enganche sin trampas
+
+Las rachas, misiones, cofres y recordatorios están pensados para que vuelvan con gusto, no para atraparlos. Lo que Google y las leyes de protección de menores miran (el público es de 13+):
+
+- nada se compra con dinero y los premios no se cambian por nada;
+- el cofre es gratis (si algún día se vende, hay que mostrar las probabilidades);
+- perder una racha no quita puntos ni nivel, y el protector de racha se gana o se compra con puntos;
+- a lo más un recordatorio al día, nunca de noche, y se apaga en Ajustes → Avisos;
+- no hay cuentas regresivas falsas ni «solo por hoy».
 
 ## 2. Paso a paso para publicar
 
@@ -108,10 +135,10 @@ En el menú **Política → Contenido de la app**:
 - **Política de privacidad**: pega la dirección del paso 2.
 - **Acceso a la app**: «Todas las funciones están disponibles sin acceso especial» (no hay cuentas).
 - **Anuncios**: «No contiene anuncios».
-- **Clasificación de contenido**: completa el cuestionario. Marca que los usuarios **pueden interactuar** y **compartir contenido** (chat y audios).
+- **Clasificación de contenido**: completa el cuestionario. Marca que los usuarios **pueden interactuar** y **compartir contenido** (chat, audios y la Sonoteca), y que hay **premios aleatorios sin dinero** (el cofre).
 - **Público objetivo**: **13 años o más** (no marques menores de 13: eso activa la política de Familias).
 - **Seguridad de los datos**:
-  - Se **recopilan y comparten**: nombre (nombre visible), mensajes (chat), audio (audios propios) y otro contenido (puntos, avatar y mascota). Para la **funcionalidad de la app**.
+  - Se **recopilan y comparten**: nombre (nombre visible), mensajes (chat), audio (audios propios y los que compartes en la Sonoteca) y otro contenido (puntos, avatar, mascota, ❤️ y usos de tus sonidos). Para la **funcionalidad de la app**.
   - Los datos viajan **cifrados en tránsito**.
   - No hay forma de pedir el borrado en un servidor porque no hay cuentas; se borra con **Cambiar mi código** o desinstalando. Indícalo así.
   - Menciona que pasa por **ntfy.sh**, un servicio de terceros.
@@ -124,7 +151,7 @@ En **Crecimiento → Presencia en Play Store → Ficha principal**:
 
 - **Descripción breve** (80 caracteres): «Hazle sonar el celular a tus amigos: bocinas, retos, chat y candados».
 - **Descripción completa**: qué hace, que solo suenan los amigos que aceptas, grupos con QR, comunidades, retos, candado, puntos y ranking, sin cuenta y sin anuncios.
-- **Ícono** 512×512 PNG y **gráfico de funciones** 1024×500.
+- **Ícono** 512×512 PNG (`store/icono-512.png`) y **gráfico de funciones** 1024×500 (`store/grafico-1024x500.png`). Los textos están listos en `store/ficha.md`.
 - **Capturas** (mínimo 2): la prueba en emulador las publica en https://github.com/chiquidg1234-hue/Friend-game/releases/tag/capturas (Sonar, Chats, Reto, Candado, Tú, Ranking).
 - **Categoría**: Entretenimiento. **Correo de contacto**.
 

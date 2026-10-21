@@ -2983,7 +2983,7 @@ class MainActivity : Activity(), Store.Listener {
         items.forEach { add(sharedCard(it), 10) }
         add(
             label(
-                "Solo ven lo que compartes tus amigos y tus grupos. Comparte solo audios tuyos o que tengas permiso de usar: " +
+                "Solo ves lo que comparten tus amigos y tus grupos, y lo tuyo solo les llega a ellos. Comparte solo audios tuyos o que tengas permiso de usar: " +
                     "nada de canciones ni audios con derechos de autor de otros. Lo que no te guste, ocúltalo o denúncialo.",
                 12f, Palette.SUB,
             ),
@@ -3065,7 +3065,7 @@ class MainActivity : Activity(), Store.Listener {
         if (item.mine) {
             actions.addView(
                 button("Compartir otra vez", Palette.ACCENT, Palette.INK, heightDp = 40, radiusDp = 12, sizeSp = 13f) {
-                    confirmShare(item.file(this), item.label, item.emoji, item.startMs, null)
+                    confirmShare(item.file(this), item.label, item.emoji, item.startMs, item)
                 }.apply { contentDescription = "Compartir otra vez «${item.label}»" },
                 lp(0, WRAP, weight = 1f),
             )
@@ -3193,16 +3193,17 @@ class MainActivity : Activity(), Store.Listener {
         val groupChecks = groups.map { group ->
             group to check((if (group.community) "Comunidad " else "Grupo ") + group.name, !group.community).also { body.addView(it, lp()) }
         }
+        val someoneElse = original != null && !original.mine
         body.addView(
             label(
-                if (original != null) "Lo creó ${original.authorName}: se comparte con su nombre."
+                if (original != null && someoneElse) "Lo creó ${original.authorName}: se comparte con su nombre."
                 else "Comparte solo audios tuyos o que tengas permiso de usar. Nada de canciones ni audios con derechos de autor de otros, ni nada ofensivo.",
                 12f, Palette.SUB,
             ),
             lp(topDp = 12),
         )
         val rights = check(
-            if (original != null) "Confirmo que no es ofensivo ni infringe derechos de autor" else "Confirmo que tengo derecho a compartirlo",
+            if (someoneElse) "Confirmo que no es ofensivo ni infringe derechos de autor" else "Confirmo que tengo derecho a compartirlo",
             false,
         )
         body.addView(rights, lp(topDp = 6))

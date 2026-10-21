@@ -224,6 +224,7 @@ class PetView(context: Context) : View(context) {
         val strength = if (progress > 0.7f) 9f else 5f
         val wobble = if (live && phase > 0.6f) sin((phase - 0.6f) / 0.4f * 4 * PI.toFloat()) * strength * (1f - phase) * 2.5f else 0f
         canvas.save()
+        canvas.scale(1.18f, 1.18f, 100f, 174f)
         canvas.rotate(wobble, 100f, 172f)
         canvas.drawPath(PetArt.egg.path, PetArt.egg.paint)
         m.eggSpots.forEach { canvas.drawPath(it.path, it.paint) }
@@ -274,7 +275,8 @@ class PetView(context: Context) : View(context) {
                     }
                 }
                 Face.HAPPY -> {
-                    line.color = 0xFF06050A.toInt()
+                    // El panda tiene los ojos sobre manchas negras: ahí la línea va en blanco.
+                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
                     line.strokeWidth = 3.2f
                     path.reset()
                     path.moveTo(pupilX - 7f, e.y + 2f)
@@ -282,7 +284,7 @@ class PetView(context: Context) : View(context) {
                     canvas.drawPath(path, line)
                 }
                 Face.CLOSED -> {
-                    line.color = 0xFF06050A.toInt()
+                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
                     line.strokeWidth = 3.2f
                     path.reset()
                     path.moveTo(pupilX - 7f, e.y - 1f)

@@ -1,6 +1,6 @@
 # Informe para seguir con Friend Game (ChatGPT, Codex u otra IA)
 
-Fecha: 18 de octubre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
+Fecha: 21 de octubre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
 
 Primero lee [AGENTS.md](../AGENTS.md): explica la arquitectura, el protocolo, cómo compilar y las reglas que no se pueden romper.
 
@@ -20,6 +20,7 @@ Apunta a Android 16 (API 36).
   - En un audio largo se elige desde dónde suena.
   - Todo sonido dura como mucho 10 s.
   - Suenan con la pantalla apagada y en silencio (volumen de alarma, si la persona lo elige).
+  - **Recarga al mandar:** un sonido a la vez, 2,5 s entre uno y otro (barra «Recargando») y máximo 4 cada 20 s al mismo destino.
 - **Amigos:** con código, solicitud y aceptación. Se puede silenciar, bloquear o denunciar.
 - **Grupos** (todos suenan) y **comunidades** (hasta 40, chat, ranking y retos; los sonidos sueltos no suenan):
   - Invitación con QR o enlace.
@@ -38,7 +39,10 @@ Apunta a Android 16 (API 36).
   - Tu avatar (lo ven tus amigos).
   - Temas para cada chat.
   - Colores y temas que se desbloquean por nivel.
-- **Mascota:** 8 especies (4 se desbloquean por nivel). Crece con tus puntos (huevo → legendaria), le da hambre y se alimenta con puntos.
+- **Mascota 3D:** 8 especies (4 se desbloquean por nivel), dibujadas en Canvas con el diseño del lienzo «Friend Game · Mascotas 3D» (https://claude.ai/artifact/VrU56dRP4yBcrdif3oRGd1). Crece con tus puntos (huevo → bebé con cáscara → joven → adulta → legendaria con corona). Respira, parpadea, mueve la cola, come su comida favorita, salta y suelta corazones, se pone triste con hambre y duerme de 22:00 a 7:00.
+- **Mercado** (Tú → Mercado): la **Sonoteca** (compartir tus audios con amigos y grupos, ❤️, usarlos con el nombre del autor, pasarlos, ocultar y denunciar; lista de retiro por derechos de autor) y la tienda (poderes y protector de racha).
+- **Enganche sano:** misiones del día con cofre sorpresa, racha con cada amigo (🔥), protector de racha y un recordatorio diario (18:00–21:00, se apaga en Ajustes → Avisos).
+- **Animaciones:** rebote al tocar, entrada de pantallas, confeti en logros y cofres, emoji que vuela al mandar, anillos al recibir, botones de sonido en 3D.
 - **Poderes**, que se compran con puntos: Súper sonido (pantalla dorada), Eco (se repite hasta 10 s) y Doble puntos (en el próximo reto).
 - **Legal:**
   - Términos de uso y política de privacidad en `docs/legal/` (también dentro de la app).
@@ -55,7 +59,9 @@ La prueba automática (`tools/e2e/run.sh`) corre en cada push en un emulador And
 - **Lo nuevo:** chat, retos (recibir, sonar, detener, mandar el tiempo, crear, cancelar), candado (aceptar, no se puede detener, se cumple), puntos y ranking, botón personalizado, mascota y poder Eco.
 - **Otros:** donación, pausa, términos, Quick Share, que se actualiza sola, sin cierres inesperados.
 
-**Último resultado (versión 1.0.17): 181 comprobaciones bien, 0 fallos.**
+**Último resultado (rama `ccr-5646872f-1z0big`, 21 de octubre de 2026): 199 comprobaciones bien, 0 fallos.** Incluye la recarga al mandar, la misión del día, la racha con un amigo y la Sonoteca (recibir, usar y pasar un sonido).
+
+Además, `tools/render/run.sh` dibuja las mascotas y las pantallas principales sin emulador (ver `tools/render/README.md`).
 
 No se puede probar en el emulador: la cámara real (escanear el QR) ni el micrófono real. Ese paso avisa sin contar como fallo.
 
@@ -69,13 +75,13 @@ El resultado de cada ejecución está en GitHub → **Actions → Probar en emul
    - notificaciones de chat;
    - marcas que cierran apps en segundo plano (Xiaomi, Samsung, Huawei, Oppo);
    - Android 8, 12, 14 y 16.
-2. **Publicar en Google Play:** seguir [PLAY_STORE.md](PLAY_STORE.md). Lo que hace el dueño:
+2. **Publicar en Google Play:** seguir [PLAY_STORE.md](PLAY_STORE.md). Los textos y las imágenes de la ficha ya están en `store/`. Lo que hace el dueño:
    - crear la cuenta de desarrollador (25 USD);
    - activar GitHub Pages;
    - poner `FG_CONTACT_EMAIL`;
    - crear la clave de subida;
    - hacer la prueba cerrada con 12 personas durante 14 días.
-3. **Imágenes para la tienda:** ícono 512×512 y gráfico de 1024×500.
+3. **Capturas para la tienda:** elegir 6–8 de la prueba en emulador (ver `store/ficha.md`).
 4. **Seguridad:**
    - El chat no está cifrado de extremo a extremo. Se podría intercambiar una clave al aceptarse como amigos (ECDH) y cifrar con AES-GCM.
    - Los mensajes de amigos no van firmados.

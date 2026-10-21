@@ -73,7 +73,7 @@ object Fonts {
                 Typeface.Builder(assets, path)
                     .setFontVariationSettings("'wght' $weight")
                     .setWeight(weight)
-                    .build()
+                    .build() ?: throw IllegalStateException("sin fuente")
             } catch (_: Exception) {
                 if (weight >= 600) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             }
