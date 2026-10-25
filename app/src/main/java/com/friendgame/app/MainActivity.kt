@@ -2727,12 +2727,28 @@ class MainActivity : Activity(), Store.Listener {
         if (target != null) {
             options.add(1, "📱 Escuchar como le llega a ${target.name}" to { playTrial(target, Player.Source.Asset(sound.asset), name, sound.key, 0) })
         }
+        options += "🎭 Vibe: ${Vibes.byKey(Looks.vibe(sound.key)).name}" to { chooseVibe(sound.key) }
         if (look.emoji != null || look.swatch != null || look.label != null) {
             options += "↩️ Volver al original" to { Looks.setButton(sound.key, Looks.Look()) }
         }
         AlertDialog.Builder(this)
             .setTitle(name)
             .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Elige la vibe (emoción) de un sonido: la mascota la reconoce. [key]: "bocina" o "c:id". */
+    private fun chooseVibe(key: String) {
+        val current = Looks.vibe(key)
+        val labels = Vibes.all.map { "${it.emoji} ${it.name}" + if (it.key == current) "  ✓" else "" }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("¿Qué onda tiene este sonido?")
+            .setItems(labels) { _, which ->
+                val vibe = Vibes.all[which]
+                Looks.setVibe(key, vibe.key)
+                toast("${vibe.emoji} Vibe: ${vibe.name}")
+            }
             .setNegativeButton("Cerrar", null)
             .show()
     }
@@ -3200,7 +3216,10 @@ class MainActivity : Activity(), Store.Listener {
         nameRow.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB, 36) { petOptions() })
         add(nameRow, 10)
         add(label("${species.name} · ${stage.name}", 13f, Palette.YELLOW, bold = true), 2)
-        add(speechBubble(Pets.says()), 10)
+        Pets.personality()?.let { p ->
+            add(label("Personalidad: ${p.trait} ${p.emoji} · según los sonidos que mandas", 13f, Palette.CUSTOM, bold = true), 4)
+        }
+        add(speechBubble(Pets.lastVibe()?.let { "${Pets.name} se acuerda: ${it.reaction}" } ?: Pets.says()), 10)
         if (next != null) {
             add(progressBar((Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp), Palette.OK), 10)
             add(label("Le faltan ${next.xp - Pets.xp} puntos para ser ${next.name.lowercase()}", 12f, Palette.SUB), 4)
@@ -3298,8 +3317,14 @@ class MainActivity : Activity(), Store.Listener {
             .setItems(friends.map { it.name }.toTypedArray()) { _, which ->
                 val friend = friends[which]
                 val key = Chats.friendKey(friend.code)
-                val text = "${species.emoji} ${Pets.name} te manda un saludo 💕"
-                runInBackground({ Chats.send(key, text) }) {
+                val trait = Pets.personality()?.trait?.lowercase()
+                val lines = listOfNotNull(
+                    "${species.emoji} ${Pets.name} te manda un saludo 💕",
+                    "${species.emoji} ${Pets.name} quiere jugar con tu mascota 🐾",
+                    trait?.let { "${species.emoji} ${Pets.name} (es $it) te saluda" },
+                    "${species.emoji} ¡${Pets.name} te extraña! 🥺",
+                )
+                runInBackground({ Chats.send(key, lines.random()) }) {
                     toast("💌 ${Pets.name} saludó a ${friend.name}")
                 }
             }
@@ -4094,6 +4119,16 @@ class MainActivity : Activity(), Store.Listener {
         )
         page.addView(from, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(12) })
 
+        // La mascota reconoce la emoción del sonido.
+        if (now.vibe.isNotEmpty() && reto == null && now.trialFor.isEmpty()) {
+            val vibe = Vibes.byKey(now.vibe)
+            val chip = label("${vibe.emoji} Sonido ${vibe.name.lowercase()}", 14f, Palette.INK, bold = true).apply {
+                background = rounded(Palette.CUSTOM, 999)
+                setPadding(dp(14), dp(7), dp(14), dp(7))
+            }
+            page.addView(chip, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
+        }
+
         page.addView(View(this), lp(MATCH, dp(32), weight = 1f))
         if (locked) {
             // Candado: lo acordaron los dos, así que el botón no corta el sonido.
@@ -4404,7 +4439,9 @@ class MainActivity : Activity(), Store.Listener {
             return
         }
         val playbackId = Codes.random(12)
-        val payload = Relay.payload("snd").put("id", playbackId).put("s", kind).put("label", label)
+        val vibeKey = Looks.vibe(if (custom != null) "c:${custom.id}" else kind)
+        val payload = Relay.payload("snd").put("id", playbackId).put("s", kind).put("label", label).put("v", vibeKey)
+        Pets.onVibeSent(vibeKey)
         target.groupId?.let { payload.put("g", it) }
         if (custom != null && custom.startMs > 0) payload.put("st", custom.startMs)
         val file = custom?.file(this)
@@ -4459,6 +4496,7 @@ class MainActivity : Activity(), Store.Listener {
             "🎨 Personalizar botón" to { customizeButton("c:${custom.id}", "🎤", Palette.CUSTOM, custom.label, editName = false) },
             "✂️ Elegir la parte que suena" to { chooseStart(custom) },
             "✏️ Cambiar nombre" to { renameCustom(custom) },
+            "🎭 Vibe: ${Vibes.byKey(Looks.vibe("c:${custom.id}")).name}" to { chooseVibe("c:${custom.id}") },
             "🗑 Borrar" to { deleteCustom(custom) },
         )
         if (target != null) {

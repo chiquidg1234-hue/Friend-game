@@ -60,7 +60,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Updater.kt`, `ApkProvider.kt` | Solo en la versión github: se actualiza sola y se pasa por Quick Share. |
 | `Legal.kt` | Términos y privacidad (los textos están en `docs/legal/` y entran como assets) y denuncias. |
 | `CustomAudio.kt` | Importar audios: hasta 1 min y 2 MB, suenan 10 s desde `startMs`. |
-| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 12 sonidos integrados, enlace para donar, códigos, QR y escáner. |
+| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 12 sonidos integrados y sus vibes (`Vibes`: troll/risa/fiesta/amor/susto), enlace para donar, códigos, QR y escáner. |
 
 ## Protocolo (JSON en el cuerpo de cada mensaje de ntfy)
 
@@ -69,7 +69,7 @@ Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "w
 | Tipo | Canal | Campos | Qué hace |
 | --- | --- | --- | --- |
 | `req` / `acc` / `bye` | personal | — | Solicitud de amistad, aceptación, adiós o bloqueo |
-| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`) | Hace sonar |
+| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`), `v?` (vibe: `troll`/`risa`/`fiesta`/`amor`/`susto`) | Hace sonar |
 | `stop` | personal o grupo | `id` | Quien lo mandó corta su propio sonido |
 | `msg` | personal o grupo | `id`, `text` (≤500), `g?` | Chat |
 | `reto` | personal o grupo | `id`, `k` (`sorpresa`/`rapido`), `s`, `in` (segundos, 10–21600), `g?` | Crea un reto |

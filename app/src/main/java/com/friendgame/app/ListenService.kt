@@ -504,10 +504,13 @@ class ListenService : Service() {
                 Player.NowPlaying(
                     payload.optString("id"), from, shownName, label, kind, group?.id,
                     loop = power == Powers.ECO, power = power, startMs = startMs,
+                    vibe = Vibes.byKey(payload.optString("v")).key,
                 ),
             )
             played = true
             Replies.onIncoming(if (group != null) Chats.groupKey(group.id) else Chats.friendKey(from), shownName, label)
+            // La mascota reconoce la emoción del sonido y la recuerda.
+            Pets.onVibeReceived(Vibes.byKey(payload.optString("v")).key)
             Points.onSoundHeard()
         } finally {
             // Player.play solo encola el trabajo: si ya hay sonido, el wake lock se deja vencer

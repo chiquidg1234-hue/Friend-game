@@ -134,6 +134,22 @@ object Looks {
         Store.notifyChanged()
     }
 
+    // ---- Vibe (emoción) de cada sonido ----
+
+    /** Vibe guardada para un sonido ("bocina" o "c:id"); si no, la de fábrica del sonido integrado. */
+    @Synchronized
+    fun vibe(key: String): String {
+        json("vibes").optString(key).takeIf { it.isNotEmpty() }?.let { return it }
+        return Sounds.byKey(key)?.vibe ?: Vibes.default.key
+    }
+
+    @Synchronized
+    fun setVibe(key: String, vibe: String) {
+        val all = json("vibes").put(key, vibe)
+        prefs.edit().putString("vibes", all.toString()).apply()
+        Store.notifyChanged()
+    }
+
     // ---- Mi avatar ----
 
     val myEmoji: String @Synchronized get() = prefs.getString("my_emoji", "") ?: ""
@@ -372,6 +388,29 @@ object Pets {
     private val REACTIONS = listOf("ronronea", "mueve la cola", "da un saltito", "te mira con amor", "hace un ruidito feliz", "baila")
 
     fun reaction(): String = REACTIONS.random()
+
+    // ---- Emociones: la mascota reconoce la vibe de los sonidos ----
+
+    private fun incr(key: String) = prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
+
+    @Synchronized fun onVibeSent(vibe: String) = incr("vibe_sent_$vibe")
+
+    @Synchronized
+    fun onVibeReceived(vibe: String) {
+        incr("vibe_got_$vibe")
+        prefs.edit().putString("last_vibe", vibe).apply()
+    }
+
+    /** La personalidad de la mascota: la vibe que más mandas (null si todavía mandaste pocas). */
+    @Synchronized
+    fun personality(): Vibe? {
+        val best = Vibes.all.maxByOrNull { prefs.getInt("vibe_sent_${it.key}", 0) } ?: return null
+        return if (prefs.getInt("vibe_sent_${best.key}", 0) >= 3) best else null
+    }
+
+    /** Qué vibe te mandaron por última vez (para que la mascota lo comente). */
+    @Synchronized
+    fun lastVibe(): Vibe? = prefs.getString("last_vibe", null)?.let { Vibes.byKey(it) }
 
     /**
      * Lo que «dice» la mascota en su burbuja. No es una IA: son frases armadas según cómo está

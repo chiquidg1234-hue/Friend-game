@@ -51,6 +51,8 @@ object Player {
          * completa, volumen de alarma, 10 s, poder listo), sin mandarle nada.
          */
         val trialFor: String = "",
+        /** Vibe (emoción) del sonido, para que la mascota la reconozca. Ver [Vibes]. */
+        val vibe: String = "",
     ) {
         val isPreview: Boolean get() = fromCode.isEmpty()
 

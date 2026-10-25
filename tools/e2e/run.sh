@@ -52,7 +52,7 @@ publish_file() {
   msg=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$3")
   curl -s -o /dev/null -w '%{http_code}' -T "$2" "$SERVER/fgame-$1?filename=sonido.ogg&message=$msg"
 }
-sound_json() { echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"}"; }
+sound_json() { local v=""; [ -n "$6" ] && v=",\"v\":\"$6\""; echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"$v}"; }
 # Semana como la cuenta la app (ISO: empieza el lunes), para mandar puntos de "esta semana".
 WEEK_ID=$(python3 -c 'import datetime; y, w, _ = datetime.date.today().isocalendar(); print(f"{y}-{w}")')
 # Ajustes está dentro de la pestaña Tú.
@@ -130,9 +130,10 @@ check "Ana aparece como destinataria" $UI see "mandárselo a Ana"
 $UI top
 shot "sonar"
 
-echo "== 3. Ana manda un sonido integrado"
-echo "publicar snd: $(publish "$MYCODE" "$(sound_json "$ANA" Ana p1 sirena Sirena)")"
+echo "== 3. Ana manda un sonido integrado (con vibe)"
+echo "publicar snd: $(publish "$MYCODE" "$(sound_json "$ANA" Ana p1 sirena Sirena susto)")"
 check "Suena la sirena de Ana" $UI playing 20
+check "La mascota reconoce la vibe del sonido" $UI wait "Sonido susto" 6
 check "Termina sola" $UI silent 10
 
 echo "== 4. Ana manda un audio propio largo y lo detiene ella"
@@ -212,6 +213,7 @@ $UI top
 check "Toca la Bocina" $UI tap "Bocina"
 SENT=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina --wait 20)
 check "A Ana le llega la bocina" test -n "$SENT"
+check "La bocina lleva su vibe (susto)" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina v=susto --wait 5
 SENT_ID=$(echo "$SENT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' 2>/dev/null)
 check "Aparece el botón para detener mi sonido" $UI wait "Detener mi sonido" 8
 check "Dice a quién se lo mandaste" $UI wait "Mandaste «Bocina» a Ana" 3
