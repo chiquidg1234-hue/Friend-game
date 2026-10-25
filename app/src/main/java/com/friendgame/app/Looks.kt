@@ -146,6 +146,31 @@ object Looks {
         Store.notifyChanged()
     }
 
+    // ---- Fondo de la app ----
+
+    /** [colors]: degradé de arriba abajo; siempre oscuro para que el texto blanco se lea. */
+    class Background(val key: String, val name: String, val emoji: String, val colors: IntArray)
+
+    val BACKGROUNDS = listOf(
+        Background("default", "Noche violeta", "🌌", intArrayOf(0xFF1E1240.toInt(), 0xFF150C2C.toInt(), 0xFF110924.toInt())),
+        Background("amor", "Corazones", "💘", intArrayOf(0xFF3A0E2A.toInt(), 0xFF2A0A26.toInt(), 0xFF180616.toInt())),
+        Background("mar", "Mar", "🌊", intArrayOf(0xFF0B2A4A.toInt(), 0xFF0A1E3A.toInt(), 0xFF061326.toInt())),
+        Background("bosque", "Bosque", "🌲", intArrayOf(0xFF10351F.toInt(), 0xFF0C2417.toInt(), 0xFF07160E.toInt())),
+        Background("atardecer", "Atardecer", "🌆", intArrayOf(0xFF3A1A12.toInt(), 0xFF2A1020.toInt(), 0xFF160614.toInt())),
+        Background("lava", "Lava", "🔥", intArrayOf(0xFF3A1206.toInt(), 0xFF2A0C06.toInt(), 0xFF160604.toInt())),
+    )
+
+    fun background(key: String? = null): Background {
+        val k = key ?: (if (::prefs.isInitialized) prefs.getString("bg", "default") else "default")
+        return BACKGROUNDS.firstOrNull { it.key == k } ?: BACKGROUNDS.first()
+    }
+
+    @Synchronized
+    fun setBackground(key: String) {
+        prefs.edit().putString("bg", key).apply()
+        Store.notifyChanged()
+    }
+
     // ---- Tema de cada chat ----
 
     @Synchronized
@@ -208,6 +233,9 @@ object Pets {
         Species("perro", "🐶", "Perro", food = "🍖"),
         Species("zorro", "🦊", "Zorro", food = "🍒"),
         Species("rana", "🐸", "Rana", food = "🐛"),
+        Species("conejo", "🐰", "Conejo", food = "🥕"),
+        Species("pollito", "🐥", "Pollito", food = "🌽"),
+        Species("oso", "🐻", "Oso", level = 2, food = "🍯"),
         Species("panda", "🐼", "Panda", level = 2, food = "🎋"),
         Species("pulpo", "🐙", "Pulpo", level = 3, food = "🦐"),
         Species("dragon", "🐉", "Dragón", level = 5, food = "🌶️"),
@@ -226,13 +254,26 @@ object Pets {
 
     const val FEED_COST = 5
     private const val FEED_XP = 3
-    private const val DAY_MS = 24 * 3600_000L
+    private const val CARE_XP = 2
 
     enum class Mood(val text: String, val face: String) {
         HAPPY("Feliz", "😊"),
         HUNGRY("Con hambre", "😋"),
         SAD("Triste: te extraña", "🥺"),
     }
+
+    /**
+     * Las cuatro barras de cuidado (estilo Pou). Cada una está llena al cuidarla y baja sola con el
+     * tiempo ([windowH] horas hasta vaciarse). [button]: el texto del botón para subirla.
+     */
+    enum class Care(val label: String, val emoji: String, val key: String, val windowH: Int, val button: String, val done: String) {
+        HAMBRE("Hambre", "🍗", "pet_fed", 18, "Alimentar", "¡Ñam!"),
+        ALEGRIA("Alegría", "💖", "pet_play", 14, "Jugar", "¡Qué divertido!"),
+        ENERGIA("Energía", "⚡", "pet_sleep", 20, "Dormir", "Zzz…"),
+        LIMPIEZA("Limpieza", "🛁", "pet_bath", 30, "Bañar", "¡Limpia!"),
+    }
+
+    enum class CareResult { OK, FULL, NO_POINTS }
 
     private lateinit var prefs: SharedPreferences
 
@@ -256,13 +297,42 @@ object Pets {
 
     fun next(stage: Stage): Stage? = STAGES.getOrNull(stage.number + 1)
 
+    /** Cuánto le queda de una barra, de 0 a 100 (100 recién cuidada, baja sola con las horas). */
+    @Synchronized
+    fun careLevel(care: Care): Int {
+        val last = prefs.getLong(care.key, 0L)
+        if (last == 0L) return 70
+        val elapsed = System.currentTimeMillis() - last
+        return (100 - elapsed * 100 / (care.windowH * 3600_000L)).toInt().coerceIn(0, 100)
+    }
+
+    /** La barra más baja: lo que la mascota necesita ahora. */
+    fun mostUrgent(): Care = Care.entries.minByOrNull { careLevel(it) } ?: Care.HAMBRE
+
     fun mood(): Mood {
-        val since = System.currentTimeMillis() - prefs.getLong("pet_fed", 0)
+        val hunger = careLevel(Care.HAMBRE)
+        val lowest = Care.entries.minOf { careLevel(it) }
         return when {
-            since < DAY_MS -> Mood.HAPPY
-            since < 2 * DAY_MS -> Mood.HUNGRY
-            else -> Mood.SAD
+            lowest < 25 -> Mood.SAD
+            hunger < 50 -> Mood.HUNGRY
+            else -> Mood.HAPPY
         }
+    }
+
+    /**
+     * Sube una barra al máximo. Alimentar cuesta puntos; jugar, dormir y bañar son gratis. No deja
+     * repetir si ya está casi llena, para que no sea un truco de puntos.
+     */
+    @Synchronized
+    fun care(care: Care): CareResult {
+        if (careLevel(care) >= 90) return CareResult.FULL
+        if (care == Care.HAMBRE && !Points.spend(FEED_COST)) return CareResult.NO_POINTS
+        prefs.edit()
+            .putLong(care.key, System.currentTimeMillis())
+            .putInt("pet_bonus", prefs.getInt("pet_bonus", 0) + if (care == Care.HAMBRE) FEED_XP else CARE_XP)
+            .apply()
+        Store.notifyChanged()
+        return CareResult.OK
     }
 
     /** Cómo se ve: huevo al principio; con corona al llegar a legendaria. */
@@ -274,12 +344,16 @@ object Pets {
 
     @Synchronized
     fun adopt(species: Species, petName: String) {
+        val now = System.currentTimeMillis()
         prefs.edit()
             .putString("pet", species.key)
             .putString("pet_name", petName.trim().take(16).ifEmpty { species.name })
             .putInt("pet_base", Points.total())
             .putInt("pet_bonus", 0)
-            .putLong("pet_fed", System.currentTimeMillis())
+            .putLong("pet_fed", now)
+            .putLong("pet_play", now)
+            .putLong("pet_sleep", now)
+            .putLong("pet_bath", now)
             .apply()
         Store.notifyChanged()
     }
@@ -290,24 +364,43 @@ object Pets {
         Store.notifyChanged()
     }
 
-    /** Devuelve false si no te alcanzan los puntos o ya comió hace menos de una hora. */
-    @Synchronized
-    fun feed(): Boolean {
-        if (System.currentTimeMillis() - prefs.getLong("pet_fed", 0) < 3600_000L) return false
-        if (!Points.spend(FEED_COST)) return false
-        prefs.edit()
-            .putLong("pet_fed", System.currentTimeMillis())
-            .putInt("pet_bonus", prefs.getInt("pet_bonus", 0) + FEED_XP)
-            .apply()
-        Store.notifyChanged()
-        return true
-    }
+    /** Devuelve false si no te alcanzan los puntos o ya comió. */
+    fun feed(): Boolean = care(Care.HAMBRE) == CareResult.OK
 
-    fun ateRecently(): Boolean = System.currentTimeMillis() - prefs.getLong("pet_fed", 0) < 3600_000L
+    fun ateRecently(): Boolean = careLevel(Care.HAMBRE) >= 90
 
     private val REACTIONS = listOf("ronronea", "mueve la cola", "da un saltito", "te mira con amor", "hace un ruidito feliz", "baila")
 
     fun reaction(): String = REACTIONS.random()
+
+    /**
+     * Lo que «dice» la mascota en su burbuja. No es una IA: son frases armadas según cómo está
+     * (hambre, energía…), la hora y tu racha. Cambia sola para que se sienta viva.
+     */
+    @Synchronized
+    fun says(): String {
+        val nombre = name.ifEmpty { current?.name ?: "tu mascota" }
+        val urgent = mostUrgent()
+        if (careLevel(urgent) < 35) return when (urgent) {
+            Care.HAMBRE -> "Tengo hambre… ¿me das ${current?.food ?: "🍗"}?"
+            Care.ALEGRIA -> "¿Jugamos un ratito? 🥺"
+            Care.ENERGIA -> "Tengo mucho sueño… 😴"
+            Care.LIMPIEZA -> "Me quiero bañar 🛁"
+        }
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val happy = listOf(
+            "¡Hola! Soy $nombre 💕",
+            "¿Le mandamos un sonido a alguien? 😼",
+            "¡Me encanta estar contigo!",
+            "¿Viste mi nivel? ✨",
+            "Cuídame y crezco más grande 🌱",
+        )
+        return when {
+            hour in 6..11 -> "¡Buenos días! ☀️"
+            hour >= 22 || hour < 6 -> "Ya casi es hora de dormir… 🌙"
+            else -> happy.random()
+        }
+    }
 
     /** "gato:2" para que tus amigos vean tu mascota. */
     fun shareCode(): String? = current?.let { "${it.key}:${stage().number}" }

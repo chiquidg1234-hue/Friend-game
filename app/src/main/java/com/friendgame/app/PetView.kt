@@ -558,6 +558,9 @@ object PetArt {
         "pulpo" -> pulpo()
         "dragon" -> dragon()
         "unicornio" -> unicornio()
+        "oso" -> oso()
+        "conejo" -> conejo()
+        "pollito" -> pollito()
         else -> gato()
     }
 
@@ -802,6 +805,79 @@ object PetArt {
         return Model(
             tail, 132f, 152f, 6f, 2.4f, back, front, over, b.take(), lashes,
             Eyes(84f, 118f, 90f, 7.5f, 9.5f), 100f, 110f, ink, "🍓", 0xFFFF6B8B.toInt(), spots(0xFFB197FC.toInt()),
+        )
+    }
+
+    private fun oso(): Model {
+        val body = Tone(0xFFC9A17A.toInt(), 0xFF9B6B43.toInt(), 0xFF5F3C21.toInt())
+        val belly = Tone(0xFFF3E0C8.toInt(), 0xFFEBD1AC.toInt(), 0xFFD9B98A.toInt())
+        val b = Builder()
+        b.fill(circle(64f, 52f, 15f), body)
+        b.fill(circle(136f, 52f, 15f), body)
+        b.fill(circle(64f, 52f, 8f), belly)
+        b.fill(circle(136f, 52f, 8f), belly)
+        val back = b.take()
+        standardBody(b, body, belly)
+        b.fill(circle(100f, 88f, 45f), body)
+        b.fill(oval(100f, 104f, 20f, 16f), belly)
+        b.fill(oval(84f, 60f, 13f, 7f, -24f), 0xFFFFFFFF.toInt(), 0.3f)
+        val front = b.take()
+        cheeks(b, 68f, 132f, 108f, 0.4f)
+        b.fill(oval(100f, 99f, 7f, 5f), 0xFF3A2414.toInt())
+        b.fill(oval(97.5f, 97.5f, 2.4f, 1.4f), 0xFFFFFFFF.toInt(), 0.6f)
+        val over = b.take()
+        val ink = 0xFF3A2414.toInt()
+        b.stroke(svg("M100 104 v4 M92 108 q8 7 16 0"), ink, 2.2f)
+        return Model(
+            emptyList(), 0f, 0f, 0f, 1f, back, front, over, b.take(), emptyList(),
+            Eyes(84f, 116f, 90f, 6.5f, 8.5f), 100f, 108f, ink, "🍯", 0xFFFFC93C.toInt(), spots(body.base),
+        )
+    }
+
+    private fun conejo(): Model {
+        val body = Tone(0xFFFFFFFF.toInt(), 0xFFF3EEFA.toInt(), 0xFFC9C2DE.toInt())
+        val belly = Tone(0xFFFFFFFF.toInt(), 0xFFFBF7FF.toInt(), 0xFFEDE6F7.toInt())
+        val inner = 0xFFFFB3C6.toInt()
+        val b = Builder()
+        for (side in listOf(1f, -1f)) {
+            b.fill(mirror(oval(78f, 44f, 11f, 34f, 8f), side), body)
+            b.fill(mirror(oval(78f, 46f, 5.5f, 24f, 8f), side), inner, 0.8f)
+        }
+        val back = b.take()
+        standardBody(b, body, belly)
+        b.fill(circle(100f, 90f, 44f), body)
+        b.fill(oval(84f, 62f, 13f, 7f, -24f), 0xFFFFFFFF.toInt(), 0.4f)
+        val front = b.take()
+        cheeks(b, 70f, 130f, 108f, 0.5f)
+        b.fill(svg("M96 102 h8 l-4 4 z"), 0xFFFF6B8B.toInt())
+        val over = b.take()
+        val ink = 0xFF8A7BA8.toInt()
+        b.stroke(svg("M100 106 v3 M92 110 q8 6 16 0"), ink, 2.2f)
+        return Model(
+            emptyList(), 0f, 0f, 0f, 1f, back, front, over, b.take(), emptyList(),
+            Eyes(82f, 118f, 92f, 7f, 9f), 100f, 108f, ink, "🥕", 0xFFFF922B.toInt(), spots(0xFFE9D8F7.toInt()),
+        )
+    }
+
+    private fun pollito(): Model {
+        val body = Tone(0xFFFFF3B0.toInt(), 0xFFFFD43B.toInt(), 0xFFF08C00.toInt())
+        val b = Builder()
+        b.fill(oval(60f, 122f, 12f, 20f, 18f), body)
+        b.fill(oval(140f, 122f, 12f, 20f, -18f), body)
+        b.stroke(svg("M88 176 l-6 8 M88 176 v9 M88 176 l6 8 M112 176 l-6 8 M112 176 v9 M112 176 l6 8"), 0xFFF08C00.toInt(), 3f)
+        val back = b.take()
+        b.fill(oval(100f, 130f, 42f, 38f), body)
+        b.fill(circle(100f, 86f, 42f), body)
+        b.stroke(svg("M100 46 v-11 M92 48 l-6 -9 M108 48 l6 -9"), body, 4f)
+        b.fill(oval(86f, 62f, 12f, 6f, -24f), 0xFFFFFFFF.toInt(), 0.35f)
+        val front = b.take()
+        cheeks(b, 70f, 130f, 102f, 0.5f)
+        b.fill(svg("M94 94 L106 94 L100 102 Z"), 0xFFF76707.toInt())
+        val over = b.take()
+        val ink = 0xFF8A5000.toInt()
+        return Model(
+            emptyList(), 0f, 0f, 0f, 1f, back, front, over, b.take(), emptyList(),
+            Eyes(86f, 114f, 84f, 6f, 8f), 100f, 96f, ink, "🌽", 0xFFFFD43B.toInt(), spots(body.base),
         )
     }
 

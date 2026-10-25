@@ -18,9 +18,9 @@ class PetRender {
     @Test
     fun render() {
         val context = RuntimeEnvironment.getApplication()
-        val species = listOf("gato", "perro", "zorro", "rana", "panda", "pulpo", "dragon", "unicornio")
+        val species = listOf("gato", "perro", "zorro", "rana", "conejo", "pollito", "oso", "panda", "pulpo", "dragon", "unicornio")
         val cell = 220
-        val bitmap = Bitmap.createBitmap(cell * 8, cell * 8, Bitmap.Config.ARGB_8888)
+        val bitmap = Bitmap.createBitmap(cell * species.size, cell * 8, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(0xFF231848.toInt())
         species.forEachIndexed { col, key ->

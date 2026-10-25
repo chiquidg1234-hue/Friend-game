@@ -497,6 +497,19 @@ check "Botón Adoptar" $UI tap "Adoptar"
 check "Confirma la adopción" $UI tapexact "Adoptar"
 check "Aparece la mascota" $UI see "Huevo"
 shot "mascota"
+
+echo "== 9k2. Cuidar a la mascota (tipo Pou) y cambiar el fondo"
+check "Abre Mascotas" $UI tap "Cuidar y jugar"
+check "Muestra las barras de cuidado" $UI wait "Hambre" 10
+check "Tiene la barra de Limpieza" $UI see "Limpieza"
+shot "mascotas"
+check "Juega con la mascota" $UI tap "Jugar"
+check "La colección tiene las especies nuevas" $UI see "Conejo"
+check "Ofrece mandar un saludo a un amigo" $UI see "Mandarle un saludo a un amigo"
+check "Vuelve de Mascotas" $UI tap "Volver"
+check "Elige el fondo Mar" $UI tap "🌊 Mar"
+check "Sigue en la pestaña Tú" $UI see "Fondo de la app"
+
 check "Pestaña Sonar" $UI tab Sonar
 check "Abre los poderes" $UI tap "Poderes"
 check "Ve el poder Eco" $UI wait "Eco · 20 puntos" 10

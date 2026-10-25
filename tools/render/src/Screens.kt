@@ -114,6 +114,9 @@ class Screens {
         tap(activity, "Mercado")
         shot(activity, "3-mercado.png")
         tap(activity, "Volver")
+        tap(activity, "🏡 Cuidar y jugar")
+        shot(activity, "5-mascotas.png")
+        tap(activity, "Volver")
         tap(activity, "Pestaña Amigos")
         shot(activity, "4-amigos.png", fullHeight = false)
     }

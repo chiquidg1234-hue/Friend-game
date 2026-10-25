@@ -90,6 +90,7 @@ class MainActivity : Activity(), Store.Listener {
         const val PAGE_CHAT = "chat:"
         const val PAGE_RANKING = "ranking:"
         const val PAGE_MARKET = "market"
+        const val PAGE_PETS = "pets"
 
         /** Emojis para elegir al crear una comunidad. */
         val COMMUNITY_EMOJIS = listOf("🎮", "⚽", "🎵", "🏫", "🏠", "🔥", "😂", "🐶", "🍕", "🎨")
@@ -182,9 +183,8 @@ class MainActivity : Activity(), Store.Listener {
         }
         openTabFrom(intent)
 
-        root = FrameLayout(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF1E1240.toInt(), Palette.BG, 0xFF110924.toInt()))
-        }
+        root = FrameLayout(this)
+        applyBackground()
         buildShell()
         root.setOnApplyWindowInsetsListener { _, insets ->
             readInsets(insets)
@@ -194,6 +194,12 @@ class MainActivity : Activity(), Store.Listener {
         setContentView(root)
 
         if (Store.myName.isBlank()) showWelcome() else onReady()
+    }
+
+    /** Fondo de la app según lo que eligió la persona (Looks.background). */
+    private fun applyBackground() {
+        if (!::root.isInitialized) return
+        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, Looks.background().colors)
     }
 
     private fun onReady() {
@@ -422,6 +428,7 @@ class MainActivity : Activity(), Store.Listener {
         nextDeadline = Long.MAX_VALUE
         content.setPadding(dp(20), dp(20), dp(20), dp(28))
         content.background = null
+        applyBackground()
         // Solo cuenta como "a la vista" si la app está abierta: si no, sus mensajes deben avisar.
         Chats.visibleKey = if (started) chat else null
         when {
@@ -435,6 +442,7 @@ class MainActivity : Activity(), Store.Listener {
             current == PAGE_SETTINGS -> renderSettings()
             current == PAGE_SUPPORT -> renderSupport()
             current == PAGE_MARKET -> renderMarket()
+            current == PAGE_PETS -> renderPets()
             chat != null -> renderChat(chat)
             current.startsWith(PAGE_RANKING) -> renderRanking(current.removePrefix(PAGE_RANKING))
         }
@@ -2511,6 +2519,17 @@ class MainActivity : Activity(), Store.Listener {
         market.addView(icon(R.drawable.ic_chevron, Palette.FAINT, 16))
         add(market, 12)
 
+        add(sectionTitle("Fondo de la app"), 22)
+        val (bgScroll, bgChips) = chipRow()
+        val currentBg = Looks.background().key
+        Looks.BACKGROUNDS.forEach { bg ->
+            bgChips.addView(chip("${bg.emoji} ${bg.name}", bg.key == currentBg) {
+                Looks.setBackground(bg.key)
+                toast("${bg.emoji} Fondo: ${bg.name}")
+            }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+        }
+        add(bgScroll, 8)
+
         add(sectionTitle("Ranking con tus amigos", "Esta semana"), 22)
         val people = Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
         add(rankingList(Points.ranking(people, weekly = true).take(5)), 10)
@@ -3110,28 +3129,182 @@ class MainActivity : Activity(), Store.Listener {
         }
         head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
         box.addView(head, lp())
-        val actions = row()
-        actions.addView(button("Alimentar · ${Pets.FEED_COST} pts", Palette.OK, Palette.INK, heightDp = 42, radiusDp = 14, sizeSp = 13f) {
-            when {
-                Pets.ateRecently() -> toast("${Pets.name} ya comió. Vuelve en un rato.")
-                Pets.feed() -> {
-                    petView.eat()
-                    Quests.track(Quests.PET)
-                    toast("${species.food} ¡Ñam! ${Pets.name} está feliz")
-                }
-                else -> toast("Te faltan puntos: tienes ${Points.balance()}")
-            }
-        }, lp(0, WRAP, weight = 1f))
-        actions.addView(space(8))
-        actions.addView(button("Acariciar", Palette.SURFACE2, Palette.TEXT, heightDp = 42, radiusDp = 14, sizeSp = 13f) { petPet() }, lp(0, WRAP, weight = 1f))
-        box.addView(actions, lp(topDp = 12))
+        box.addView(speechBubble(Pets.says()), lp(topDp = 10))
+        box.addView(
+            button("🏡 Cuidar y jugar", Palette.ACCENT, Palette.INK, heightDp = 46, radiusDp = 14, sizeSp = 14f) { openPage(PAGE_PETS) },
+            lp(topDp = 12),
+        )
         add(box, 12)
+    }
+
+    /** Burbuja con lo que «dice» la mascota (ver Looks.says). */
+    private fun speechBubble(text: String): View = label("💬 $text", 14f, Palette.TEXT, bold = true).apply {
+        background = rounded(Palette.SURFACE2, 16)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
     }
 
     private fun petPet() {
         petView.cheer()
         Quests.track(Quests.PET)
         toast("${Pets.name} ${Pets.reaction()} 💕")
+    }
+
+    // ------------------------------------------------------------------ Mascotas (cuidado tipo Pou)
+
+    private fun renderPets() {
+        val top = row()
+        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
+        top.addView(title("Mascotas", 28f), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        add(top)
+
+        val species = Pets.current
+        if (species == null) {
+            val box = card(Palette.SURFACE, 24, 16)
+            box.addView(title("Adopta una mascota", 18f, weight = 600), lp())
+            box.addView(label("Cuídala, dale de comer y crece contigo.", 13f, Palette.SUB), lp(topDp = 4))
+            box.addView(button("Adoptar", Palette.YELLOW, Palette.INK, heightDp = 46, radiusDp = 14, sizeSp = 14f) { adoptPet() }, lp(topDp = 12))
+            add(box, 12)
+            petCollection()
+            addFooter()
+            return
+        }
+
+        val stage = Pets.stage()
+        val next = Pets.next(stage)
+        (petView.parent as? ViewGroup)?.removeView(petView)
+        petView.apply {
+            this.species = species.key
+            this.stage = stage.number
+            mood = Pets.mood()
+            season = Seasons.current()?.key ?: ""
+            progress = if (next != null) (Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp) else 1f
+            isClickable = true
+            contentDescription = "${Pets.name}. Toca para acariciarla"
+            setOnClickListener { petPet(); render() }
+        }
+        // Escenario grande, con el fondo elegido de la app.
+        val stageBox = FrameLayout(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, Looks.background().colors).apply {
+                cornerRadius = dp(24).toFloat()
+            }
+        }
+        stageBox.setPadding(0, dp(10), 0, dp(10))
+        stageBox.addView(petView, FrameLayout.LayoutParams(dp(200), dp(200), Gravity.CENTER))
+        add(stageBox, 4)
+
+        val nameRow = row()
+        nameRow.addView(title(Pets.name, 22f, weight = 600).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp(0, WRAP, weight = 1f))
+        nameRow.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB, 36) { petOptions() })
+        add(nameRow, 10)
+        add(label("${species.name} · ${stage.name}", 13f, Palette.YELLOW, bold = true), 2)
+        add(speechBubble(Pets.says()), 10)
+        if (next != null) {
+            add(progressBar((Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp), Palette.OK), 10)
+            add(label("Le faltan ${next.xp - Pets.xp} puntos para ser ${next.name.lowercase()}", 12f, Palette.SUB), 4)
+        } else {
+            add(label("👑 ¡Llegó a legendaria!", 13f, Palette.YELLOW, bold = true), 10)
+        }
+
+        // Las cuatro barras de cuidado, estilo Pou.
+        val careBox = card(padDp = 0)
+        Pets.Care.entries.forEachIndexed { i, care ->
+            if (i > 0) careBox.addView(divider(), dividerLp())
+            val lvl = Pets.careLevel(care)
+            val line = row().apply { setPadding(dp(14), dp(12), dp(14), dp(12)) }
+            line.addView(label(care.emoji, 22f))
+            val texts = column()
+            texts.addView(label(care.label, 14f, bold = true), lp())
+            texts.addView(progressBar(lvl / 100f, if (lvl < 25) Palette.DANGER else if (lvl < 50) Palette.YELLOW else Palette.OK), lp(MATCH, dp(8), topDp = 6))
+            line.addView(texts, lp(0, WRAP, weight = 1f).apply { setMargins(dp(12), 0, dp(12), 0) })
+            val cost = if (care == Pets.Care.HAMBRE) "${care.button}\n${Pets.FEED_COST} pts" else care.button
+            line.addView(button(cost, if (lvl < 50) Palette.ACCENT else Palette.SURFACE2, if (lvl < 50) Palette.INK else Palette.TEXT, heightDp = 44, radiusDp = 12, sizeSp = 12f) {
+                doCare(care)
+            }, LinearLayout.LayoutParams(dp(92), WRAP))
+            careBox.addView(line, lp())
+        }
+        add(careBox, 12)
+
+        add(
+            button("💌 Mandarle un saludo a un amigo", Palette.SURFACE2, Palette.TEXT, heightDp = 46, radiusDp = 14, sizeSp = 14f) { petGreeting() },
+            12,
+        )
+        petCollection()
+        addFooter()
+    }
+
+    private fun doCare(care: Pets.Care) {
+        val species = Pets.current ?: return
+        when (Pets.care(care)) {
+            Pets.CareResult.OK -> {
+                if (care == Pets.Care.HAMBRE) petView.eat() else petView.cheer()
+                Quests.track(Quests.PET)
+                val extra = if (care == Pets.Care.HAMBRE) " ${species.food}" else ""
+                toast("${care.emoji} ${care.done}$extra")
+                render()
+            }
+            Pets.CareResult.FULL -> toast("Esa barra ya está llena 🙂")
+            Pets.CareResult.NO_POINTS -> toast("Te faltan puntos: tienes ${Points.balance()}")
+        }
+    }
+
+    /** La colección: todas las especies, las que tienes desbloqueadas y las que faltan. */
+    private fun petCollection() {
+        val level = Points.level().number
+        add(sectionTitle("Colección", "${Pets.SPECIES.count { it.level <= level }} de ${Pets.SPECIES.size}"), 20)
+        val grid = column()
+        Pets.SPECIES.chunked(4).forEach { chunk ->
+            val line = row()
+            chunk.forEach { sp ->
+                val locked = sp.level > level
+                val cell = column().apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                    background = rounded(Palette.SURFACE, 16)
+                    alpha = if (locked) 0.5f else 1f
+                    contentDescription = sp.name + if (locked) ", se desbloquea en el nivel ${sp.level}" else ""
+                }
+                cell.addView(PetView(this).apply {
+                    species = sp.key
+                    stage = 3
+                    animated = false
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, LinearLayout.LayoutParams(dp(56), dp(56)))
+                cell.addView(label(if (locked) "🔒 Nv ${sp.level}" else sp.name, 11f, if (locked) Palette.SUB else Palette.TEXT, bold = !locked).apply {
+                    gravity = Gravity.CENTER
+                }, lp(topDp = 4))
+                if (line.childCount > 0) line.addView(space(8))
+                line.addView(cell, lp(0, WRAP, weight = 1f))
+            }
+            repeat(4 - chunk.size) { line.addView(space(8)); line.addView(View(this), lp(0, WRAP, weight = 1f)) }
+            grid.addView(line, lp(topDp = if (grid.childCount > 0) 8 else 0))
+        }
+        add(grid, 10)
+        add(button("🔄 Adoptar otra", Palette.SURFACE2, Palette.TEXT, heightDp = 44, radiusDp = 14, sizeSp = 13f) { adoptPet() }, 10)
+    }
+
+    /** Manda un saludo de tu mascota a un amigo: es un mensaje de chat normal, no un sonido. */
+    private fun petGreeting() {
+        val species = Pets.current ?: return
+        val friends = Store.friends().filter { it.state == Friend.FRIEND }
+        if (friends.isEmpty()) {
+            toast("Agrega amigos para mandarles un saludo")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("¿A quién le mandas un saludo?")
+            .setItems(friends.map { it.name }.toTypedArray()) { _, which ->
+                val friend = friends[which]
+                val key = Chats.friendKey(friend.code)
+                val text = "${species.emoji} ${Pets.name} te manda un saludo 💕"
+                runInBackground({ Chats.send(key, text) }) {
+                    toast("💌 ${Pets.name} saludó a ${friend.name}")
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun petOptions() {

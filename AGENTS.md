@@ -49,8 +49,8 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Retos.kt` | Retos: crear, recibir, alarmas (AlarmManager exacta, o aproximada si no hay permiso), sonar, tabla de tiempos y `RetoReceiver`. |
 | `Locks.kt` | Candado: proponer, aceptar, rechazar, `blocksStop` y `finishDue`. |
 | `Points.kt` | Puntos con tope diario, niveles, logros, racha, saldo para gastar y ranking (con los puntos que traen los mensajes de los demás). |
-| `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat), mascota (`Pets`) y poderes (`Powers`). |
-| `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: las 8 especies con las formas del lienzo «Friend Game · Mascotas 3D»): respira, parpadea, come, salta, tiene hambre y duerme. |
+| `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat, **fondo de la app** `BACKGROUNDS`), mascota (`Pets`: 11 especies, 4 barras de cuidado tipo Pou `Care` —hambre, alegría, energía, limpieza— y frases `says()`) y poderes (`Powers`). La pantalla de cuidado es `MainActivity.renderPets` (página `pets`). |
+| `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: las 11 especies con las formas del lienzo «Friend Game · Mascotas 3D»): respira, parpadea, come, salta, tiene hambre y duerme. |
 | `Anim.kt` | Animaciones cortas (rebote al tocar, entrada de pantalla, confeti, emoji que vuela) y `PulseRings`. |
 | `Engage.kt` | Rachas con cada amigo (`Streaks`), misiones del día con cofre (`Quests`), un recordatorio diario (`Reminders`), «Devolvérsela» (`Replies`), quién está activo (`Presence`) y temporadas con disfraz para la mascota (`Seasons`). Ver `docs/PSICOLOGIA.md`. |
 | `Sonoteca.kt` | Sonidos que comparten tus amigos y grupos: publicar, recibir, ❤️, usar, ocultar y la lista de retiro (`docs/legal/retiros.json`). |
