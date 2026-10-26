@@ -52,7 +52,7 @@ publish_file() {
   msg=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$3")
   curl -s -o /dev/null -w '%{http_code}' -T "$2" "$SERVER/fgame-$1?filename=sonido.ogg&message=$msg"
 }
-sound_json() { local v=""; [ -n "$6" ] && v=",\"v\":\"$6\""; echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"$v}"; }
+sound_json() { local v=""; [ -n "${6:-}" ] && v=",\"v\":\"$6\""; echo "{\"fg\":1,\"t\":\"snd\",\"from\":\"$1\",\"name\":\"$2\",\"id\":\"$3\",\"s\":\"$4\",\"label\":\"$5\"$v}"; }
 # Semana como la cuenta la app (ISO: empieza el lunes), para mandar puntos de "esta semana".
 WEEK_ID=$(python3 -c 'import datetime; y, w, _ = datetime.date.today().isocalendar(); print(f"{y}-{w}")')
 # Ajustes está dentro de la pestaña Tú.
