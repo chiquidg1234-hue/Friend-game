@@ -133,12 +133,13 @@ shot "sonar"
 echo "== 3. Ana manda un sonido integrado (con vibe)"
 echo "publicar snd: $(publish "$MYCODE" "$(sound_json "$ANA" Ana p1 sirena Sirena susto)")"
 check "Suena la sirena de Ana" $UI playing 20
-check "La mascota reconoce la vibe del sonido" $UI wait "Sonido susto" 6
 check "Termina sola" $UI silent 10
 
-echo "== 4. Ana manda un audio propio largo y lo detiene ella"
-echo "publicar adjunto: $(publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p2 custom 'Tono largo')")"
+echo "== 4. Ana manda un audio propio largo (con vibe) y lo detiene ella"
+echo "publicar adjunto: $(publish_file "$MYCODE" "$TONE" "$(sound_json "$ANA" Ana p2 custom 'Tono largo' amor)")"
 check "Suena el audio propio de Ana" $UI playing 25
+# El audio largo tiene pantalla por ~10 s: alcanza a leerse la vibe que reconoce la mascota.
+check "La mascota reconoce la vibe del sonido" $UI wait "Sonido amoroso" 8
 START=$(date +%s)
 check "Llega la notificación con botón Detener" sh -c "adb shell dumpsys notification --noredact | grep -q 'te mandó un sonido'"
 publish "$MYCODE" "$(stop_json "$ANA" otro)" >/dev/null
