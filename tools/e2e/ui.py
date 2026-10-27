@@ -210,6 +210,9 @@ def main():
         end = time.time() + timeout
         while time.time() < end:
             found = nodes()
+            # Una lectura que terminó pasado el plazo puede estar vieja: mejor no tocar.
+            if time.time() > end:
+                break
             if all(any(matches(n, r) for n in found) for r in required):
                 target = next((n for n in found if (n.get("text") or "").strip().lower() == wanted and on_screen(n)), None)
                 if target is not None:

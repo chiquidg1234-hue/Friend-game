@@ -379,7 +379,7 @@ check "Toca Donar" $UI tap "Donar 5 USD"
 check "Sin enlace configurado, avisa que pronto" $UI wait "Gracias por querer apoyar" 10
 $UI tapexact "Cerrar"
 adb shell input keyevent KEYCODE_BACK
-check "Atrás vuelve a Ajustes" $UI wait "Tu celular" 10
+check "Atrás vuelve a Ajustes" $UI wait "Cuando te mandan un sonido" 10
 
 echo "== 9f. Chat con Ana"
 publish "$MYCODE" "{\"fg\":1,\"t\":\"msg\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"m1abcdefgh\",\"text\":\"Hola Robot, ¿jugamos?\",\"pts\":120,\"wk\":30,\"wid\":\"$WEEK_ID\",\"lvl\":2}" >/dev/null
@@ -510,7 +510,8 @@ check "Juega con la mascota" $UI tap "Jugar"
 check "La colección tiene las especies nuevas" $UI see "Conejo"
 check "Ofrece mandar un saludo a un amigo" $UI see "Mandarle un saludo a un amigo"
 check "Vuelve de Mascotas" $UI tap "Volver"
-check "Elige el fondo Mar" $UI tap "🌊 Mar"
+# Los primeros fondos de la fila se ven sin deslizar hacia el lado.
+check "Elige el fondo Corazones" $UI tap "💘 Corazones"
 check "Sigue en la pestaña Tú" $UI see "Fondo de la app"
 
 check "Pestaña Sonar" $UI tab Sonar
@@ -559,10 +560,14 @@ check "Toca «Tono de Ana»" $UI tap "Tono de Ana"
 check "Lo escucha en su propio celular" $UI playing 10
 check "Lo detiene" $UI tap "Detener lo que suena"
 $UI silent 5
+$UI top
 check "Activa «Como le llega a Ana»" $UI tap "Como le llega a Ana"
 shot "modo-escuchar"
 check "Toca «Tono de Ana» otra vez" $UI tap "Tono de Ana"
-check "Lo muestra como le llega a Ana y Detener funciona" $UI tapwhen "Detener" 10 "Así le llega a Ana"
+# Espera a que suene antes de leer la pantalla: si la lectura empieza antes, el toque puede llegar
+# cuando ya terminó (10 s) y caer en la tarjeta de abajo, que lo vuelve a hacer sonar.
+check "Suena la prueba" $UI playing 10
+check "Lo muestra como le llega a Ana y Detener funciona" $UI tapwhen "Detener" 7 "Así le llega a Ana"
 check "Se detiene" $UI silent 4
 sleep 3
 DESPUES=$($INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" --count)
