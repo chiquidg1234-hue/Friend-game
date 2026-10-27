@@ -72,7 +72,7 @@ La prueba automática (`tools/e2e/run.sh`) corre en cada push en un emulador And
 - **Lo nuevo:** chat, retos (recibir, sonar, detener, mandar el tiempo, crear, cancelar), candado (aceptar, no se puede detener, se cumple), puntos y ranking, botón personalizado, mascota y poder Eco.
 - **Otros:** donación, pausa, términos, Quick Share, que se actualiza sola, sin cierres inesperados.
 
-**Último resultado (rama `ccr-5646872f-1z0big`, 21 de octubre de 2026): 199 comprobaciones bien, 0 fallos.** Incluye la recarga al mandar, la misión del día, la racha con un amigo y la Sonoteca (recibir, usar y pasar un sonido).
+**Último resultado (rama `ccr-26efbb5d-ww5fqz`, 27 de octubre de 2026): 268 comprobaciones bien, 0 fallos**, con el diseño 2.0. Incluye la recarga al mandar, las misiones del día, la racha con un amigo, la Sonoteca, escuchar antes de mandar, el armario y los minijuegos.
 
 El paso «9n» prueba lo del diseño 2.0: filtros y buscador de Sonar, el armario, los minijuegos y los ajustes de animación.
 
