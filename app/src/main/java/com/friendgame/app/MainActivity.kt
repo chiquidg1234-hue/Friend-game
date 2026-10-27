@@ -15,6 +15,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
 import android.media.AudioManager
 import android.media.MediaRecorder
@@ -65,6 +66,7 @@ class MainActivity : Activity(), Store.Listener {
         const val REQ_NOTIFICATIONS = 11
         const val REQ_SCAN = 12
         const val REQ_MIC = 13
+        const val REQ_TALK = 14
 
         /** Tiempo durante el que se muestra el botón para detener el sonido que mandaste. */
         const val STOP_WINDOW_MS = 15_000L
@@ -91,6 +93,13 @@ class MainActivity : Activity(), Store.Listener {
         const val PAGE_RANKING = "ranking:"
         const val PAGE_MARKET = "market"
         const val PAGE_PETS = "pets"
+
+        /** Filtros de Sonar: todos, una categoría (clave de Vibes) o solo los tuyos. */
+        const val FILTER_ALL = "todos"
+        const val FILTER_MINE = "mios"
+
+        /** La intro sale una vez cada vez que se abre la app (no al girar la pantalla). */
+        var introShown = false
 
         /** Emojis para elegir al crear una comunidad. */
         val COMMUNITY_EMOJIS = listOf("🎮", "⚽", "🎵", "🏫", "🏠", "🔥", "😂", "🐶", "🍕", "🎨")
@@ -122,6 +131,24 @@ class MainActivity : Activity(), Store.Listener {
     private lateinit var nav: LinearLayout
     private lateinit var navDivider: View
     private lateinit var overlay: FrameLayout
+    /** Fondo animado detrás de todo (ver SceneView): cambia según la categoría de lo que suena. */
+    private lateinit var scene: SceneView
+    /** Fondo y Bulla del aviso «te llegó un sonido». */
+    private val overlayScene by lazy { SceneView(this) }
+    private val overlayPet by lazy { PetView(this).apply { species = "bulla" } }
+    private lateinit var bullaToast: BullaToast
+    /** Bulla que asoma abajo al mandar o escuchar un sonido. */
+    private lateinit var peek: MascotPeek
+    /** Bulla en Sonar y en las pantallas vacías: una sola que se mueve de pantalla en pantalla. */
+    private val guide by lazy { PetView(this).apply { species = "bulla" } }
+    /** El sonido al que ya reaccionó el fondo (para no repetir la animación en cada redibujo). */
+    private var reactedPlayback = ""
+    /** Buscador de Sonar: fijo arriba (como la caja del chat) para no perder lo escrito. */
+    private lateinit var searchBar: LinearLayout
+    private lateinit var searchInput: EditText
+    private var searching = false
+    private var soundQuery = ""
+    private var soundFilter = FILTER_ALL
     private var welcome: View? = null
     private var loudDialog: AlertDialog? = null
 
@@ -173,6 +200,8 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Antes de leer el intent (openTabFrom le saca los extras): ¿se abrió desde el ícono?
+        val fromLauncher = intent?.action == Intent.ACTION_MAIN && intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true
         Store.init(this)
         Notifs.createChannels(this)
         goEdgeToEdge()
@@ -184,6 +213,8 @@ class MainActivity : Activity(), Store.Listener {
         openTabFrom(intent)
 
         root = FrameLayout(this)
+        scene = SceneView(this)
+        root.addView(scene, FrameLayout.LayoutParams(MATCH, MATCH))
         applyBackground()
         buildShell()
         root.setOnApplyWindowInsetsListener { _, insets ->
@@ -194,12 +225,20 @@ class MainActivity : Activity(), Store.Listener {
         setContentView(root)
 
         if (Store.myName.isBlank()) showWelcome() else onReady()
+        // La intro, solo al abrir la app desde el ícono (no al volver de un aviso ni al girar).
+        if (savedInstanceState == null && !introShown && Anim.enabled() && fromLauncher) {
+            introShown = true
+            val view = IntroView(this) { updateBackCallback() }
+            root.addView(view, FrameLayout.LayoutParams(MATCH, MATCH))
+            view.post { view.play() }
+        }
+        introShown = true
     }
 
-    /** Fondo de la app según lo que eligió la persona (Looks.background). */
+    /** Fondo de la app según lo que eligió la persona (Looks.background); se dibuja animado en [scene]. */
     private fun applyBackground() {
-        if (!::root.isInitialized) return
-        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, Looks.background().colors)
+        if (!::scene.isInitialized) return
+        scene.base = Looks.background().key
     }
 
     private fun onReady() {
@@ -276,6 +315,7 @@ class MainActivity : Activity(), Store.Listener {
         Chats.visibleKey = null
         // Android no deja usar el micrófono en segundo plano: la grabación se cancela.
         cancelRecording?.invoke()
+        if (petRoomBuilt) petRoom.leave()
         super.onStop()
     }
 
@@ -314,6 +354,9 @@ class MainActivity : Activity(), Store.Listener {
             welcome != null -> return false
             // Con candado el sonido no se corta, pero atrás tampoco saca de la pantalla.
             overlay.visibility == View.VISIBLE -> Player.stopByUser(this)
+            upload != null -> upload?.close()
+            games != null -> games?.back()
+            searching && pages.isEmpty() && tab == Tab.SOUND -> closeSearch()
             pages.isNotEmpty() -> closePage()
             tab != Tab.SOUND -> openTab(Tab.SOUND)
             else -> return false
@@ -332,7 +375,7 @@ class MainActivity : Activity(), Store.Listener {
      */
     private fun updateBackCallback() {
         if (Build.VERSION.SDK_INT < 33) return
-        val needed = welcome == null && (overlay.visibility == View.VISIBLE || pages.isNotEmpty() || tab != Tab.SOUND)
+        val needed = welcome == null && (overlay.visibility == View.VISIBLE || upload != null || games != null || searching || pages.isNotEmpty() || tab != Tab.SOUND)
         if (needed && backCallback == null) {
             val callback = OnBackInvokedCallback { handleBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
@@ -355,6 +398,7 @@ class MainActivity : Activity(), Store.Listener {
         scroll.addView(content, ViewGroup.LayoutParams(MATCH, WRAP))
         topBar = column().apply { visibility = View.GONE }
         buildComposer()
+        buildSearchBar()
         bars = column()
         nav = row().apply {
             setBackgroundColor(Palette.NAV)
@@ -362,6 +406,7 @@ class MainActivity : Activity(), Store.Listener {
         }
         shell = column()
         shell.addView(topBar, lp())
+        shell.addView(searchBar, lp())
         shell.addView(scroll, lp(MATCH, 0, weight = 1f))
         shell.addView(composer, lp())
         shell.addView(bars, lp())
@@ -375,7 +420,10 @@ class MainActivity : Activity(), Store.Listener {
             isFocusable = true
         }
         root.addView(shell, FrameLayout.LayoutParams(MATCH, MATCH))
+        peek = MascotPeek(this)
+        root.addView(peek, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply { marginEnd = dp(10) })
         root.addView(overlay, FrameLayout.LayoutParams(MATCH, MATCH))
+        bullaToast = BullaToast(root)
     }
 
     private fun readInsets(insets: WindowInsets) {
@@ -401,6 +449,17 @@ class MainActivity : Activity(), Store.Listener {
         composer.setPadding(dp(12), dp(8), dp(12), dp(10) + maxOf(bottom, imeBottom))
         if (chatKey != null && imeBottom > 0) scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         overlay.setPadding(left, top, right, bottom)
+        upload?.setPadding(left, top, right, maxOf(bottom, imeBottom))
+        games?.setPadding(left, top, right, bottom)
+        bullaToast.topInset = top
+        // Bulla asoma justo arriba de la barra de abajo.
+        (peek.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            val above = if (nav.visibility == View.VISIBLE) nav.height else composer.height
+            if (params.bottomMargin != above + bars.height) {
+                params.bottomMargin = above + bars.height
+                peek.layoutParams = params
+            }
+        }
         welcome?.let { page ->
             page.setPadding(left, top, right, maxOf(bottom, imeBottom))
             // Con el teclado abierto, que se vean el nombre y el botón Empezar.
@@ -422,6 +481,8 @@ class MainActivity : Activity(), Store.Listener {
         }
         val screen = current ?: tab.name
         val sameScreen = screen == renderedScreen
+        screenIsNew = !sameScreen
+        if (!sameScreen && renderedScreen == PAGE_PETS && petRoomBuilt) petRoom.leave()
         val y = scroll.scrollY
         content.removeAllViews()
         topBar.removeAllViews()
@@ -448,6 +509,8 @@ class MainActivity : Activity(), Store.Listener {
         }
         topBar.visibility = if (topBar.childCount == 0) View.GONE else View.VISIBLE
         composer.visibility = if (chat != null) View.VISIBLE else View.GONE
+        searchBar.visibility = if (searching && current == null && tab == Tab.SOUND) View.VISIBLE else View.GONE
+        reactToPlayback()
         renderBars()
         renderNav()
         renderOverlay()
@@ -467,6 +530,161 @@ class MainActivity : Activity(), Store.Listener {
         applyInsets()
         updateBackCallback()
         celebrate()
+    }
+
+    /** La pantalla que se dibuja ahora es nueva (no un redibujo de la misma). */
+    private var screenIsNew = true
+
+    /** Bulla asomó por lo que suena (y se va cuando termine). */
+    private var peekForPlayback = false
+
+    /** De dónde sale la próxima reacción del fondo (el sonido que tocaste), en píxeles del fondo. */
+    private var originX = -1f
+    private var originY = -1f
+
+    private fun rememberOrigin(view: View) {
+        if (!view.isAttachedToWindow || !::scene.isInitialized) return
+        val at = IntArray(2).also { view.getLocationInWindow(it) }
+        val base = IntArray(2).also { scene.getLocationInWindow(it) }
+        originX = (at[0] - base[0] + view.width / 2).toFloat()
+        originY = (at[1] - base[1] + view.height / 2).toFloat()
+    }
+
+    /** La categoría de lo que suena (la que trae, o la de fábrica del sonido). */
+    private fun vibeOf(now: Player.NowPlaying): String = now.vibe.ifEmpty { Sounds.byKey(now.soundKey)?.vibe ?: "" }
+
+    /**
+     * Cuando empieza a sonar algo, el fondo cambia a su categoría (abriéndose desde el sonido) y
+     * al terminar vuelve al tuyo. Se puede apagar en Ajustes.
+     */
+    private fun reactToPlayback() {
+        val now = Player.now
+        if (now != null) {
+            val vibe = vibeOf(now)
+            if (reactedPlayback != now.playbackId && vibe.isNotEmpty() && Looks.reactiveBackground) {
+                reactedPlayback = now.playbackId
+                if (originX >= 0f) scene.react(vibe, originX, originY) else scene.react(vibe)
+                originX = -1f
+            }
+        } else {
+            if (reactedPlayback.isNotEmpty()) {
+                reactedPlayback = ""
+                scene.release()
+            }
+            if (peekForPlayback) {
+                peekForPlayback = false
+                peek.slideOut()
+            }
+        }
+    }
+
+    /** Escuchar en tu celular: el fondo cambia a su categoría y Bulla asoma moviendo la boca. */
+    private fun previewSound(source: Player.Source, name: String, startMs: Int, vibe: String, from: View?) {
+        if (from != null) {
+            Anim.pop(from, 1.05f)
+            rememberOrigin(from)
+        }
+        Player.preview(this, source, name, startMs, vibe)
+        peekForPlayback = true
+        peek.show(vibe, 10.5f, follow = true)
+    }
+
+    // ------------------------------------------------------------------ Buscador de Sonar
+
+    private val searchRender = Runnable { if (started) render() }
+
+    private fun buildSearchBar() {
+        searchInput = EditText(this).apply {
+            hint = "Buscar un sonido"
+            setSingleLine(true)
+            textSize = 16f
+            setTextColor(Palette.TEXT)
+            setHintTextColor(Palette.MUTED_TEXT)
+            typeface = Fonts.body(context, 700)
+            background = null
+            setPadding(0, 0, 0, 0)
+            inputType = InputType.TYPE_CLASS_TEXT
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
+            contentDescription = "Buscar un sonido"
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(text: android.text.Editable?) {
+                    val query = text?.toString()?.trim() ?: ""
+                    if (query == soundQuery) return
+                    soundQuery = query
+                    ui.removeCallbacks(searchRender)
+                    ui.postDelayed(searchRender, 150)
+                }
+            })
+            setOnEditorActionListener { view, _, _ ->
+                hideKeyboard(view)
+                true
+            }
+        }
+        searchBar = row().apply {
+            visibility = View.GONE
+            setPadding(dp(16), dp(10), dp(16), dp(4))
+        }
+        val box = row().apply {
+            background = rounded(Palette.SURFACE, 16, Palette.LIP)
+            setPadding(dp(14), 0, dp(4), 0)
+        }
+        box.addView(icon(R.drawable.ic_search, Palette.SUB, 18))
+        box.addView(searchInput, lp(0, dp(48), weight = 1f).apply { marginStart = dp(10) })
+        box.addView(iconButton(R.drawable.ic_close, "Cerrar el buscador", 0, Palette.SUB, 40) { closeSearch() })
+        searchBar.addView(box, lp())
+    }
+
+    private fun openSearch() {
+        searching = true
+        render()
+        searchInput.requestFocus()
+        getSystemService(InputMethodManager::class.java)?.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun closeSearch() {
+        searching = false
+        soundQuery = ""
+        searchInput.setText("")
+        hideKeyboard(searchInput)
+        render()
+    }
+
+    /** Filtros de Sonar: todos, cada categoría y los tuyos. */
+    private fun filterRow(): View {
+        val (scroller, chips) = chipRow()
+        fun add(key: String, text: String, color: Int, onColor: Int, textColor: Int, iconRes: Int?) {
+            chips.addView(filterChip(text, soundFilter == key, color, onColor, textColor, iconRes) {
+                if (soundFilter != key) {
+                    soundFilter = key
+                    render()
+                }
+            }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+        }
+        add(FILTER_ALL, "Todos", Palette.TEXT, Palette.INK, Palette.TEXT, null)
+        Vibes.all.forEach { add(it.key, it.label, it.color, it.onColor, it.chip, it.icon) }
+        add(FILTER_MINE, "Tuyos", Palette.CUSTOM, Palette.INK, Palette.CUSTOM, R.drawable.ic_mic)
+        return scroller
+    }
+
+    /** Bulla con un globo de diálogo (en Sonar y en las pantallas vacías). */
+    private fun bullaSays(text: String, sizeDp: Int = 68): View {
+        (guide.parent as? ViewGroup)?.removeView(guide)
+        guide.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        guide.outfit = Wardrobe.outfit()
+        val line = row().apply { gravity = Gravity.BOTTOM }
+        line.addView(guide, LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)))
+        val bubble = label(text, 14f, Palette.TEXT, bold = true).apply {
+            background = rounded(Palette.SURFACE, 18, Palette.LIP)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        line.addView(bubble, lp(0, WRAP, weight = 1f).apply {
+            marginStart = dp(6)
+            bottomMargin = dp(sizeDp / 5)
+        })
+        if (screenIsNew) guide.post { guide.wave() }
+        return line
     }
 
     private fun openTab(target: Tab) {
@@ -740,62 +958,94 @@ class MainActivity : Activity(), Store.Listener {
 
         val listening = target != null && listenMode
         val cooling = target != null && !listening && coolingDown()
+        add(bullaSays(when {
+            target == null -> "¡Hola! Soy Bulla. Agrega a un amigo y le hacemos bulla 🔊"
+            listening -> "Toca un sonido y te lo hago sonar a ti 🎧"
+            else -> "¿Qué le mandamos a ${target.name}?"
+        }), 16)
         val soundsHead = row().apply { gravity = Gravity.CENTER_VERTICAL }
         soundsHead.addView(title("Sonidos", 20f, weight = 600), lp(0, WRAP, weight = 1f))
+        soundsHead.addView(
+            iconButton(R.drawable.ic_search, "Buscar un sonido", Palette.SURFACE, Palette.TEXT, 40) { openSearch() },
+            LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(8) },
+        )
         if (target != null) soundsHead.addView(modeSwitch(), LinearLayout.LayoutParams(WRAP, WRAP))
         add(soundsHead, 22)
         soundsAnchor = soundsHead
+        add(filterRow(), 10)
         when {
-            listening -> add(listenHint(target!!), 6)
+            listening -> add(listenHint(target!!), 8)
             cooling -> add(rechargeLine(), 8)
-            else -> add(label("Mantén presionado para personalizar", 12f, Palette.SUB), 4)
+            else -> add(label("Toca ▶ para escucharlo tú · mantén presionado para personalizar", 12f, Palette.SUB), 8)
         }
-        grid(Sounds.all.map { sound ->
+        val query = soundQuery.lowercase()
+        fun shown(name: String, vibe: Vibe, mine: Boolean): Boolean =
+            (soundFilter == FILTER_ALL || soundFilter == vibe.key || (mine && soundFilter == FILTER_MINE)) &&
+                (query.isEmpty() || name.lowercase().contains(query) || vibe.label.lowercase().contains(query))
+        val builtIn = Sounds.all.mapNotNull { sound ->
             val look = Looks.button(sound.key)
             val name = look.label ?: sound.label
+            val vibe = Vibes.byKey(Looks.vibe(sound.key))
+            if (!shown(name, vibe, mine = false)) return@mapNotNull null
             val source = Player.Source.Asset(sound.asset)
             lateinit var tile: View
-            tile = soundTile(look.emoji ?: sound.emoji, name, sound.color,
+            tile = soundCard(look.emoji ?: sound.emoji, name, vibe,
                 onClick = {
                     when {
-                        target == null -> Player.preview(this, source, name)
-                        listening -> listenTo(target, source, name, sound.key, 0, tile)
+                        target == null -> previewSound(source, name, 0, vibe.key, tile)
+                        listening -> listenTo(target, source, name, sound.key, 0, vibe.key, tile)
                         else -> sendSound(target, sound.key, name, null, tile)
                     }
                 },
                 onLongClick = { soundOptions(sound) },
+                onPreview = { previewSound(source, name, 0, vibe.key, tile) },
                 swatch = Looks.swatch(look.swatch),
                 outlined = listening,
             )
             if (cooling) tile.alpha = 0.55f
             tile
-        })
+        }
+        if (builtIn.isNotEmpty()) grid(builtIn, 2)
 
-        add(sectionTitle("Tus audios"), 22)
-        val mine = Store.customSounds().map { custom ->
+        val mine = Store.customSounds().mapNotNull { custom ->
             val source = Player.Source.FromFile(custom.file(this))
             val look = Looks.button("c:${custom.id}")
+            val vibe = Vibes.byKey(Looks.vibe("c:${custom.id}"))
+            if (!shown(custom.label, vibe, mine = true)) return@mapNotNull null
             lateinit var tile: View
-            tile = soundTile(look.emoji ?: "🎤", custom.label, Palette.CUSTOM,
+            tile = soundCard(look.emoji ?: "🎤", custom.label, vibe,
                 onClick = {
                     when {
-                        target == null -> Player.preview(this, source, custom.label, custom.startMs)
-                        listening -> listenTo(target, source, custom.label, "custom", custom.startMs, tile)
+                        target == null -> previewSound(source, custom.label, custom.startMs, vibe.key, tile)
+                        listening -> listenTo(target, source, custom.label, "custom", custom.startMs, vibe.key, tile)
                         else -> sendSound(target, "custom", custom.label, custom, tile)
                     }
                 },
                 onLongClick = { customOptions(custom) },
+                onPreview = { previewSound(source, custom.label, custom.startMs, vibe.key, tile) },
                 swatch = Looks.swatch(look.swatch),
                 outlined = listening,
             )
             if (cooling) tile.alpha = 0.55f
             tile
-        } + addTile(R.drawable.ic_mic, "Grabar") { recordAudio() } +
-            addTile(R.drawable.ic_upload, "Subir") { pickAudio() } +
-            addTile(R.drawable.ic_sonoteca, "Sonoteca") { openPage(PAGE_MARKET) }.apply { contentDescription = "Abrir la Sonoteca" }
-        grid(mine)
-        val hint = if (Store.customSounds().isEmpty()) "Graba tu voz o sube un audio que descargaste: ${CustomAudio.HINT}."
-        else "${CustomAudio.HINT}. Mantén presionado uno tuyo para escucharlo, elegir la parte que suena, personalizarlo o borrarlo."
+        }
+        if (builtIn.isEmpty() && mine.isEmpty()) {
+            add(card().apply {
+                addView(label("No encontré sonidos así 🤔", 15f, bold = true), lp())
+                addView(label("Prueba con otra palabra u otra categoría, o graba uno nuevo.", 13f, Palette.SUB), lp(topDp = 2))
+            }, 12)
+        }
+        add(sectionTitle("Tus audios", if (Store.customSounds().isNotEmpty()) "${Store.customSounds().size}" else null), 22)
+        if (mine.isNotEmpty()) grid(mine, 2)
+        grid(
+            listOf(
+                addTile(R.drawable.ic_mic, "Grabar") { recordAudio() },
+                addTile(R.drawable.ic_upload, "Subir") { pickAudio() },
+                addTile(R.drawable.ic_sonoteca, "Sonoteca") { openPage(PAGE_MARKET) }.apply { contentDescription = "Abrir la Sonoteca" },
+            ),
+        )
+        val hint = if (Store.customSounds().isEmpty()) "Graba tu voz o sube un audio que descargaste: ${CustomAudio.HINT}. Bulla adivina de qué categoría es."
+        else "${CustomAudio.HINT}. Mantén presionado uno tuyo para escucharlo, elegir la parte que suena, cambiar su categoría o borrarlo."
         add(label(hint, 12f, Palette.SUB), 8)
 
         add(sectionTitle("Misiones de hoy", "${Quests.doneCount()} de 3"), 24)
@@ -868,23 +1118,28 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     /** Modo escuchar: suena solo en tu celular, como vista previa o como le llega a tu amigo. */
-    private fun listenTo(target: Target, source: Player.Source, label: String, kind: String, startMs: Int, tile: View) {
-        Anim.pop(tile, 1.08f)
+    private fun listenTo(target: Target, source: Player.Source, label: String, kind: String, startMs: Int, vibe: String, tile: View) {
         if (!listenAsFriend) {
-            Player.preview(this, source, label, startMs)
+            previewSound(source, label, startMs, vibe, tile)
             return
         }
+        Anim.pop(tile, 1.08f)
         playTrial(target, source, label, kind, startMs)
     }
 
     /** Suena en tu celular tal como le llegaría a [target], sin mandarle nada. */
     private fun playTrial(target: Target, source: Player.Source, label: String, kind: String, startMs: Int) {
         val power = Powers.armed
+        val vibe = if (kind == "custom" && source is Player.Source.FromFile) {
+            Looks.vibe("c:" + source.file.nameWithoutExtension)
+        } else {
+            Looks.vibe(kind)
+        }
         Player.play(
             this, source,
             Player.NowPlaying(
                 Codes.random(12), Store.myCode, Store.myName, label, kind,
-                loop = power?.key == Powers.ECO, power = power?.key ?: "", startMs = startMs, trialFor = target.name,
+                loop = power?.key == Powers.ECO, power = power?.key ?: "", startMs = startMs, trialFor = target.name, vibe = vibe,
             ),
             incoming = true,
         )
@@ -1102,6 +1357,7 @@ class MainActivity : Activity(), Store.Listener {
         val groups = Store.groups()
         screenTitle("Grupos", "Un sonido le llega a todos a la vez.")
         if (groups.isEmpty()) {
+            add(bullaSays("Con un grupo, un sonido le llega a todos a la vez. ¡Armemos uno!"), 14)
             val box = card()
             box.addView(title("Arma tu primer grupo", 18f, weight = 600), lp())
             box.addView(
@@ -1254,37 +1510,43 @@ class MainActivity : Activity(), Store.Listener {
 
     private fun renderFriends() {
         val friends = Store.friends()
-        screenTitle("Amigos")
+        val head = row()
+        head.addView(title("Amigos", 30f), lp(0, WRAP, weight = 1f))
+        head.addView(button("Agregar amigo", iconRes = R.drawable.ic_plus, heightDp = 46, radiusDp = 14, sizeSp = 14f) { showAddFriend() }, LinearLayout.LayoutParams(WRAP, WRAP))
+        add(head)
 
-        val codeCard = card(Palette.YELLOW, 24, 18)
-        codeCard.addView(caps("Tu código de amigo", Palette.INK), lp())
-        codeCard.addView(title(Codes.pretty(Store.myCode), 26f, Palette.INK).apply {
+        val codeCard = column().apply {
+            background = LayerDrawable(arrayOf(
+                rounded(Palette.LIP, 24),
+                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Palette.ACCENT_SOFT, Palette.SURFACE)).apply { cornerRadius = dp(24).toFloat() },
+            )).apply { setLayerInset(1, 0, 0, 0, dp(4)) }
+            setPadding(dp(18), dp(18), dp(18), dp(22))
+        }
+        codeCard.addView(caps("Tu código de amigo"), lp())
+        codeCard.addView(title(Codes.pretty(Store.myCode), 26f, Palette.TEXT).apply {
             letterSpacing = 0.04f
             maxLines = 1
             setTextIsSelectable(true)
             setAutoSizeTextTypeUniformWithConfiguration(14, 26, 1, TypedValue.COMPLEX_UNIT_SP)
         }, lp(MATCH, dp(38), topDp = 6))
-        codeCard.addView(label("Pásaselo solo a quien quieras que te pueda mandar sonidos.", 13f, Palette.INK), lp(topDp = 2))
+        codeCard.addView(label("Pásaselo solo a quien quieras que te pueda mandar sonidos.", 13f, Palette.SUB), lp(topDp = 2))
         val codeButtons = row()
         codeButtons.addView(
-            button("Compartir", Palette.INK, Palette.TEXT, iconRes = R.drawable.ic_share, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
-                shareCode()
+            button("Copiar", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_copy, heightDp = 46, radiusDp = 14, sizeSp = 14f, strokeColor = Palette.LIP) {
+                copyCode()
             },
             lp(0, WRAP, weight = 1f),
         )
         codeButtons.addView(space(8))
         codeButtons.addView(
-            button(
-                "Copiar", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_copy, heightDp = 44, radiusDp = 14,
-                sizeSp = 14f, strokeColor = Palette.INK,
-            ) { copyCode() },
+            button("Compartir", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_share, heightDp = 46, radiusDp = 14, sizeSp = 14f) { shareCode() },
             lp(0, WRAP, weight = 1f),
         )
         codeCard.addView(codeButtons, lp(topDp = 12))
         add(codeCard, 16)
 
         friends.filter { it.state == Friend.INCOMING }.forEach { friend ->
-            val box = card()
+            val box = card().apply { background = rounded(Palette.SURFACE, 24, Palette.YELLOW) }
             val head = row()
             head.addView(avatar(friend.name, Palette.avatar(friend.code), sizeDp = 44))
             val texts = column()
@@ -1312,7 +1574,7 @@ class MainActivity : Activity(), Store.Listener {
         val others = friends.filter { it.state != Friend.INCOMING }.sortedBy { order.indexOf(it.state) }
         add(caps("Tus amigos · ${others.count { it.state == Friend.FRIEND }}"), 20)
         if (others.isEmpty()) {
-            add(label("Todavía no tienes amigos aquí. Pásale tu código a alguien o agrega el suyo.", 14f, Palette.SUB), 8)
+            add(bullaSays("Todavía no tienes amigos aquí. Pásale tu código a alguien o agrega el suyo."), 10)
         } else {
             val list = card(padDp = 0)
             others.forEachIndexed { i, friend ->
@@ -1322,19 +1584,32 @@ class MainActivity : Activity(), Store.Listener {
             add(list, 8)
         }
 
-        val actions = row()
-        actions.addView(button("Agregar amigo", iconRes = R.drawable.ic_plus) { showAddFriend() }, lp(0, WRAP, weight = 1f))
-        actions.addView(space(8))
-        actions.addView(
-            button("Pasar la app", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_share, iconColor = Palette.OK) { shareApp() },
-            lp(0, WRAP, weight = 1f),
-        )
-        add(actions, 16)
-        add(
-            label("«Pasar la app»: se la mandas por Quick Share o Bluetooth y la instala sin navegador.", 12f, Palette.SUB)
-                .apply { gravity = Gravity.CENTER },
-            8,
-        )
+        // Pasar la app: tarjeta con Bulla bailando (como en el diseño).
+        val pass = row().apply {
+            background = clickable(GradientDrawable().apply {
+                setColor(Palette.BG_HIGH)
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(2), Palette.DASHED, dp(6).toFloat(), dp(5).toFloat())
+            })
+            setPadding(dp(12), dp(10), dp(16), dp(10))
+            isClickable = true
+            stateListAnimator = Anim.press()
+            contentDescription = "Pasar la app: se la mandas por Quick Share o Bluetooth y la instala sin navegador"
+            setOnClickListener { shareApp() }
+        }
+        val dancer = PetView(this).apply {
+            species = "bulla"
+            outfit = Wardrobe.outfit()
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            if (screenIsNew) postDelayed({ dance(3f) }, 500)
+        }
+        pass.addView(dancer, LinearLayout.LayoutParams(dp(64), dp(64)))
+        val passTexts = column()
+        passTexts.addView(label("Pasar la app", 16f, bold = true), lp())
+        passTexts.addView(label("Por Quick Share o Bluetooth, sin navegador.", 13f, Palette.SUB), lp())
+        pass.addView(passTexts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        pass.addView(icon(R.drawable.ic_share, Palette.OK, 22))
+        add(pass, 16)
     }
 
     private fun friendRow(friend: Friend): View {
@@ -1480,6 +1755,27 @@ class MainActivity : Activity(), Store.Listener {
             lp(),
         )
         add(notices, 8)
+
+        add(caps("Animaciones y fondo"), 18)
+        val motion = card(padDp = 0)
+        motion.addView(
+            switchRow(
+                "El fondo reacciona a los sonidos",
+                if (Looks.reactiveBackground) "Cambia según la categoría y late con el audio" else "Apagado: el fondo no cambia",
+                Palette.SUB, Looks.reactiveBackground,
+            ) { Looks.reactiveBackground = it },
+            lp(),
+        )
+        motion.addView(divider(), dividerLp())
+        motion.addView(
+            switchRow(
+                "Reducir movimiento",
+                if (Looks.reduceMotion) "Sin intro, fondos ni mascotas en movimiento" else "Todo se mueve (también se apaga con «Quitar animaciones» de Android)",
+                Palette.SUB, Looks.reduceMotion,
+            ) { Looks.reduceMotion = it },
+            lp(),
+        )
+        add(motion, 8)
 
         val support = row().apply {
             background = clickable(rounded(Palette.ACCENT, 24), 0x40150C2C)
@@ -1758,6 +2054,7 @@ class MainActivity : Activity(), Store.Listener {
         screenTitle("Chats", "Escríbele a tus amigos y grupos, y arma retos.")
         val keys = Chats.keys()
         if (keys.isEmpty()) {
+            add(bullaSays("¡Aquí vamos a conversar! Primero agrega a alguien."), 14)
             val box = card()
             box.addView(title("Todavía no tienes con quién chatear", 18f, weight = 600), lp())
             box.addView(
@@ -2519,16 +2816,43 @@ class MainActivity : Activity(), Store.Listener {
         market.addView(icon(R.drawable.ic_chevron, Palette.FAINT, 16))
         add(market, 12)
 
-        add(sectionTitle("Fondo de la app"), 22)
+        add(sectionTitle("Fondo de la app", "Los animados se mueven"), 22)
         val (bgScroll, bgChips) = chipRow()
+        bgChips.gravity = Gravity.TOP
         val currentBg = Looks.background().key
         Looks.BACKGROUNDS.forEach { bg ->
-            bgChips.addView(chip("${bg.emoji} ${bg.name}", bg.key == currentBg) {
-                Looks.setBackground(bg.key)
-                toast("${bg.emoji} Fondo: ${bg.name}")
-            }, LinearLayout.LayoutParams(WRAP, dp(40)).apply { marginEnd = dp(8) })
+            val selected = bg.key == currentBg
+            val cell = column().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                isClickable = true
+                isSelected = selected
+                stateListAnimator = Anim.press()
+                contentDescription = "${bg.emoji} ${bg.name}" + (if (bg.scene != null) ", fondo animado" else ", fondo") + if (selected) ", elegido" else ""
+                setOnClickListener {
+                    Looks.setBackground(bg.key)
+                    toast("${bg.emoji} Fondo: ${bg.name}")
+                }
+            }
+            val swatch = FrameLayout(this).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, bg.colors).apply {
+                    cornerRadius = dp(18).toFloat()
+                    setStroke(dp(3), if (selected) Palette.TEXT else Palette.LIP)
+                }
+            }
+            swatch.addView(label(bg.emoji, 24f).apply {
+                includeFontPadding = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
+            cell.addView(swatch, LinearLayout.LayoutParams(dp(72), dp(96)))
+            cell.addView(label("${bg.emoji} ${bg.name}", 12f, if (selected) Palette.TEXT else Palette.SUB, bold = selected).apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(80), WRAP).apply { topMargin = dp(6) })
+            bgChips.addView(cell, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(6) })
         }
-        add(bgScroll, 8)
+        add(bgScroll, 10)
+        add(label("Cuando suena o mandas un sonido, el fondo cambia un rato al de su categoría (se apaga en Ajustes).", 12f, Palette.SUB), 6)
 
         add(sectionTitle("Ranking con tus amigos", "Esta semana"), 22)
         val people = Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
@@ -2589,15 +2913,9 @@ class MainActivity : Activity(), Store.Listener {
         addFooter()
     }
 
+    /** Barra de avance gordita con brillo (diseño 2.0; ver ProgressPill). */
     private fun progressBar(fraction: Float, color: Int = Palette.YELLOW): View {
-        val track = row().apply {
-            background = rounded(Palette.LINE, 999)
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        val value = fraction.coerceIn(0f, 1f)
-        if (value > 0f) track.addView(View(this).apply { background = rounded(color, 999) }, LinearLayout.LayoutParams(0, MATCH, value))
-        if (value < 1f) track.addView(View(this), LinearLayout.LayoutParams(0, MATCH, 1f - value))
-        return track
+        return ProgressPill(this, fraction, color)
     }
 
     private fun logroTile(logro: Points.Logro): View {
@@ -2721,13 +3039,13 @@ class MainActivity : Activity(), Store.Listener {
         val name = look.label ?: sound.label
         val target = currentTarget()
         val options = mutableListOf<Pair<String, () -> Unit>>(
-            "▶️ Escucharlo" to { Player.preview(this, Player.Source.Asset(sound.asset), name) },
+            "▶️ Escucharlo" to { previewSound(Player.Source.Asset(sound.asset), name, 0, Looks.vibe(sound.key), null) },
             "🎨 Personalizar botón" to { customizeButton(sound.key, sound.emoji, sound.color, sound.label, editName = true) },
         )
         if (target != null) {
             options.add(1, "📱 Escuchar como le llega a ${target.name}" to { playTrial(target, Player.Source.Asset(sound.asset), name, sound.key, 0) })
         }
-        options += "🎭 Vibe: ${Vibes.byKey(Looks.vibe(sound.key)).name}" to { chooseVibe(sound.key) }
+        options += "🏷️ Categoría: ${Vibes.byKey(Looks.vibe(sound.key)).label}" to { chooseVibe(sound.key) }
         if (look.emoji != null || look.swatch != null || look.label != null) {
             options += "↩️ Volver al original" to { Looks.setButton(sound.key, Looks.Look()) }
         }
@@ -2738,16 +3056,19 @@ class MainActivity : Activity(), Store.Listener {
             .show()
     }
 
-    /** Elige la vibe (emoción) de un sonido: la mascota la reconoce. [key]: "bocina" o "c:id". */
+    /**
+     * Elige la categoría (vibe) de un sonido: le da su color, su fondo animado y cómo reacciona la
+     * mascota. [key]: "bocina" o "c:id".
+     */
     private fun chooseVibe(key: String) {
         val current = Looks.vibe(key)
-        val labels = Vibes.all.map { "${it.emoji} ${it.name}" + if (it.key == current) "  ✓" else "" }.toTypedArray()
+        val labels = Vibes.all.map { "${it.emoji} ${it.label}" + if (it.key == current) "  ✓" else "" }.toTypedArray()
         AlertDialog.Builder(this)
-            .setTitle("¿Qué onda tiene este sonido?")
+            .setTitle("¿De qué categoría es este sonido?")
             .setItems(labels) { _, which ->
                 val vibe = Vibes.all[which]
                 Looks.setVibe(key, vibe.key)
-                toast("${vibe.emoji} Vibe: ${vibe.name}")
+                toast("${vibe.emoji} Categoría: ${vibe.label}")
             }
             .setNegativeButton("Cerrar", null)
             .show()
@@ -3088,7 +3409,7 @@ class MainActivity : Activity(), Store.Listener {
         if (species == null) {
             val head = row()
             val egg = PetView(this).apply {
-                this.species = "gato"
+                this.species = "bulla"
                 stage = 0
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
@@ -3167,14 +3488,45 @@ class MainActivity : Activity(), Store.Listener {
 
     // ------------------------------------------------------------------ Mascotas (cuidado tipo Pou)
 
+    /** La pieza de la mascota (tipo Pou): se arma una vez y se reusa, para no cortar lo que hace. */
+    private var petRoomBuilt = false
+    private val petRoom by lazy {
+        petRoomBuilt = true
+        PetRoom(this, object : PetRoom.Host {
+            override fun toast(text: String) = this@MainActivity.toast(text)
+            override fun openGames() = this@MainActivity.openGames()
+            override fun withMic(then: () -> Unit) {
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) then()
+                else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_TALK)
+            }
+            override fun petted() = Quests.track(Quests.PET)
+        })
+    }
+
     private fun renderPets() {
+        val species = Pets.current
         val top = row()
         top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
-        top.addView(title("Mascotas", 28f), lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        val heading = column()
+        heading.addView(title(if (species != null) Pets.name else "Mascotas", 24f).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp())
+        if (species != null) {
+            val trait = Pets.personality()?.let { " · ${it.trait} ${it.emoji}" } ?: ""
+            heading.addView(label("${species.name} · ${Pets.stage().name}$trait", 12f, Palette.YELLOW, bold = true).apply { maxLines = 1 }, lp())
+        }
+        top.addView(heading, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        top.addView(label("★ ${Points.balance()} pts", 13f, Palette.INK, bold = true).apply {
+            background = lipped(Palette.YELLOW, 999, lipDp = 3)
+            setPadding(dp(12), dp(7), dp(12), dp(9))
+            contentDescription = "Tienes ${Points.balance()} puntos para gastar"
+        })
+        if (species != null) top.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB, 40) { petOptions() })
         add(top)
 
-        val species = Pets.current
         if (species == null) {
+            add(bullaSays("¡Adopta una mascota! La cuidas, la vistes y juegan juntos."), 14)
             val box = card(Palette.SURFACE, 24, 16)
             box.addView(title("Adopta una mascota", 18f, weight = 600), lp())
             box.addView(label("Cuídala, dale de comer y crece contigo.", 13f, Palette.SUB), lp(topDp = 4))
@@ -3187,64 +3539,17 @@ class MainActivity : Activity(), Store.Listener {
 
         val stage = Pets.stage()
         val next = Pets.next(stage)
-        (petView.parent as? ViewGroup)?.removeView(petView)
-        petView.apply {
-            this.species = species.key
-            this.stage = stage.number
-            mood = Pets.mood()
-            season = Seasons.current()?.key ?: ""
-            progress = if (next != null) (Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp) else 1f
-            isClickable = true
-            contentDescription = "${Pets.name}. Toca para acariciarla"
-            setOnClickListener { petPet(); render() }
-        }
-        // Escenario grande, con el fondo elegido de la app.
-        val stageBox = FrameLayout(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, Looks.background().colors).apply {
-                cornerRadius = dp(24).toFloat()
-            }
-        }
-        stageBox.setPadding(0, dp(10), 0, dp(10))
-        stageBox.addView(petView, FrameLayout.LayoutParams(dp(200), dp(200), Gravity.CENTER))
-        add(stageBox, 4)
+        (petRoom.parent as? ViewGroup)?.removeView(petRoom)
+        petRoom.update(species, stage.number, if (next != null) (Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp) else 1f)
+        add(petRoom, 4)
 
-        val nameRow = row()
-        nameRow.addView(title(Pets.name, 22f, weight = 600).apply {
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }, lp(0, WRAP, weight = 1f))
-        nameRow.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB, 36) { petOptions() })
-        add(nameRow, 10)
-        add(label("${species.name} · ${stage.name}", 13f, Palette.YELLOW, bold = true), 2)
-        Pets.personality()?.let { p ->
-            add(label("Personalidad: ${p.trait} ${p.emoji} · según los sonidos que mandas", 13f, Palette.CUSTOM, bold = true), 4)
-        }
-        add(speechBubble(Pets.lastVibe()?.let { "${Pets.name} se acuerda: ${it.reaction}" } ?: Pets.says()), 10)
         if (next != null) {
-            add(progressBar((Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp), Palette.OK), 10)
+            add(progressBar((Pets.xp - stage.xp).toFloat() / (next.xp - stage.xp), Palette.OK), 16)
             add(label("Le faltan ${next.xp - Pets.xp} puntos para ser ${next.name.lowercase()}", 12f, Palette.SUB), 4)
         } else {
-            add(label("👑 ¡Llegó a legendaria!", 13f, Palette.YELLOW, bold = true), 10)
+            add(label("👑 ¡Llegó a legendaria!", 13f, Palette.YELLOW, bold = true), 14)
         }
-
-        // Las cuatro barras de cuidado, estilo Pou.
-        val careBox = card(padDp = 0)
-        Pets.Care.entries.forEachIndexed { i, care ->
-            if (i > 0) careBox.addView(divider(), dividerLp())
-            val lvl = Pets.careLevel(care)
-            val line = row().apply { setPadding(dp(14), dp(12), dp(14), dp(12)) }
-            line.addView(label(care.emoji, 22f))
-            val texts = column()
-            texts.addView(label(care.label, 14f, bold = true), lp())
-            texts.addView(progressBar(lvl / 100f, if (lvl < 25) Palette.DANGER else if (lvl < 50) Palette.YELLOW else Palette.OK), lp(MATCH, dp(8), topDp = 6))
-            line.addView(texts, lp(0, WRAP, weight = 1f).apply { setMargins(dp(12), 0, dp(12), 0) })
-            val cost = if (care == Pets.Care.HAMBRE) "${care.button}\n${Pets.FEED_COST} pts" else care.button
-            line.addView(button(cost, if (lvl < 50) Palette.ACCENT else Palette.SURFACE2, if (lvl < 50) Palette.INK else Palette.TEXT, heightDp = 44, radiusDp = 12, sizeSp = 12f) {
-                doCare(care)
-            }, LinearLayout.LayoutParams(dp(92), WRAP))
-            careBox.addView(line, lp())
-        }
-        add(careBox, 12)
+        Pets.lastVibe()?.let { add(speechBubble("${Pets.name} se acuerda: ${it.reaction}"), 10) }
 
         add(
             button("💌 Mandarle un saludo a un amigo", Palette.SURFACE2, Palette.TEXT, heightDp = 46, radiusDp = 14, sizeSp = 14f) { petGreeting() },
@@ -3254,19 +3559,27 @@ class MainActivity : Activity(), Store.Listener {
         addFooter()
     }
 
-    private fun doCare(care: Pets.Care) {
-        val species = Pets.current ?: return
-        when (Pets.care(care)) {
-            Pets.CareResult.OK -> {
-                if (care == Pets.Care.HAMBRE) petView.eat() else petView.cheer()
-                Quests.track(Quests.PET)
-                val extra = if (care == Pets.Care.HAMBRE) " ${species.food}" else ""
-                toast("${care.emoji} ${care.done}$extra")
+    // ------------------------------------------------------------------ Minijuegos
+
+    private var games: GamesScreen? = null
+
+    private fun openGames() {
+        if (games != null) return
+        val screen = GamesScreen(
+            this, Pets.current?.key ?: "bulla",
+            onClose = {
+                games = null
+                if (overlay.visibility != View.VISIBLE && upload == null) shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                updateBackCallback()
                 render()
-            }
-            Pets.CareResult.FULL -> toast("Esa barra ya está llena 🙂")
-            Pets.CareResult.NO_POINTS -> toast("Te faltan puntos: tienes ${Points.balance()}")
-        }
+            },
+            toast = { toast(it) },
+        )
+        games = screen
+        root.addView(screen, root.indexOfChild(overlay), FrameLayout.LayoutParams(MATCH, MATCH))
+        shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        applyInsets()
+        updateBackCallback()
     }
 
     /** La colección: todas las especies, las que tienes desbloqueadas y las que faltan. */
@@ -4048,8 +4361,13 @@ class MainActivity : Activity(), Store.Listener {
         overlay.removeAllViews()
         val now = Player.now
         if (now == null || now.isPreview) {
+            if (overlay.visibility == View.VISIBLE) {
+                overlayPet.removeCallbacks(overlayReaction)
+                overlayPet.audioLevel = null
+                overlayPet.calm()
+            }
             overlay.visibility = View.GONE
-            shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            if (upload == null) shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             return
         }
         val appearing = overlay.visibility != View.VISIBLE
@@ -4066,16 +4384,29 @@ class MainActivity : Activity(), Store.Listener {
         val sender = friend?.name ?: now.fromName.substringBefore(" · ")
         val page = column().apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(20), dp(24), dp(24))
+            setPadding(dp(24), dp(16), dp(24), dp(24))
         }
         val reto = now.retoId?.let { Store.reto(it) }
         val locked = Locks.blocksStop(now)
         val superSound = now.power == Powers.SUPER
-        // Súper sonido: pantalla dorada; se detiene igual que cualquier otro.
-        overlay.background = if (superSound) {
-            GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF4A3300.toInt(), 0xFF6B1450.toInt(), 0xFF1A0B38.toInt()))
+        val vibeKey = vibeOf(now)
+        val vibe = Vibes.known(vibeKey)
+        val tint = when {
+            superSound -> Palette.YELLOW
+            vibe != null -> vibe.color
+            else -> Palette.ACCENT
+        }
+        // Súper sonido: pantalla dorada. Si no, el fondo animado de su categoría, que se abre al llegar.
+        if (superSound) {
+            overlay.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF4A3300.toInt(), 0xFF6B1450.toInt(), 0xFF1A0B38.toInt()))
         } else {
-            ColorDrawable(Palette.OVERLAY)
+            overlay.background = ColorDrawable(Palette.OVERLAY)
+            (overlayScene.parent as? ViewGroup)?.removeView(overlayScene)
+            if (appearing) {
+                overlayScene.clear()
+                if (vibe != null) overlayScene.react(vibe.key)
+            }
+            overlay.addView(overlayScene, FrameLayout.LayoutParams(MATCH, MATCH))
         }
         page.addView(View(this), lp(MATCH, 0, weight = 1f))
         val trial = now.trialFor.isNotEmpty()
@@ -4088,26 +4419,52 @@ class MainActivity : Activity(), Store.Listener {
         }
         page.addView(caps(heading).apply { textSize = 13f }, LinearLayout.LayoutParams(WRAP, WRAP))
 
+        // Bulla se sorprende y después reacciona a la categoría, moviendo la boca con lo que suena.
         val stage = FrameLayout(this)
-        stage.addView(PulseRings(this, if (superSound) Palette.YELLOW else Palette.ACCENT), FrameLayout.LayoutParams(dp(260), dp(260), Gravity.CENTER))
-        stage.addView(View(this).apply { background = oval(0, Palette.LINE) }, FrameLayout.LayoutParams(dp(260), dp(260), Gravity.CENTER))
-        stage.addView(View(this).apply { background = oval(0, Palette.BADGE) }, FrameLayout.LayoutParams(dp(206), dp(206), Gravity.CENTER))
-        val tile = label(sound?.emoji ?: "🎤", 72f).apply {
+        stage.addView(PulseRings(this, tint), FrameLayout.LayoutParams(dp(250), dp(250), Gravity.CENTER))
+        (overlayPet.parent as? ViewGroup)?.removeView(overlayPet)
+        overlayPet.apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            outfit = Wardrobe.outfit()
+            glow = tint
+            audioLevel = { Player.level() }
+        }
+        if (appearing) {
+            overlayPet.surprise()
+            overlayPet.removeCallbacks(overlayReaction)
+            overlayReaction = Runnable {
+                val left = (now.durationMs - (SystemClock.elapsedRealtime() - now.startedAt)) / 1000f
+                if (Player.now === now && left > 0.3f) overlayPet.react(vibe?.key ?: Vibes.default.key, left)
+            }
+            overlayPet.postDelayed(overlayReaction, 900)
+        }
+        stage.addView(overlayPet, FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER))
+        page.addView(stage, LinearLayout.LayoutParams(dp(250), dp(250)))
+
+        val what = row().apply { gravity = Gravity.CENTER }
+        val tile = label(sound?.emoji ?: "🎤", 38f).apply {
             gravity = Gravity.CENTER
             includeFontPadding = false
-            background = if (superSound) Looks.swatch("oro")!!.drawable(context, 44) else candy(sound?.color ?: Palette.CUSTOM, 44)
+            background = if (superSound) Looks.swatch("oro")!!.drawable(context, 22) else lipped(tint, 22)
+            setPadding(0, 0, 0, dp(4))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        tile.elevation = dp(8).toFloat()
-        stage.addView(tile, FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER))
+        what.addView(tile, LinearLayout.LayoutParams(dp(72), dp(76)))
         if (appearing) Anim.pop(tile, 1.3f)
-        page.addView(stage, LinearLayout.LayoutParams(dp(260), dp(260)))
-
-        page.addView(title(now.label, 36f).apply {
-            gravity = Gravity.CENTER
+        val names = column()
+        names.addView(title(now.label, 32f).apply {
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
         }, lp())
+        // La mascota reconoce la emoción del sonido.
+        if (vibe != null && now.vibe.isNotEmpty() && reto == null && now.trialFor.isEmpty()) {
+            names.addView(label("${vibe.emoji} Sonido ${vibe.name.lowercase()}", 13f, vibe.onColor, bold = true).apply {
+                background = rounded(vibe.color, 999)
+                setPadding(dp(12), dp(5), dp(12), dp(5))
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(6) })
+        }
+        what.addView(names, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = dp(14) })
+        page.addView(what, lp(topDp = 4))
         val from = row().apply {
             background = rounded(Palette.SURFACE, 999)
             setPadding(dp(8), dp(8), dp(16), dp(8))
@@ -4118,16 +4475,6 @@ class MainActivity : Activity(), Store.Listener {
             LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(10) },
         )
         page.addView(from, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(12) })
-
-        // La mascota reconoce la emoción del sonido.
-        if (now.vibe.isNotEmpty() && reto == null && now.trialFor.isEmpty()) {
-            val vibe = Vibes.byKey(now.vibe)
-            val chip = label("${vibe.emoji} Sonido ${vibe.name.lowercase()}", 14f, Palette.INK, bold = true).apply {
-                background = rounded(Palette.CUSTOM, 999)
-                setPadding(dp(14), dp(7), dp(14), dp(7))
-            }
-            page.addView(chip, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(8) })
-        }
 
         page.addView(View(this), lp(MATCH, dp(32), weight = 1f))
         if (locked) {
@@ -4171,7 +4518,7 @@ class MainActivity : Activity(), Store.Listener {
             }
             page.addView(label(note, 13f, Palette.SUB).apply { gravity = Gravity.CENTER }, lp(topDp = 12))
         }
-        page.addView(TimeBar(this, Palette.LINE, Palette.ACCENT, now.startedAt, now.durationMs), lp(MATCH, dp(6), topDp = 24))
+        page.addView(TimeBar(this, Palette.LINE, tint, now.startedAt, now.durationMs), lp(MATCH, dp(8), topDp = 24))
 
         val pageScroll = ScrollView(this).apply {
             isFillViewport = true
@@ -4179,6 +4526,9 @@ class MainActivity : Activity(), Store.Listener {
         }
         overlay.addView(pageScroll, FrameLayout.LayoutParams(MATCH, MATCH))
     }
+
+    /** Después de sorprenderse, Bulla reacciona a la categoría del sonido que llegó. */
+    private var overlayReaction = Runnable {}
 
     private fun muteSender(now: Player.NowPlaying) {
         val groupId = now.groupId
@@ -4231,12 +4581,27 @@ class MainActivity : Activity(), Store.Listener {
             })
         }
         floating("📯", Palette.YELLOW, 64, Gravity.TOP or Gravity.START, 12, 10, -10f)
-        floating("🦆", Palette.OK, 58, Gravity.TOP or Gravity.END, 10, 24, 9f)
         floating("🔔", 0xFF54A0FF.toInt(), 56, Gravity.BOTTOM or Gravity.START, 34, 2, 8f)
         floating("🎉", 0xFFA29BFE.toInt(), 52, Gravity.BOTTOM or Gravity.END, 28, 10, -8f)
-        val logo = FrameLayout(this).apply { background = rounded(Palette.ACCENT, 44) }
-        logo.addView(icon(R.drawable.ic_nav_sound, Palette.INK, 72), FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
-        art.addView(logo, FrameLayout.LayoutParams(dp(132), dp(132), Gravity.CENTER))
+        // Bulla saluda en el centro, con su globo.
+        art.addView(View(this).apply {
+            background = GradientDrawable().apply {
+                gradientType = GradientDrawable.RADIAL_GRADIENT
+                colors = intArrayOf(0x663DBBF5, 0x003DBBF5)
+                gradientRadius = dp(90).toFloat()
+            }
+        }, FrameLayout.LayoutParams(dp(190), dp(190), Gravity.CENTER))
+        val hello = PetView(this).apply {
+            species = "bulla"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        art.addView(hello, FrameLayout.LayoutParams(dp(176), dp(176), Gravity.CENTER))
+        hello.postDelayed({ hello.wave() }, 600)
+        art.addView(label("¡Hola! Soy Bulla", 14f, Palette.INK, bold = true).apply {
+            background = lipped(Palette.TEXT, 16, Palette.SUB)
+            setPadding(dp(12), dp(8), dp(12), dp(11))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(18), dp(4), 0) })
         page.addView(art, lp(MATCH, dp(230)))
 
         page.addView(title("Hazle sonar el celular a tus amigos", 32f).apply { gravity = Gravity.CENTER }, lp(topDp = 16))
@@ -4301,7 +4666,7 @@ class MainActivity : Activity(), Store.Listener {
 
         return ScrollView(this).apply {
             isFillViewport = true
-            setBackgroundColor(Palette.BG)
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Palette.BG_HIGH, Palette.BG))
             addView(page, ViewGroup.LayoutParams(MATCH, WRAP))
         }
     }
@@ -4456,6 +4821,15 @@ class MainActivity : Activity(), Store.Listener {
         sending = true
         startCooldown(target.key, now)
         tile?.let { Anim.flyUp(root, it, Looks.button(if (custom != null) "c:${custom.id}" else kind).emoji ?: Sounds.byKey(kind)?.emoji ?: "🎤") }
+        // El fondo se abre con la categoría del sonido desde el botón, y Bulla asoma reaccionando.
+        if (Looks.reactiveBackground && Player.now == null) {
+            tile?.let { rememberOrigin(it) }
+            if (originX >= 0f) scene.react(vibeKey, originX, originY) else scene.react(vibeKey)
+            originX = -1f
+            ui.removeCallbacks(sendReactionOver)
+            ui.postDelayed(sendReactionOver, 1_800)
+        }
+        if (Player.now == null) peek.show(vibeKey, 1.8f, follow = false)
         render()
         runInBackground({
             if (file != null) Relay.publishFileTopic(target.topic, payload, file) else Relay.publishTopic(target.topic, payload)
@@ -4482,6 +4856,9 @@ class MainActivity : Activity(), Store.Listener {
         }
     }
 
+    /** Termina la reacción del fondo al mandar (si no empezó a sonar otra cosa). */
+    private val sendReactionOver = Runnable { if (Player.now == null && ::scene.isInitialized) scene.release() }
+
     private fun stopMySound(sent: Sent) {
         lastSent = null
         render()
@@ -4492,11 +4869,11 @@ class MainActivity : Activity(), Store.Listener {
     private fun customOptions(custom: CustomSound) {
         val target = currentTarget()
         val options = mutableListOf<Pair<String, () -> Unit>>(
-            "▶️ Escucharlo" to { Player.preview(this, Player.Source.FromFile(custom.file(this)), custom.label, custom.startMs) },
+            "▶️ Escucharlo" to { previewSound(Player.Source.FromFile(custom.file(this)), custom.label, custom.startMs, Looks.vibe("c:${custom.id}"), null) },
             "🎨 Personalizar botón" to { customizeButton("c:${custom.id}", "🎤", Palette.CUSTOM, custom.label, editName = false) },
             "✂️ Elegir la parte que suena" to { chooseStart(custom) },
             "✏️ Cambiar nombre" to { renameCustom(custom) },
-            "🎭 Vibe: ${Vibes.byKey(Looks.vibe("c:${custom.id}")).name}" to { chooseVibe("c:${custom.id}") },
+            "🏷️ Categoría: ${Vibes.byKey(Looks.vibe("c:${custom.id}")).label}" to { chooseVibe("c:${custom.id}") },
             "🗑 Borrar" to { deleteCustom(custom) },
         )
         if (target != null) {
@@ -4869,7 +5246,6 @@ class MainActivity : Activity(), Store.Listener {
         }
         if (requestCode != REQ_PICK_AUDIO || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
-        toast("Revisando el audio…")
         runInBackground({
             val imported = try {
                 CustomAudio.import(this, uri)
@@ -4880,29 +5256,46 @@ class MainActivity : Activity(), Store.Listener {
                 ui.post { info("No se pudo agregar", "No se pudo leer ese archivo.") }
                 return@runInBackground
             }
-            ui.post { nameNewAudio(imported) }
+            ui.post { showUpload(imported, "Subir audio") }
         }) {}
     }
 
-    private fun nameNewAudio(imported: CustomAudio.Imported) {
+    /** La pantalla «Subir audio» abierta (ver UploadSheet), o null. */
+    private var upload: UploadSheet? = null
+
+    /**
+     * Después de subir o grabar un audio: Bulla lo escucha y adivina la categoría, se elige el
+     * nombre y la parte que suena, y se guarda.
+     */
+    private fun showUpload(imported: CustomAudio.Imported, heading: String) {
         if (isFinishing || isDestroyed) {
             CustomAudio.fileFor(this, imported.sound).delete()
             return
         }
-        val saved = booleanArrayOf(false)
-        val dialog = textDialog("¿Cómo se llama este audio?", CustomAudio.HINT, imported.suggestedLabel, "Nombre", "Guardar") { name ->
-            val sound = imported.sound.copy(label = name)
-            Store.putCustomSound(sound)
-            Points.onCustomAdded()
-            saved[0] = true
-            // Si es largo (una canción, un audio descargado), se elige la parte que suena.
-            if (imported.durationMs > Player.MAX_PLAY_MS + 500) ui.post { chooseStart(sound) }
-            else toast("🎤 Audio agregado: ya puedes mandarlo")
-            true
-        }
-        dialog.setOnDismissListener {
-            if (!saved[0]) CustomAudio.fileFor(this, imported.sound).delete()
-        }
+        upload?.close()
+        val sheet = UploadSheet(
+            this, imported, heading,
+            onPreview = { source, name, startMs, vibe -> previewSound(source, name, startMs, vibe, null) },
+            onSave = { sound, vibe ->
+                Store.putCustomSound(sound)
+                Looks.setVibe("c:${sound.id}", vibe)
+                Points.onCustomAdded()
+                Pets.onVibeSent(vibe)
+                toast("🎤 «${sound.label}» está en Tus audios: ya puedes mandarlo")
+            },
+            onClose = {
+                upload = null
+                if (overlay.visibility != View.VISIBLE) shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                hideKeyboard(root)
+                updateBackCallback()
+            },
+        )
+        upload = sheet
+        root.addView(sheet, root.indexOfChild(overlay), FrameLayout.LayoutParams(MATCH, MATCH))
+        shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        applyInsets()
+        sheet.enter()
+        updateBackCallback()
     }
 
     private fun renameCustom(custom: CustomSound) {
@@ -4933,6 +5326,12 @@ class MainActivity : Activity(), Store.Listener {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_TALK) {
+            toast(
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) "🎤 Listo: mantén presionado el botón y háblale"
+                else "Sin permiso de micrófono no te puede escuchar. Prueba con las frases de abajo.",
+            )
+        }
         if (requestCode == REQ_MIC) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) recordAudio()
             else toast("Sin permiso de micrófono no se puede grabar. Puedes subir un archivo.")
@@ -4986,7 +5385,7 @@ class MainActivity : Activity(), Store.Listener {
             recorder.release()
             if (dialog.isShowing) dialog.dismiss()
             if (keep && ok && file.length() > 0) {
-                nameNewAudio(CustomAudio.Imported(sound, "Mi grabación"))
+                showUpload(CustomAudio.Imported(sound, "Mi grabación", CustomAudio.durationOf(file) ?: 0L), "Tu grabación")
             } else {
                 file.delete()
                 if (keep) toast("No se grabó nada. Revisa que el micrófono funcione y vuelve a intentarlo.")
@@ -5095,8 +5494,10 @@ class MainActivity : Activity(), Store.Listener {
         }
     }
 
+    /** Aviso corto: con Bulla dentro de la app (ver BullaToast); si la app no está a la vista, el del sistema. */
     private fun toast(text: String) {
-        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+        if (started && !isFinishing && ::bullaToast.isInitialized) bullaToast.show(text)
+        else Toast.makeText(this, text, Toast.LENGTH_LONG).show()
     }
 
     private fun info(title: String, message: String) {

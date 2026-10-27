@@ -174,6 +174,8 @@ object Store {
             Points.init(context)
             Looks.init(context)
             Pets.init(context)
+            Wardrobe.init(context)
+            Games.init(context)
             Powers.init(context)
             Streaks.init(context)
             Quests.init(context)

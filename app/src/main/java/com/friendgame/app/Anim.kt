@@ -24,8 +24,11 @@ import kotlin.random.Random
  * mucho se dibuja en una vista propia ([Confetti], [PulseRings], [PetView]).
  */
 object Anim {
-    /** Con "quitar animaciones" en Ajustes de Android, no se anima nada. */
-    fun enabled(): Boolean = ValueAnimator.areAnimatorsEnabled()
+    /**
+     * Con «Quitar animaciones» en Ajustes de Android (o «Reducir movimiento» en la app), no se
+     * anima nada: es el «prefers-reduced-motion» de Android.
+     */
+    fun enabled(): Boolean = ValueAnimator.areAnimatorsEnabled() && !Looks.reduceMotion
 
     /** Se achica un poco al presionar y vuelve con rebote. */
     fun press(): StateListAnimator = StateListAnimator().apply {

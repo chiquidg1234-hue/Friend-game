@@ -19,7 +19,7 @@ import java.io.File
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w390dp-h844dp-xhdpi", manifest = Config.NONE, shadows = [IconShadow::class])
+@Config(sdk = [35], qualifiers = "w390dp-h844dp-xhdpi", manifest = Config.NONE, shadows = [IconShadow::class])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class Screens {
     private val out = System.getProperty("out")

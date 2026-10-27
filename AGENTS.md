@@ -39,8 +39,8 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 
 | Archivo | Qué hace |
 | --- | --- |
-| `MainActivity.kt` | Todas las pantallas. `render()` borra y vuelve a armar la pantalla actual cada vez que cambia algo en `Store` (pestañas `Tab`, páginas en la pila `pages`: `settings`, `support`, `chat:<clave>`, `ranking:<clave>`). La caja para escribir del chat (`composer`) se arma una sola vez, para no perder lo escrito. |
-| `Ui.kt` | `Palette` (colores), `Fonts`, piezas de interfaz (`button`, `card`, `label`, `title`, `soundTile`…), `TimeBar` y `LiveText`. |
+| `MainActivity.kt` | Todas las pantallas. `render()` borra y vuelve a armar la pantalla actual cada vez que cambia algo en `Store` (pestañas `Tab`, páginas en la pila `pages`: `settings`, `support`, `chat:<clave>`, `ranking:<clave>`, `pets`). La caja para escribir del chat (`composer`) y el buscador de Sonar (`searchBar`) se arman una sola vez, para no perder lo escrito. Encima de todo van capas que no se redibujan: el aviso de sonido (`overlay`), «Subir audio» (`UploadSheet`), los minijuegos (`GamesScreen`), la intro y los avisos (`BullaToast`). |
+| `Ui.kt` | `Palette` (colores del diseño 2.0 y sus labios 3D), `Fonts`, piezas de interfaz: `button` (con labio, `Chunky`), `card`, `soundCard` (tarjeta grande de sonido con categoría y ▶), `filterChip`, `ProgressPill`, `label`, `title`… También `TimeBar` y `LiveText`. |
 | `Store.kt` | Todo lo guardado (SharedPreferences): amigos, grupos, historial, audios propios, chats (archivo aparte), retos y candados. Avisa los cambios con `notifyChanged()`. |
 | `ListenService.kt` | Servicio en primer plano. Mantiene la conexión con ntfy, procesa cada mensaje (`handleMessage`, `handleGroupMessage`) y dispara retos atrasados en cada keepalive. |
 | `Relay.kt` | Publica en ntfy. `payload(tipo)` arma el mensaje base, con puntos, avatar y mascota; `signed()` arma los mensajes del admin de un grupo, firmados con ECDSA. |
@@ -49,9 +49,17 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Retos.kt` | Retos: crear, recibir, alarmas (AlarmManager exacta, o aproximada si no hay permiso), sonar, tabla de tiempos y `RetoReceiver`. |
 | `Locks.kt` | Candado: proponer, aceptar, rechazar, `blocksStop` y `finishDue`. |
 | `Points.kt` | Puntos con tope diario, niveles, logros, racha, saldo para gastar y ranking (con los puntos que traen los mensajes de los demás). |
-| `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat, **fondo de la app** `BACKGROUNDS`), mascota (`Pets`: 11 especies, 4 barras de cuidado tipo Pou `Care` —hambre, alegría, energía, limpieza— y frases `says()`) y poderes (`Powers`). La pantalla de cuidado es `MainActivity.renderPets` (página `pets`). |
-| `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: las 11 especies con las formas del lienzo «Friend Game · Mascotas 3D»): respira, parpadea, come, salta, tiene hambre y duerme. |
-| `Anim.kt` | Animaciones cortas (rebote al tocar, entrada de pantalla, confeti, emoji que vuela) y `PulseRings`. |
+| `Looks.kt` | Personalización (`Looks`: botones, avatar, temas de chat, **fondo de la app** `BACKGROUNDS` —los que tienen `scene` son animados—, `reactiveBackground` y `reduceMotion`), mascota (`Pets`: 12 especies con Bulla primero, 4 barras de cuidado tipo Pou `Care` —hambre, alegría, energía, limpieza— y frases `says()`) y poderes (`Powers`). |
+| `PetView.kt` | Mascota 3D dibujada en Canvas (`PetArt`: Bulla y las 11 especies del lienzo «Friend Game · Mascotas 3D»). Está viva como Duo: respira, parpadea, mira a los lados, hace gestos cada ~6 s. Acciones: `cheer`, `dance`, `surprise`, `laugh`, `scare`, `love`, `troll`, `wave`, `chat`, `celebrate`, `shower`, `eat` y `react(categoría)`. `audioLevel` mueve la boca con lo que suena, y `outfit`, `foam`, `dirt`, `sleepy`, `listening`, `glow` cambian su aspecto. Bulla tiene piezas articuladas (`PetArt.Rig`): orejas, brazos, ojos grandes y antena con resorte. |
+| `Wardrobe.kt` | Armario: gorros, lentes y cuello que se compran con puntos y se dibujan sobre cualquier especie. |
+| `PetRoom.kt` | La pieza de la mascota tipo Pou (página `pets`): barras arriba, la mascota grande y seis piezas. Cocina: arrastrar comida a la boca. Baño: jabón y ducha. Dormir: apagar la luz. Jugar: pelota y minijuegos. Armario y «Háblale». |
+| `Parrot.kt` | «Háblale»: graba mientras mantienes el botón y lo repite más agudo (voz de ardilla), sin guardar nada. |
+| `Games.kt` | Minijuegos: Atrapa la comida, Salto a las nubes, Bulla dice y Revienta burbujas, con récord y puntos con tope diario (`Points.onGamePlayed`). |
+| `Scene.kt` | `SceneView`: el fondo de la app, dibujado. Los de categoría son animados (sol de risa, disco, tormenta, corazones, espiral, ondas). `react` lo abre en círculo desde el sonido, late con `Player.level()` y `release` vuelve al tuyo. |
+| `AudioClassifier.kt`, `AudioAnalysis.kt` | Detección de la categoría de un audio (Kotlin puro, sin dependencias; ver `docs/AUDIO_CATEGORIAS.md`). Además, la envolvente para reaccionar al audio (`Player.level`). |
+| `UploadSheet.kt` | «Subir audio»: la forma del audio, Bulla que escucha y adivina la categoría, elegir otra, nombre y la parte que suena. |
+| `Intro.kt`, `Toasts.kt` | La intro al abrir desde el ícono (`IntroView`), Bulla que asoma al mandar o escuchar (`MascotPeek`) y los avisos con Bulla (`BullaToast`). |
+| `Anim.kt` | Animaciones cortas (rebote al tocar, entrada de pantalla, confeti, emoji que vuela) y `PulseRings`. `Anim.enabled()` es falso con «Quitar animaciones» de Android o «Reducir movimiento» de la app. |
 | `Engage.kt` | Rachas con cada amigo (`Streaks`), misiones del día con cofre (`Quests`), un recordatorio diario (`Reminders`), «Devolvérsela» (`Replies`), quién está activo (`Presence`) y temporadas con disfraz para la mascota (`Seasons`). Ver `docs/PSICOLOGIA.md`. |
 | `Sonoteca.kt` | Sonidos que comparten tus amigos y grupos: publicar, recibir, ❤️, usar, ocultar y la lista de retiro (`docs/legal/retiros.json`). |
 | `Groups.kt`, `Invites.kt`, `GroupKeys.kt` | Grupos: crear, unirse, sacar a alguien (cambia el canal), invitaciones y firmas del admin. |
@@ -60,7 +68,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Updater.kt`, `ApkProvider.kt` | Solo en la versión github: se actualiza sola y se pasa por Quick Share. |
 | `Legal.kt` | Términos y privacidad (los textos están en `docs/legal/` y entran como assets) y denuncias. |
 | `CustomAudio.kt` | Importar audios: hasta 1 min y 2 MB, suenan 10 s desde `startMs`. |
-| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 12 sonidos integrados y sus vibes (`Vibes`: troll/risa/fiesta/amor/susto), enlace para donar, códigos, QR y escáner. |
+| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 12 sonidos integrados y sus categorías (`Vibes`: risa/fiesta/susto/amor/troll/voz, con color, labio e ícono), enlace para donar, códigos, QR y escáner. |
 
 ## Protocolo (JSON en el cuerpo de cada mensaje de ntfy)
 
@@ -69,7 +77,7 @@ Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "w
 | Tipo | Canal | Campos | Qué hace |
 | --- | --- | --- | --- |
 | `req` / `acc` / `bye` | personal | — | Solicitud de amistad, aceptación, adiós o bloqueo |
-| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`), `v?` (vibe: `troll`/`risa`/`fiesta`/`amor`/`susto`) | Hace sonar |
+| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`), `v?` (categoría: `troll`/`risa`/`fiesta`/`amor`/`susto`/`voz`; si falta o no se conoce, la de fábrica del sonido) | Hace sonar |
 | `stop` | personal o grupo | `id` | Quien lo mandó corta su propio sonido |
 | `msg` | personal o grupo | `id`, `text` (≤500), `g?` | Chat |
 | `reto` | personal o grupo | `id`, `k` (`sorpresa`/`rapido`), `s`, `in` (segundos, 10–21600), `g?` | Crea un reto |
@@ -95,7 +103,9 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 
 - **Prueba de punta a punta:** `tools/e2e/run.sh`. Corre en GitHub Actions (`.github/workflows/e2e.yml`) con un emulador Android 15. Simula amigos y admins con curl contra ntfy.sh real y maneja la app con `tools/e2e/ui.py` (uiautomator). Cada paso nuevo de la app debería tener su paso ahí.
 - **Revisión rápida sin el SDK de Android:** compilar el Kotlin contra un `android.jar` (por ejemplo `android-all` de Robolectric) con un `R`/`BuildConfig` de mentira.
-- **Ver cómo se ve, sin emulador:** `tools/render/run.sh` dibuja las mascotas, sus animaciones y las pantallas principales con Robolectric y gráficos nativos (deja PNG en `tools/render/out/`). Úsalo antes de subir cambios visuales.
+- **Ver cómo se ve, sin emulador:** `tools/render/run.sh` dibuja las mascotas, sus animaciones y las pantallas con Robolectric y gráficos nativos. Deja PNG en `tools/render/out/` y las capturas por fase en `screenshots/`. Úsalo antes de subir cambios visuales.
+- **Detección de categorías:** `tools/audio/run.sh` prueba `AudioClassifier` con audios de prueba (necesita espeak-ng y ffmpeg).
+- **Diseño:** el lienzo «Friend Game · Diseño 2.0» en Claude Design (https://claude.ai/artifact/HMqBNoRcDAxTRu2SshHdiP; copia en `docs/design/`). Los colores están en `docs/design/tokens.json`, y `node tools/design/check-tokens.mjs` revisa que `Ui.kt` y `Sounds.kt` los usen.
 
 ### ⚠️ Antes de hacer push
 
@@ -110,7 +120,8 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 - Los cambios de estado de retos y candados van con `Store.updateReto` / `Store.updateLock` (bajo lock), para que no se disparen dos veces.
 - Puntos: usa las funciones de `Points` (`onSoundSent`, `onRetoPlace`…), que ya tienen tope diario. Gastar (`Points.spend`) no baja el nivel ni el ranking.
 - **Envíos:** un sonido a la vez, con 2,5 s de recarga y como mucho 4 cada 20 s al mismo destino (`MainActivity.sendWait`). No lo quites: evita colas de envíos y sonidos que el otro celular igual descartaría.
-- **Animaciones:** cortas y sobre vistas (`Anim`); lo que se mueve todo el rato se dibuja en una vista propia (`PetView`, `PulseRings`, `TimeBar`). Respeta `Anim.enabled()` (la prueba en emulador corre sin animaciones).
+- **Animaciones:** cortas y sobre vistas (`Anim`); lo que se mueve todo el rato se dibuja en una vista propia (`PetView`, `SceneView`, `PulseRings`, `TimeBar`, los juegos). Respeta `Anim.enabled()`: la prueba en emulador corre sin animaciones, y es el «prefers-reduced-motion» de Android. Nada se crea dentro de `onDraw`, y lo que está quieto no se redibuja (gama media: Honor X7c).
+- **Diseño 2.0 (estilo Duolingo, oscuro):** botones con labio 3D (`button`), tarjetas con labio (`card`), Fredoka y Nunito, colores de `Palette` y de cada categoría (`Vibe.color`/`lip`). Bulla aparece en la intro, las pantallas vacías (`bullaSays`), los avisos, al mandar (`peek`) y al recibir. Los cambios visuales primero en el lienzo y después en el código.
 - **Modo escuchar:** en Sonar, «Escuchar» hace que tocar un sonido lo escuches tú (`Player.preview`) y «Como le llega a…» lo hace sonar como a tu amigo (`NowPlaying.trialFor`: pantalla completa, alarma, poder listo) sin mandarlo.
 - **Enganche sano:** nada se compra con dinero, perder una racha no quita nada, a lo más un recordatorio al día (18:00–21:00) y se apaga en Ajustes, sin cuentas regresivas falsas. Lo exige Google Play y el público es de 13+.
 - **Secretos:**

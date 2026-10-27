@@ -1,6 +1,6 @@
 # Informe para seguir con Friend Game (ChatGPT, Codex u otra IA)
 
-Fecha: 21 de octubre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
+Fecha: 27 de octubre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
 
 Primero lee [AGENTS.md](../AGENTS.md): explica la arquitectura, el protocolo, cómo compilar y las reglas que no se pueden romper.
 
@@ -40,21 +40,28 @@ Apunta a Android 16 (API 36).
   - Tu avatar (lo ven tus amigos).
   - Temas para cada chat.
   - Colores y temas que se desbloquean por nivel.
-- **Mascota 3D:** 11 especies (gato, perro, zorro, rana, conejo, pollito, oso, panda, pulpo, dragón, unicornio; varias se desbloquean por nivel), dibujadas en Canvas con el diseño del lienzo «Friend Game · Mascotas 3D» (https://claude.ai/artifact/VrU56dRP4yBcrdif3oRGd1). Crece con tus puntos (huevo → bebé con cáscara → joven → adulta → legendaria con corona). Respira, parpadea, mueve la cola, come su comida favorita, salta y suelta corazones, se pone triste con hambre y duerme de 22:00 a 7:00.
-  - **Sección Mascotas (tipo Pou):** `Tú → Tu mascota → Cuidar y jugar`. Cuatro barras que bajan solas con el tiempo (hambre, alegría, energía, limpieza) y se suben con Alimentar (cuesta puntos), Jugar, Dormir y Bañar. Tiene una burbuja con frases de la mascota, la colección de las 11 especies y «mandar un saludo a un amigo» (es un mensaje de chat, no un sonido).
-- **Fondo de la app:** en `Tú` se elige entre 6 fondos (noche violeta, corazones, mar, bosque, atardecer, lava). Se guarda en `Looks`.
-- **Vibes de los sonidos (`Vibes`):** cada sonido tiene una emoción (😈 troll, 😂 risa, 🎉 fiesta, 💖 amor, 😱 susto). Los integrados traen una por defecto; cualquiera se cambia en las opciones del sonido («🎭 Vibe»). Viaja en el `snd` como `v`. Al recibir, el overlay muestra la vibe y **la mascota la reconoce**; su **personalidad** (en la sección Mascotas) es la vibe que más mandas. No cambia cómo suena ni el volumen.
+- **Bulla, la mascota de la app** (diseño 2.0): un parlante celeste con orejas, brazos, ojos grandes y antena con resorte. Es la especie de partida y aparece en la intro, en las pantallas vacías, en los avisos, al mandar (asoma por abajo) y al recibir. Está viva como Duo: respira, parpadea, mira a los lados y hace un gesto cada ~6 s. Tiene 12 acciones (feliz, baila, sorprendida, se ríe, se asusta, se enamora, traviesa, saluda, habla, festeja, se ducha, come) y **mueve la boca con lo que suena** (`Player.level`). Los SVG de sus estados están en `docs/design/bulla-*.svg`.
+- **Mascota 3D:** 12 especies (Bulla, gato, perro, zorro, rana, conejo, pollito, oso, panda, pulpo, dragón, unicornio; varias se desbloquean por nivel), dibujadas en Canvas con el diseño del lienzo «Friend Game · Mascotas 3D» (https://claude.ai/artifact/VrU56dRP4yBcrdif3oRGd1). Crece con tus puntos (huevo → bebé con cáscara → joven → adulta → legendaria con corona), se pone triste con hambre y duerme de 22:00 a 7:00. Todas hacen las mismas acciones que Bulla.
+  - **Pieza de la mascota (tipo Pou, `PetRoom`):** `Tú → Tu mascota → Cuidar y jugar`. Cuatro barras que bajan solas (hambre, alegría, energía, limpieza), la mascota en grande y seis piezas: **Cocina** (arrastrar la comida a la boca; cuesta puntos), **Baño** (frotar el jabón hace espuma, y la ducha), **Dormir** (apagar la luz), **Jugar** (pelota y minijuegos), **Armario** y **Háblale** (mantener el botón: graba y lo repite con voz de ardilla, sin guardar nada; o frases con respuesta). Abajo, la colección de especies y «mandar un saludo a un amigo» (es un mensaje de chat, no un sonido).
+  - **Armario (`Wardrobe`):** 12 prendas (gorros, lentes y cuello) que se compran con puntos y se ven sobre cualquier especie.
+  - **Minijuegos (`Games`):** Atrapa la comida, Salto a las nubes, Bulla dice (memoria con sonidos) y Revienta burbujas. Guardan el récord, suben la alegría y dan puntos con tope (6 partidas al día).
+- **Fondo de la app:** en `Tú` se elige entre 11 fondos. Seis son **animados**, uno por categoría (sol de risa, disco, tormenta, corazones, espiral, ondas), y cinco son degradados (noche violeta, mar, bosque, atardecer, lava). Se dibujan en `SceneView`, a 30 cuadros por segundo y sin crear objetos en cada cuadro.
+  - **El fondo reacciona:** al escuchar, mandar o recibir un sonido, el fondo de su categoría se abre en círculo desde donde tocaste, late con el audio y vuelve al tuyo al terminar. Se apaga en Ajustes → «El fondo reacciona a los sonidos».
+- **Categorías de los sonidos (`Vibes`):** 😂 Risa, 🎉 Fiesta, 😱 Susto, 💖 Amor, 😈 Troll y 🗣️ Voz, cada una con su color, labio 3D e ícono. Los integrados traen una de fábrica; cualquiera se cambia en las opciones del sonido («🏷️ Categoría»). Viaja en el `snd` como `v`. Al recibir, el aviso muestra la categoría, su fondo, y **la mascota reacciona** (se ríe, baila, tiembla, ojos de corazón…). Su **personalidad** (en la pieza de la mascota) es la categoría que más mandas. No cambia cómo suena ni el volumen.
+  - **Detección al subir un audio** (`AudioClassifier`, ver [AUDIO_CATEGORIAS.md](AUDIO_CATEGORIAS.md)): la pantalla «Subir audio» muestra la forma del audio y Bulla lo escucha y adivina la categoría con su seguridad. Con menos de 45 % pregunta. La persona siempre puede elegir otra. Es Kotlin puro, sin modelo ni dependencias.
 - **Mercado** (Tú → Mercado): la **Sonoteca** (compartir tus audios con amigos y grupos, ❤️, usarlos con el nombre del autor, pasarlos, ocultar y denunciar; lista de retiro por derechos de autor) y la tienda (poderes y protector de racha).
 - **Enganche sano:** misiones del día con cofre sorpresa, racha con cada amigo (🔥), protector de racha y un recordatorio diario (18:00–21:00, se apaga en Ajustes → Avisos).
 - **Escuchar antes de mandar:** en Sonar, el selector «🔊 Mandar / 🎧 Escuchar»; con «Como le llega a Ana» suena tal como a tu amigo (pantalla, alarma, poder), solo en tu celular. También en el menú de cada botón.
 - **Psicología del juego** (`docs/PSICOLOGIA.md`): «Devolvérsela» en Sonar y en el aviso, punto verde de amigo activo, temporadas con disfraz (Halloween 20 oct – 2 nov, Navidad 18 dic – 1 ene) y logro de temporada, festejo al ganar un reto y «te falta poco» para subir de nivel.
-- **Animaciones:** rebote al tocar, entrada de pantallas, confeti en logros y cofres, emoji que vuela al mandar, anillos al recibir, botones de sonido en 3D.
+- **Animaciones:** intro al abrir desde el ícono (Bulla cae y rebota, las letras caen, emojis y ondas; se salta tocando), rebote al tocar, entrada de pantallas, confeti en logros y cofres, emoji que vuela al mandar, anillos al recibir, avisos con Bulla (`BullaToast`). Se apagan con «Quitar animaciones» de Android o con Ajustes → «Reducir movimiento».
 - **Poderes**, que se compran con puntos: Súper sonido (pantalla dorada), Eco (se repite hasta 10 s) y Doble puntos (en el próximo reto).
 - **Legal:**
   - Términos de uso y política de privacidad en `docs/legal/` (también dentro de la app).
   - «Denunciar» bloquea al instante y arma un correo si está `FG_CONTACT_EMAIL`.
   - Aviso de 13+ al empezar.
-- **Diseño:** fondo morado, rosado y amarillo, fuentes Fredoka y Nunito, 5 pestañas (Sonar, Chats, Grupos, Amigos, Tú).
+- **Diseño 2.0 (estilo Duolingo, oscuro):** hecho primero en el lienzo «Friend Game · Diseño 2.0» de Claude Design (https://claude.ai/artifact/HMqBNoRcDAxTRu2SshHdiP; copia en `docs/design/`) con su sistema de diseño (colores en `docs/design/tokens.json`, Fredoka y Nunito, espacios de 4 en 4, botones y tarjetas con labio 3D). 5 pestañas (Sonar, Chats, Grupos, Amigos, Tú).
+  - **Sonar:** tarjetas grandes en dos columnas con el color, el ícono y la categoría de cada sonido, ▶ para escucharlo, buscador y filtros por categoría.
+  - **Amigos:** tu código en una tarjeta con Copiar y Compartir, las solicitudes arriba y «Pasar la app» con Bulla bailando.
 
 ### Pruebas
 
@@ -67,7 +74,9 @@ La prueba automática (`tools/e2e/run.sh`) corre en cada push en un emulador And
 
 **Último resultado (rama `ccr-5646872f-1z0big`, 21 de octubre de 2026): 199 comprobaciones bien, 0 fallos.** Incluye la recarga al mandar, la misión del día, la racha con un amigo y la Sonoteca (recibir, usar y pasar un sonido).
 
-Además, `tools/render/run.sh` dibuja las mascotas y las pantallas principales sin emulador (ver `tools/render/README.md`).
+El paso «9n» prueba lo del diseño 2.0: filtros y buscador de Sonar, el armario, los minijuegos y los ajustes de animación.
+
+Además, `tools/render/run.sh` dibuja las mascotas y todas las pantallas sin emulador (ver `tools/render/README.md`); las capturas por fase están en [`screenshots/`](../screenshots/README.md). `tools/audio/run.sh` prueba la detección de categorías y `node tools/design/check-tokens.mjs` que los colores del código sean los del diseño.
 
 No se puede probar en el emulador: la cámara real (escanear el QR) ni el micrófono real. Ese paso avisa sin contar como fallo.
 
@@ -76,6 +85,9 @@ El resultado de cada ejecución está en GitHub → **Actions → Probar en emul
 ## 2. Pendiente, en orden de prioridad
 
 1. **Probar en celulares reales**, con al menos dos personas. Revisar:
+   - que la intro, los fondos animados y la pieza de la mascota vayan fluidos en gama media (Honor X7c);
+   - **la detección de categorías con audios reales** (de WhatsApp, TikTok, grabados). Si se equivoca mucho, cambiar a YAMNet como dice `docs/AUDIO_CATEGORIAS.md`;
+   - «Háblale» (el micrófono no se puede probar en el emulador);
    - retos con la app cerrada;
    - candado entre dos teléfonos;
    - notificaciones de chat;
@@ -97,8 +109,8 @@ El resultado de cada ejecución está en GitHub → **Actions → Probar en emul
 7. **Pruebas unitarias** de la lógica (`Points`, `Retos`, `Locks`), que hoy solo se prueba de punta a punta.
 8. **Ideas para después:**
    - reacciones a mensajes, stickers;
-   - accesorios para la mascota (gorros, lentes) comprados con puntos;
-   - temporadas (Halloween, Navidad) con temas y logros;
+   - más minijuegos y prendas para el armario;
+   - un modo claro (hoy la app es solo oscura);
    - widget en la pantalla de inicio;
    - notas de voz en el chat.
 

@@ -67,6 +67,9 @@ object Player {
     var now: NowPlaying? = null
         private set
 
+    /** De qué archivo es lo que suena (para su envolvente, ver [AudioAnalysis]). */
+    private var nowKey = ""
+
     private val main = Handler(Looper.getMainLooper())
     private var player: MediaPlayer? = null
     private var focusRequest: AudioFocusRequest? = null
@@ -90,9 +93,29 @@ object Player {
         main.post { playOnMain(app, source, info, incoming) }
     }
 
-    /** Escuchar un sonido en tu propio celular antes de mandarlo. */
-    fun preview(context: Context, source: Source, label: String, startMs: Int = 0) {
-        play(context, source, NowPlaying(Codes.random(12), "", "", label, startMs = startMs))
+    /** Escuchar un sonido en tu propio celular antes de mandarlo. [vibe]: su categoría (el fondo y la mascota reaccionan). */
+    fun preview(context: Context, source: Source, label: String, startMs: Int = 0, vibe: String = "") {
+        play(context, source, NowPlaying(Codes.random(12), "", "", label, startMs = startMs, vibe = vibe))
+    }
+
+    /**
+     * Cuánto suena ahora, de 0 a 1 (la envolvente en la posición actual). La mascota y el fondo
+     * reaccionan con esto. Mientras no está la envolvente, un vaivén suave. Solo en el hilo principal.
+     */
+    fun level(): Float {
+        val info = now ?: return 0f
+        val mp = player ?: return 0f
+        val position = try {
+            mp.currentPosition
+        } catch (_: IllegalStateException) {
+            return 0f
+        }
+        val env = AudioAnalysis.envelope(nowKey)
+        if (env == null || env.isEmpty()) {
+            val t = (SystemClock.uptimeMillis() - info.startedAt) / 1000f
+            return 0.35f + 0.25f * kotlin.math.sin(t * 9f) * kotlin.math.sin(t * 2.3f)
+        }
+        return env.getOrElse(position / AudioAnalysis.ENV_MS) { 0f }
     }
 
     fun stop() {
@@ -146,6 +169,8 @@ object Player {
         }
         if (incoming) Store.lastProblem = ""
         player = mp
+        nowKey = AudioAnalysis.key(source)
+        AudioAnalysis.request(app, source)
         info.startedAt = SystemClock.elapsedRealtime()
         info.durationMs = if (info.loop) MAX_PLAY_MS
         else (mp.duration.toLong() - info.startMs).takeIf { it > 0 }?.coerceAtMost(MAX_PLAY_MS) ?: MAX_PLAY_MS

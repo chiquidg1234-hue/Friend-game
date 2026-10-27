@@ -499,18 +499,20 @@ class ListenService : Service() {
             }
             val reason = SoundCheck.silentReason(this)
             Store.addHistory(if (reason == null) "$shownName · $label" else "$shownName · $label (puede no haberse oído: $reason)")
+            // La categoría que trae; si no trae (versión vieja), la de fábrica del sonido integrado.
+            val vibe = Vibes.known(payload.optString("v"))?.key ?: Sounds.byKey(kind)?.vibe ?: Vibes.default.key
             Player.play(
                 this, source,
                 Player.NowPlaying(
                     payload.optString("id"), from, shownName, label, kind, group?.id,
                     loop = power == Powers.ECO, power = power, startMs = startMs,
-                    vibe = Vibes.byKey(payload.optString("v")).key,
+                    vibe = vibe,
                 ),
             )
             played = true
             Replies.onIncoming(if (group != null) Chats.groupKey(group.id) else Chats.friendKey(from), shownName, label)
             // La mascota reconoce la emoción del sonido y la recuerda.
-            Pets.onVibeReceived(Vibes.byKey(payload.optString("v")).key)
+            Pets.onVibeReceived(vibe)
             Points.onSoundHeard()
         } finally {
             // Player.play solo encola el trabajo: si ya hay sonido, el wake lock se deja vencer

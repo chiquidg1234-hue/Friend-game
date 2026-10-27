@@ -164,12 +164,20 @@ object Looks {
 
     // ---- Fondo de la app ----
 
-    /** [colors]: degradé de arriba abajo; siempre oscuro para que el texto blanco se lea. */
-    class Background(val key: String, val name: String, val emoji: String, val colors: IntArray)
+    /**
+     * [colors]: degradé de arriba abajo; siempre oscuro para que el texto blanco se lea. [scene]:
+     * la categoría cuyo fondo animado dibuja (ver SceneView), o null si es un degradé quieto.
+     */
+    class Background(val key: String, val name: String, val emoji: String, val colors: IntArray, val scene: String? = null)
 
     val BACKGROUNDS = listOf(
         Background("default", "Noche violeta", "🌌", intArrayOf(0xFF1E1240.toInt(), 0xFF150C2C.toInt(), 0xFF110924.toInt())),
-        Background("amor", "Corazones", "💘", intArrayOf(0xFF3A0E2A.toInt(), 0xFF2A0A26.toInt(), 0xFF180616.toInt())),
+        Background("amor", "Corazones", "💘", intArrayOf(0xFF5A1240.toInt(), 0xFF3A0E30.toInt(), 0xFF2A0A26.toInt()), "amor"),
+        Background("sol", "Sol de risa", "😂", intArrayOf(0xFF4A3208.toInt(), 0xFF2E1E08.toInt(), 0xFF150C2C.toInt()), "risa"),
+        Background("disco", "Disco", "🕺", intArrayOf(0xFF4A1A7A.toInt(), 0xFF25104A.toInt(), 0xFF150C2C.toInt()), "fiesta"),
+        Background("tormenta", "Tormenta", "⛈️", intArrayOf(0xFF5A0A14.toInt(), 0xFF2A060C.toInt(), 0xFF120306.toInt()), "susto"),
+        Background("espiral", "Espiral", "😈", intArrayOf(0xFF1E3A0A.toInt(), 0xFF1A1A2E.toInt(), 0xFF2A1458.toInt()), "troll"),
+        Background("ondas", "Ondas", "🗣️", intArrayOf(0xFF0B2A4A.toInt(), 0xFF08203A.toInt(), 0xFF06162A.toInt()), "voz"),
         Background("mar", "Mar", "🌊", intArrayOf(0xFF0B2A4A.toInt(), 0xFF0A1E3A.toInt(), 0xFF061326.toInt())),
         Background("bosque", "Bosque", "🌲", intArrayOf(0xFF10351F.toInt(), 0xFF0C2417.toInt(), 0xFF07160E.toInt())),
         Background("atardecer", "Atardecer", "🌆", intArrayOf(0xFF3A1A12.toInt(), 0xFF2A1020.toInt(), 0xFF160614.toInt())),
@@ -181,11 +189,30 @@ object Looks {
         return BACKGROUNDS.firstOrNull { it.key == k } ?: BACKGROUNDS.first()
     }
 
+    /** El fondo animado de una categoría (el que aparece cuando suena un sonido de ella). */
+    fun sceneFor(vibe: String): Background = BACKGROUNDS.firstOrNull { it.scene == vibe } ?: BACKGROUNDS.first()
+
     @Synchronized
     fun setBackground(key: String) {
         prefs.edit().putString("bg", key).apply()
         Store.notifyChanged()
     }
+
+    /** El fondo cambia según la categoría de lo que suena (se apaga en Ajustes). */
+    var reactiveBackground: Boolean
+        @Synchronized get() = !::prefs.isInitialized || prefs.getBoolean("bg_react", true)
+        @Synchronized set(value) {
+            prefs.edit().putBoolean("bg_react", value).apply()
+            Store.notifyChanged()
+        }
+
+    /** «Reducir movimiento» dentro de la app (además del ajuste de Android). */
+    var reduceMotion: Boolean
+        @Synchronized get() = ::prefs.isInitialized && prefs.getBoolean("reduce_motion", false)
+        @Synchronized set(value) {
+            prefs.edit().putBoolean("reduce_motion", value).apply()
+            Store.notifyChanged()
+        }
 
     // ---- Tema de cada chat ----
 
@@ -245,6 +272,7 @@ object Pets {
     class Species(val key: String, val emoji: String, val name: String, val level: Int = 1, val food: String = "🍖")
 
     val SPECIES = listOf(
+        Species("bulla", "🔊", "Bulla", food = "🍩"),
         Species("gato", "🐱", "Gato", food = "🐟"),
         Species("perro", "🐶", "Perro", food = "🍖"),
         Species("zorro", "🦊", "Zorro", food = "🍒"),

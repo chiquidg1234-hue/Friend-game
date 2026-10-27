@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sonar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&amp;family=Nunito:wght@400;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+input::placeholder{color:#9A8FD0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #150C2C; color: #FFFFFF; font-family: Nunito, sans-serif; display: flex; flex-direction: column; overflow: hidden">
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 18px 20px 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="width: 44px; height: 44px; border-radius: 999px; background: #FFC93C; color: #150C2C; display: flex; align-items: center; justify-content: center; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 19px">R</div>
+      <div style="flex: 1; display: flex; flex-direction: column">
+        <b style="font-family: Fredoka, sans-serif; font-weight: 600; font-size: 21px">Hola, Robot</b>
+        <span style="font-weight: 800; font-size: 13px; color: #FFC93C">Nivel 3 · Bromista · 165 pts</span>
+      </div>
+      <span style="display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: #231848; font-weight: 800; font-size: 12px; color: #3DDC97"><span style="width: 8px; height: 8px; border-radius: 999px; background: #3DDC97"></span>En línea</span>
+    </div>
+
+    <div style="display: flex; align-items: flex-end; gap: 8px">
+      <img src="/_blob/8ab34b398cc57879a810ee9732cef746" alt="Bulla" style="width: 68px; height: 68px">
+      <div style="margin-bottom: 14px; padding: 10px 14px; border-radius: 18px 18px 18px 4px; background: #231848; border: 2px solid #3A2D6E; font-weight: 800; font-size: 14px">¿A quién le hacemos bulla hoy?</div>
+    </div>
+
+    <div style="display: flex; gap: 8px; align-items: center">
+      <span style="font-weight: 800; font-size: 12px; letter-spacing: .08em; color: #BDB2E6">PARA</span>
+      <button style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 5px; border-radius: 999px; border: 0; background: #FF4FA3; box-shadow: 0 3px 0 #C22E78; color: #150C2C; font-family: Nunito, sans-serif; font-weight: 800; font-size: 15px"><span style="width: 32px; height: 32px; border-radius: 999px; background: #150C2C; color: #FF4FA3; display: flex; align-items: center; justify-content: center">A</span>Ana</button>
+      <button style="display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 5px; border-radius: 999px; border: 2px solid #3A2D6E; background: #231848; color: #FFFFFF; font-family: Nunito, sans-serif; font-weight: 800; font-size: 15px"><span style="width: 30px; height: 30px; border-radius: 999px; background: #30235F; color: #BDB2E6; display: flex; align-items: center; justify-content: center">B</span>Beto</button>
+    </div>
+
+    <label style="display: flex; align-items: center; gap: 10px; height: 48px; flex-shrink: 0; padding: 0 16px; border-radius: 16px; background: #231848; border: 2px solid #3A2D6E">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#BDB2E6" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <input placeholder="Buscar un sonido" value="{{q}}" onInput="{{setQ}}" aria-label="Buscar un sonido" style="flex: 1; min-width: 0; border: 0; background: transparent; color: #FFFFFF; font-family: Nunito, sans-serif; font-weight: 700; font-size: 15px; outline: none">
+    </label>
+
+    <div style="display: flex; gap: 8px; overflow: hidden; flex-shrink: 0">
+      <sc-for list="{{cats}}" as="c" hint-placeholder-count="7">
+        <button onClick="{{c.pick}}" style="flex-shrink: 0; height: 38px; padding: 0 14px; border-radius: 999px; border: {{c.border}}; background: {{c.bg}}; color: {{c.fg}}; font-family: Nunito, sans-serif; font-weight: 800; font-size: 14px">{{c.label}}</button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between">
+      <b style="font-family: Fredoka, sans-serif; font-weight: 600; font-size: 20px">Sonidos</b>
+      <div style="display: flex; padding: 3px; border-radius: 999px; background: #231848">
+        <span style="padding: 6px 12px; border-radius: 999px; background: #FFC93C; color: #150C2C; font-weight: 800; font-size: 13px">Mandar</span>
+        <span style="padding: 6px 12px; font-weight: 800; font-size: 13px; color: #BDB2E6">Escuchar</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-bottom: 16px">
+      <sc-for list="{{sounds}}" as="s" hint-placeholder-count="6">
+        <div style="position: relative; height: 128px; box-sizing: border-box; padding: 14px; border-radius: 22px; background: {{s.bg}}; box-shadow: 0 5px 0 {{s.lip}}; color: {{s.fg}}; display: flex; flex-direction: column; justify-content: space-between">
+          <span style="font-size: 38px; line-height: 1">{{s.emoji}}</span>
+          <div style="display: flex; flex-direction: column">
+            <b style="font-family: Fredoka, sans-serif; font-weight: 600; font-size: 19px">{{s.name}}</b>
+            <span style="font-weight: 800; font-size: 11px; letter-spacing: .08em; opacity: .85">{{s.cat}}</span>
+          </div>
+          <button aria-label="Escuchar" style="position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 999px; border: 0; background: rgba(21,12,44,.85); display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M7 4l13 8-13 8z"/></svg></button>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <nav style="display: flex; padding: 8px 8px 14px; background: #1D1340; border-top: 2px solid #2E2260">
+    <a href="Sonar.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #FF7AB8; font-weight: 800; font-size: 12px"><span style="width: 52px; height: 32px; border-radius: 16px; background: #3A1E5C; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF7AB8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></span>Sonar</a>
+    <a href="Sonar.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #BDB2E6; font-weight: 700; font-size: 12px"><span style="height: 32px; display: flex; align-items: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#BDB2E6" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Chats</a>
+    <a href="Sonar.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #BDB2E6; font-weight: 700; font-size: 12px"><span style="height: 32px; display: flex; align-items: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#BDB2E6" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3 3 3 6"/></svg></span>Grupos</a>
+    <a href="Amigos.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #BDB2E6; font-weight: 700; font-size: 12px"><span style="height: 32px; display: flex; align-items: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#BDB2E6" stroke-width="2.2" stroke-linecap="round"><circle cx="10" cy="8" r="4"/><path d="M3 20c0-4 3-7 7-7M18 13v6M15 16h6"/></svg></span>Amigos</a>
+    <a href="Ajustes.dc.html" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #BDB2E6; font-weight: 700; font-size: 12px"><span style="height: 32px; display: flex; align-items: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#BDB2E6" stroke-width="2.2" stroke-linejoin="round"><path d="M7 4h10v5a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v4M8 20h8"/></svg></span>Tú</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cat: 'todos', q: '' };
+  }
+  renderVals() {
+    const look = {
+      risa: { bg: '#FFC93C', lip: '#D99A00', fg: '#150C2C', chip: '#FFC93C', label: 'Risa' },
+      fiesta: { bg: '#B44CFF', lip: '#7A1FC2', fg: '#FFFFFF', chip: '#D59BFF', label: 'Fiesta' },
+      susto: { bg: '#FF4D4D', lip: '#B5232F', fg: '#FFFFFF', chip: '#FF8A8A', label: 'Susto' },
+      amor: { bg: '#FF7AB8', lip: '#D6247A', fg: '#150C2C', chip: '#FF9CCB', label: 'Amor' },
+      troll: { bg: '#8CE33A', lip: '#4FA00F', fg: '#150C2C', chip: '#A9EE6A', label: 'Troll' },
+      voz: { bg: '#48DBFB', lip: '#1A9CC2', fg: '#150C2C', chip: '#7FE6FF', label: 'Voz' }
+    };
+    const all = [
+      { emoji: '📯', name: 'Bocina', cat: 'susto' },
+      { emoji: '🦆', name: 'Pato', cat: 'risa' },
+      { emoji: '🥁', name: 'Redoble', cat: 'fiesta' },
+      { emoji: '🔔', name: 'Campana', cat: 'amor' },
+      { emoji: '👾', name: 'Láser', cat: 'troll' },
+      { emoji: '🎤', name: 'Mi grabación', cat: 'voz' },
+      { emoji: '🚨', name: 'Sirena', cat: 'susto' },
+      { emoji: '🎉', name: '¡Ta-dá!', cat: 'fiesta' }
+    ];
+    const q = (this.state.q || '').toLowerCase();
+    const sounds = all
+      .filter((s) => this.state.cat === 'todos' || s.cat === this.state.cat)
+      .filter((s) => !q || s.name.toLowerCase().indexOf(q) >= 0)
+      .map((s) => ({ emoji: s.emoji, name: s.name, cat: look[s.cat].label.toUpperCase(), bg: look[s.cat].bg, lip: look[s.cat].lip, fg: look[s.cat].fg }));
+    const keys = ['todos', 'risa', 'fiesta', 'susto', 'amor', 'troll', 'voz'];
+    const cats = keys.map((k) => {
+      const on = this.state.cat === k;
+      return {
+        label: k === 'todos' ? 'Todos' : look[k].label,
+        bg: on ? (k === 'todos' ? '#FFFFFF' : look[k].bg) : '#231848',
+        fg: on ? (k === 'todos' ? '#150C2C' : look[k].fg) : (k === 'todos' ? '#FFFFFF' : look[k].chip),
+        border: on ? '0' : '2px solid #3A2D6E',
+        pick: () => this.setState({ cat: k })
+      };
+    });
+    return { sounds, cats, q: this.state.q, setQ: (e) => this.setState({ q: e.target.value }) };
+  }
+}
+</script>
+</body>
+</html>

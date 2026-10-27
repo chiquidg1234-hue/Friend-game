@@ -530,7 +530,7 @@ check "Queda listo para el próximo sonido" $UI wait "Eco listo" 10
 check "Elige a Ana" $UI tap "Mandar a Ana"
 check "Toca la Bocina (ahora la rana)" $UI tap "🐸"
 check "A Ana le llega el sonido con el poder Eco" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=bocina pw=eco --wait 20
-check "El sonido lleva el avatar y la mascota" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" pw=eco pet=gato:0 --wait 5
+check "El sonido lleva el avatar y la mascota" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" pw=eco pet=bulla:0 --wait 5
 
 echo "== 9l. Sonoteca: Ana comparte un sonido, el robot lo usa y se lo pasa a Beto"
 publish_file "$MYCODE" "$TONE" "{\"fg\":1,\"t\":\"sndpub\",\"from\":\"$ANA\",\"name\":\"Ana\",\"id\":\"sp1abcdefgh\",\"label\":\"Tono de Ana\",\"e\":\"🎵\",\"by\":\"$ANA\",\"byn\":\"Ana\"}" >/dev/null
@@ -579,6 +579,33 @@ check "Toca la Campana para devolvérsela" $UI tap "Campana"
 check "A Ana le llega la campana" $INBOX "$OUT/inbox-ana.jsonl" snd from="$MYCODE" s=campana --wait 20
 $UI top
 check "Ya no ofrece devolvérsela" $UI absent "Ana te hizo sonar «Pato»" 10
+
+echo "== 9n. Diseño 2.0: filtros, buscador, armario de la mascota y minijuegos"
+check "Pestaña Sonar" $UI tab Sonar
+check "Filtra los sonidos por Risa" $UI tap "Filtro Risa"
+check "Muestra el Pato (de risa)" $UI see "Pato"
+shot "filtro-risa"
+check "Vuelve a todos los sonidos" $UI tap "Filtro Todos"
+check "Abre el buscador" $UI tap "Buscar un sonido"
+check "Cierra el buscador" $UI tap "Cerrar el buscador"
+check "Pestaña Tú" $UI tab Tú
+check "Abre la pieza de la mascota" $UI tap "Cuidar y jugar"
+check "Va al armario" $UI tap "Armario"
+check "Le pone el gorro de fiesta (gratis)" $UI tap "Gorro de fiesta"
+check "Queda puesto" $UI wait "Gorro de fiesta, puesto" 5
+shot "armario"
+check "Va a la sala de juegos" $UI tap "Jugar"
+check "Abre los minijuegos" $UI tap "Minijuegos"
+check "Muestra Atrapa la comida" $UI wait "Atrapa la comida" 10
+check "Muestra Bulla dice" $UI see "Bulla dice"
+shot "minijuegos"
+adb shell input keyevent 4
+sleep 1
+check "Atrás vuelve a la pieza" $UI see "Mandarle un saludo a un amigo"
+check "Vuelve de Mascotas" $UI tap "Volver"
+open_settings
+check "Ajustes de animación y fondo" $UI see "Reducir movimiento"
+check "El fondo reacciona a los sonidos" $UI see "El fondo reacciona a los sonidos"
 
 echo "== 10. Pausar la recepción"
 open_settings

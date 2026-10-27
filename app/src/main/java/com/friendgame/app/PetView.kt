@@ -14,6 +14,7 @@ import android.view.View
 import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -24,9 +25,14 @@ import kotlin.random.Random
  * arriba a la izquierda, brillo en la cabeza y sombra en el piso. Se dibuja a mano en una vista
  * propia, en un espacio de 200×200, igual que el diseño.
  *
- * Respira, parpadea y mueve la cola; [eat] y [cheer] la hacen comer o saltar; con hambre se pone
- * triste y de noche duerme. Todo se pinta: ningún texto ni tamaño cambia, así TalkBack y las
- * pruebas pueden leer la pantalla mientras se mueve.
+ * Está viva como Duo: respira, parpadea, mira a los lados, ladea la cabeza y de vez en cuando
+ * saluda o da un saltito. Tiene acciones cortas ([cheer], [dance], [surprise], [laugh], [scare],
+ * [love], [troll], [wave], [celebrate], [shower], [eat]) y reacciona a lo que suena con
+ * [audioLevel]: mueve la boca y salta al ritmo. Bulla (la mascota de la app) además mueve los
+ * brazos, las orejas y la antena, que rebota con resorte.
+ *
+ * Todo se pinta: ningún texto ni tamaño cambia, así TalkBack y las pruebas pueden leer la pantalla
+ * mientras se mueve. Sin animaciones del sistema ([Anim.enabled]) queda quieta.
  */
 class PetView(context: Context) : View(context) {
 
@@ -67,13 +73,78 @@ class PetView(context: Context) : View(context) {
             invalidate()
         }
 
-    private enum class Action { NONE, EAT, JOY }
+    /** Ropa puesta: gorro, lentes y algo en el cuello (ver [Wardrobe]). */
+    var outfit: Wardrobe.Outfit = Wardrobe.Outfit.NONE
+        set(value) {
+            field = value
+            invalidate()
+        }
 
-    private var action = Action.NONE
+    /** Espuma del baño, de 0 a 1. */
+    var foam = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            invalidate()
+        }
+
+    /** Manchitas de tierra, de 0 a 1 (cuando hace rato que no se baña). */
+    var dirt = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            invalidate()
+        }
+
+    /** Luz apagada en su pieza: se duerme aunque sea de día. */
+    var sleepy = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Le estás hablando: para las orejas, ladea la cabeza y mira hacia arriba. */
+    var listening = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Abre la boca esperando la comida que le acercas. */
+    var expecting = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Volumen de lo que suena ahora (0 a 1): mueve la boca al hablar y salta con cada golpe. */
+    var audioLevel: (() -> Float)? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** Color con el que brillan la antena y el aura mientras reacciona a un sonido (0: sin brillo). */
+    var glow = 0
+        set(value) {
+            if (field != value) glowPaint = null
+            field = value
+            invalidate()
+        }
+
+    enum class Act(val seconds: Float) {
+        NONE(0f), EAT(2.6f), JOY(1.4f), DANCE(4f), SURPRISE(1.6f), LAUGH(2.6f), SCARED(2.2f),
+        LOVE(2.6f), TROLL(2.4f), WAVE(1.8f), CHAT(2.6f), CELEBRATE(2f), SHOWER(1.8f),
+    }
+
+    /** Lo que está haciendo ahora (NONE si está tranquila). */
+    var action = Act.NONE
+        private set
     private var actionStart = 0L
+    private var actionLength = 0f
+    private var food: String? = null
     private var model: PetArt.Model? = null
     private val seed = Random.nextFloat() * 10f
     private val path = Path()
+    private val pose = Pose()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -84,19 +155,113 @@ class PetView(context: Context) : View(context) {
         textAlign = Paint.Align.CENTER
         color = 0xFFFFFFFF.toInt()
     }
+    private val oval = RectF()
+    private var glowPaint: Paint? = null
+    private var lookTargetX = 0f
+    private var lookTargetY = 0f
+    private var lookFixed = false
+
+    // Antena con resorte (Bulla): se queda atrás cuando el cuerpo se mueve y vuelve rebotando.
+    private var antX = 0f
+    private var antY = 0f
+    private var antVX = 0f
+    private var antVY = 0f
+    private var lastBodyX = 0f
+    private var lastBodyY = 0f
+    private var lastFrame = 0L
 
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
     }
 
-    /** Come: le cae su comida favorita, mastica y queda feliz. */
-    fun eat() = start(Action.EAT)
+    /** Come: le cae su comida favorita (u otra que le diste), mastica y queda feliz. */
+    fun eat(food: String? = null) {
+        this.food = food
+        start(Act.EAT)
+    }
 
     /** Feliz: salta y suelta corazones (al acariciarla, al subir de nivel). */
-    fun cheer() = start(Action.JOY)
+    fun cheer() = start(Act.JOY)
 
-    private fun start(next: Action) {
+    /** Baila al ritmo, con notas musicales. */
+    fun dance(seconds: Float = Act.DANCE.seconds) = start(Act.DANCE, seconds)
+
+    /** Se sorprende: se agacha, salta y abre los ojos (al llegar un sonido). */
+    fun surprise() = start(Act.SURPRISE)
+
+    /** Se ríe a carcajadas: «¡JA, JA!». */
+    fun laugh(seconds: Float = Act.LAUGH.seconds) = start(Act.LAUGH, seconds)
+
+    /** Se asusta: tiembla, suda y levanta los brazos. */
+    fun scare(seconds: Float = Act.SCARED.seconds) = start(Act.SCARED, seconds)
+
+    /** Se enamora: ojos de corazón. */
+    fun love(seconds: Float = Act.LOVE.seconds) = start(Act.LOVE, seconds)
+
+    /** Travieso: cuernitos, sonrisa de lado y se frota las manos. */
+    fun troll(seconds: Float = Act.TROLL.seconds) = start(Act.TROLL, seconds)
+
+    /** Saluda con la mano (o ladea la cabeza, si no tiene brazos que mover). */
+    fun wave() = start(Act.WAVE)
+
+    /** Habla: mueve la boca y las manos (con [audioLevel], al ritmo de lo que suena). */
+    fun chat(seconds: Float = Act.CHAT.seconds) = start(Act.CHAT, seconds)
+
+    /** Festeja: dos saltos grandes con estrellas. */
+    fun celebrate() = start(Act.CELEBRATE)
+
+    /** Ducha: le cae agua, cierra los ojos y se sacude. */
+    fun shower() = start(Act.SHOWER)
+
+    /** Reacciona a la vibe (categoría) de un sonido durante [seconds] (0: lo normal). */
+    fun react(vibe: String, seconds: Float = 0f) {
+        when (vibe) {
+            Vibes.RISA.key -> laugh(seconds)
+            Vibes.FIESTA.key -> dance(seconds.takeIf { it > 0f } ?: Act.DANCE.seconds)
+            Vibes.SUSTO.key -> scare(seconds)
+            Vibes.AMOR.key -> love(seconds)
+            Vibes.VOZ.key -> chat(seconds)
+            else -> troll(seconds)
+        }
+    }
+
+    /** Termina lo que está haciendo y vuelve a estar tranquila. */
+    fun calm() {
+        action = Act.NONE
+        invalidate()
+    }
+
+    /** Mira hacia un punto de la vista (por ejemplo, la comida que arrastras). */
+    fun lookAt(x: Float, y: Float) {
+        val size = min(width, height).toFloat()
+        if (size <= 0f) return
+        val px = (x - (width - size) / 2f) / size * 200f
+        val py = (y - (height - size) / 2f) / size * 200f
+        lookTargetX = ((px - 100f) / 70f).coerceIn(-1f, 1f)
+        lookTargetY = ((py - 92f) / 70f).coerceIn(-1f, 1f)
+        lookFixed = true
+        invalidate()
+    }
+
+    /** Vuelve a mirar sola. */
+    fun lookAround() {
+        lookFixed = false
+        invalidate()
+    }
+
+    /** ¿El punto (en coordenadas de la vista) está cerca de su boca? Para darle de comer arrastrando. */
+    fun nearMouth(x: Float, y: Float): Boolean {
+        val m = model ?: return false
+        val size = min(width, height).toFloat()
+        if (size <= 0f) return false
+        val px = (x - (width - size) / 2f) / size * 200f
+        val py = (y - (height - size) / 2f) / size * 200f
+        return abs(px - m.mouthX) < 46f && abs(py - m.mouthY) < 52f
+    }
+
+    private fun start(next: Act, seconds: Float = 0f) {
         action = next
+        actionLength = if (seconds > 0f) seconds else next.seconds
         actionStart = SystemClock.uptimeMillis()
         invalidate()
     }
@@ -114,21 +279,56 @@ class PetView(context: Context) : View(context) {
         return asleepNow
     }
 
+    private enum class Face { OPEN, HAPPY, SAD, CLOSED, WIDE, HEARTS, SMIRK }
+
+    private enum class Mouth { NORMAL, OPEN, CHEW, SMALL, SAD, O, LAUGH, TALK, SMIRK, WOBBLY }
+
+    private enum class Brows { NONE, UP, SAD, WORRIED, MISCHIEF }
+
+    /** Cómo está el cuerpo en este cuadro. Se reusa en cada cuadro (sin crear objetos al dibujar). */
+    private class Pose {
+        var lift = 0f
+        var tilt = 0f
+        var shakeX = 0f
+        var sx = 1f
+        var sy = 1f
+        var face = Face.OPEN
+        var mouth = Mouth.NORMAL
+        var open = 0f
+        var brows = Brows.NONE
+        var lookX = 0f
+        var lookY = 0f
+        /** Brazos: 0 colgando, 90 hacia el lado, 160 arriba; negativo: abrazando la panza. */
+        var armL = 0f
+        var armR = 0f
+        /** Orejas: positivo, paradas; negativo, caídas. */
+        var ears = 0f
+
+        fun reset() {
+            lift = 0f; tilt = 0f; shakeX = 0f; sx = 1f; sy = 1f
+            face = Face.OPEN; mouth = Mouth.NORMAL; open = 0f; brows = Brows.NONE
+            lookX = 0f; lookY = 0f; armL = 0f; armR = 0f; ears = 0f
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         val m = model ?: PetArt.build(species).also { model = it }
         val now = SystemClock.uptimeMillis()
         val live = animated && Anim.enabled()
         val t = if (live) now / 1000f + seed else 1.2f
         var elapsed = (now - actionStart) / 1000f
-        if (action == Action.EAT && elapsed > EAT_S) {
-            action = Action.JOY
-            actionStart = now
+        if (action == Act.EAT && elapsed > actionLength) {
+            start(Act.JOY)
             elapsed = 0f
         }
-        if (action == Action.JOY && elapsed > JOY_S) action = Action.NONE
-        if (!live) action = Action.NONE
-        val asleep = live && action == Action.NONE && stage > 0 && sleeping(now)
-        val sad = action == Action.NONE && mood != Pets.Mood.HAPPY
+        if (action != Act.NONE && elapsed > actionLength) action = Act.NONE
+        if (!live) action = Act.NONE
+        val level = if (live) (audioLevel?.invoke() ?: 0f).coerceIn(0f, 1f) else 0f
+        val quiet = level < 0.03f && !listening
+        val asleep = action == Act.NONE && stage > 0 && quiet && (sleepy || (live && sleeping(now)))
+        val sad = action == Act.NONE && quiet && !asleep && mood != Pets.Mood.HAPPY
+        val dt = if (lastFrame == 0L) 0f else ((now - lastFrame) / 1000f).coerceIn(0f, 0.05f)
+        lastFrame = now
 
         val size = min(width, height).toFloat()
         if (size <= 0f) return
@@ -136,98 +336,725 @@ class PetView(context: Context) : View(context) {
         canvas.translate((width - size) / 2f, (height - size) / 2f)
         canvas.scale(size / 200f, size / 200f)
 
-        // Salto (feliz): dos brincos con un poco de aplastamiento al caer.
-        val hop = if (action == Action.JOY) abs(sin(elapsed / JOY_S * 2 * PI.toFloat())) else 0f
-        val lift = -24f * hop
+        val p = pose
+        computePose(p, m, t, elapsed, level, asleep, sad)
+
+        val hop = (-p.lift / 26f).coerceIn(0f, 1f)
         val shadowScale = 1f - 0.3f * hop
         canvas.save()
+        canvas.translate(p.shakeX, 0f)
         canvas.scale(shadowScale, shadowScale, 100f, 183f)
         canvas.drawPath(PetArt.shadow.path, PetArt.shadow.paint)
         canvas.restore()
 
         if (stage == 0) {
-            drawEgg(canvas, m, t, live)
+            drawEgg(canvas, m, t, live, elapsed)
             drawSeasonProp(canvas)
             canvas.restore()
             if (live) postInvalidateDelayed(FRAME_IDLE_MS)
             return
         }
 
+        if (glow != 0 && live) drawGlow(canvas, t, level)
         if (stage == 4) {
-            val glow = 1f + 0.03f * sin(t * 2.1f)
+            val g = 1f + 0.03f * sin(t * 2.1f)
             canvas.save()
-            canvas.scale(glow, glow, 100f, 110f)
+            canvas.scale(g, g, 100f, 110f)
             canvas.drawPath(PetArt.aura.path, PetArt.aura.paint)
             canvas.restore()
         }
 
         canvas.save()
-        val grow = STAGE_SCALE[stage]
+        val grow = STAGE_SCALE[stage] * m.scale
         canvas.scale(grow, grow, 100f, 182f)
-        canvas.translate(0f, lift / grow)
+        canvas.translate(p.shakeX / grow, p.lift / grow)
+        canvas.rotate(p.tilt, 100f, 178f)
         val period = when {
             asleep -> 4.2f
             sad -> 3.4f
             else -> 2.6f
         }
-        val breath = sin(t * 2 * PI.toFloat() / period) * 0.5f + 0.5f
-        val squash = if (action == Action.JOY && hop < 0.15f) 0.05f * (1f - hop / 0.15f) else 0f
-        canvas.scale(1f + 0.015f * breath + squash, 1f + 0.035f * breath - squash, 100f, 182f)
+        val breath = if (live) sin(t * 2 * PI.toFloat() / period) * 0.5f + 0.5f else 0.5f
+        canvas.scale(p.sx * (1f + 0.015f * breath), p.sy * (1f + 0.035f * breath), 100f, 182f)
 
-        // Cola (o tentáculos): se mueve desde su base.
+        // Cola (o tentáculos): se mueve desde su base; bailando, más rápido.
         if (m.tail.isNotEmpty()) {
-            val speed = if (sad || asleep) m.tailPeriod * 2f else m.tailPeriod
+            val speed = when {
+                action == Act.DANCE -> m.tailPeriod * 0.5f
+                sad || asleep -> m.tailPeriod * 2f
+                else -> m.tailPeriod
+            }
             val angle = if (live) sin(t * 2 * PI.toFloat() / speed) * m.tailAngle else 0f
             canvas.save()
             canvas.rotate(angle, m.tailX, m.tailY)
             m.tail.forEach { canvas.drawPath(it.path, it.paint) }
             canvas.restore()
         }
+        val rig = m.rig
+        if (rig != null) {
+            drawAntenna(canvas, rig, p, dt, live, level)
+            drawEar(canvas, rig.earL, rig.earLX, rig.earLY, p.ears)
+            drawEar(canvas, rig.earR, rig.earRX, rig.earRY, -p.ears)
+        }
         m.back.forEach { canvas.drawPath(it.path, it.paint) }
         m.front.forEach { canvas.drawPath(it.path, it.paint) }
+        if (rig != null) {
+            drawLimb(canvas, rig.armL, rig.armLX, rig.armLY, p.armL)
+            drawLimb(canvas, rig.armR, rig.armRX, rig.armRY, -p.armR)
+        }
+        if (dirt > 0.05f) drawDirt(canvas)
 
-        val eating = action == Action.EAT
-        val happy = action == Action.JOY || (eating && elapsed > 2.0f)
-        drawEyes(canvas, m, t, live, when {
-            asleep -> Face.CLOSED
-            happy || eating -> Face.HAPPY
-            sad -> Face.SAD
-            else -> Face.OPEN
-        })
+        if (rig != null) drawBigEyes(canvas, m, rig, p, t, live) else drawEyes(canvas, m, p, t, live)
+        drawBrows(canvas, m, p, rig != null)
         m.over.forEach { canvas.drawPath(it.path, it.paint) }
-        drawMouth(canvas, m, when {
-            eating && elapsed in 0.8f..2.0f -> Mouth.CHEW
-            happy -> Mouth.OPEN
-            asleep -> Mouth.SMALL
-            sad -> Mouth.SAD
-            else -> Mouth.NORMAL
-        }, elapsed)
+        drawMouth(canvas, m, p, elapsed)
 
+        val hat = outfit.hat
         if (stage == 1) {
             canvas.drawPath(PetArt.shell.path, PetArt.shell.paint)
             canvas.drawPath(PetArt.shellEdge.path, PetArt.shellEdge.paint)
         }
-        if (stage == 4) PetArt.crown.forEach { canvas.drawPath(it.path, it.paint) }
+        if (stage == 4 && hat == null) PetArt.crown.forEach { canvas.drawPath(it.path, it.paint) }
         // Disfraz de temporada: solo joven y adulta (el bebé lleva la cáscara y la legendaria, la corona).
-        if (stage in 2..3 && species != "unicornio") {
+        if (stage in 2..3 && species != "unicornio" && hat == null) {
             when (season) {
                 "halloween" -> PetArt.witchHat.forEach { canvas.drawPath(it.path, it.paint) }
                 "navidad" -> PetArt.santaHat.forEach { canvas.drawPath(it.path, it.paint) }
             }
         }
+        if (stage >= 2) Wardrobe.draw(canvas, m, outfit, rig != null)
+        if (action == Act.TROLL) drawHorns(canvas, m, elapsed)
 
         // Efectos que se mueven con la mascota.
-        if (eating) drawFood(canvas, m, elapsed)
+        if (foam > 0.02f) drawFoam(canvas, t, live)
+        if (action == Act.EAT) drawFood(canvas, m, elapsed)
         if (sad && mood == Pets.Mood.SAD && live) drawTear(canvas, m, t)
+        if (action == Act.LAUGH) drawJoyTears(canvas, m, elapsed)
+        if (action == Act.SCARED) drawSweat(canvas, m, elapsed)
         canvas.restore()
 
         drawSeasonProp(canvas)
-        if (action == Action.JOY) drawHearts(canvas, elapsed)
+        when (action) {
+            Act.JOY -> drawHearts(canvas, elapsed, 1.1f)
+            Act.LOVE -> drawHearts(canvas, elapsed % 1.3f, 1.2f)
+            Act.DANCE -> drawNotes(canvas, elapsed)
+            Act.SURPRISE -> drawBang(canvas, elapsed)
+            Act.LAUGH -> drawHaHa(canvas, elapsed)
+            Act.CELEBRATE -> drawBurst(canvas, elapsed)
+            Act.SHOWER -> drawRain(canvas, elapsed)
+            Act.CHAT -> drawChatter(canvas, elapsed)
+            else -> Unit
+        }
+        if (listening && live) drawListening(canvas, t)
         if (asleep) drawZs(canvas, t)
         if (stage == 4 && live) drawSparkles(canvas, t)
         canvas.restore()
 
-        if (live) postInvalidateDelayed(if (action == Action.NONE) FRAME_IDLE_MS else FRAME_ACTION_MS)
+        if (live) {
+            val busy = action != Act.NONE || level > 0.01f || foam > 0.02f || listening ||
+                (rig != null && (abs(antVX) + abs(antVY) > 2f))
+            if (busy) postInvalidateOnAnimation() else postInvalidateDelayed(FRAME_IDLE_MS)
+        }
+    }
+
+    // ---------------------------------------------------------------- Pose de cada cuadro
+
+    private fun computePose(p: Pose, m: PetArt.Model, t: Float, e: Float, level: Float, asleep: Boolean, sad: Boolean) {
+        p.reset()
+        val len = actionLength.coerceAtLeast(0.1f)
+        val tau = 2 * PI.toFloat()
+        when (action) {
+            Act.NONE -> when {
+                asleep -> {
+                    p.face = Face.CLOSED
+                    p.mouth = Mouth.SMALL
+                    p.ears = -12f
+                    p.armL = -8f
+                    p.armR = -8f
+                }
+                listening -> {
+                    p.mouth = Mouth.SMALL
+                    p.ears = 20f + sin(t * 9f) * 3f
+                    p.tilt = 7f + sin(t * 2f) * 2f
+                    p.lookX = 0.45f
+                    p.lookY = -0.75f
+                    p.brows = Brows.UP
+                    p.armR = 25f
+                }
+                sad -> {
+                    p.face = Face.SAD
+                    p.mouth = Mouth.SAD
+                    p.lookY = 0.6f
+                    p.ears = -20f
+                    p.brows = Brows.SAD
+                    p.armL = -6f
+                    p.armR = -6f
+                }
+                else -> idleGesture(p, m, t)
+            }
+            Act.EAT -> {
+                val happy = e > 2.0f
+                p.face = Face.HAPPY
+                p.mouth = when {
+                    e < 0.8f -> Mouth.O
+                    e < 2.0f -> Mouth.CHEW
+                    else -> Mouth.OPEN
+                }
+                p.open = 1f
+                p.lookY = if (e < 0.8f) -0.9f + e else 0f
+                p.armL = if (e < 2.0f) 40f + sin(e * 12f) * 10f else 0f
+                p.armR = p.armL
+                if (happy) p.ears = 10f
+            }
+            Act.JOY -> {
+                val hop = abs(sin(e / len * tau))
+                p.lift = -24f * hop
+                if (hop < 0.15f) {
+                    val k = 0.06f * (1f - hop / 0.15f)
+                    p.sx = 1f + k
+                    p.sy = 1f - k
+                }
+                p.face = Face.HAPPY
+                p.mouth = Mouth.OPEN
+                p.armL = 140f * hop + 20f
+                p.armR = p.armL
+                p.ears = 14f * hop
+            }
+            Act.CELEBRATE -> {
+                val hop = abs(sin(e / len * tau))
+                p.lift = -26f * hop
+                if (hop < 0.2f) {
+                    val k = 0.08f * (1f - hop / 0.2f)
+                    p.sx = 1f + k
+                    p.sy = 1f - k
+                } else {
+                    p.sx = 1f - 0.04f * hop
+                    p.sy = 1f + 0.06f * hop
+                }
+                p.face = Face.HAPPY
+                p.mouth = Mouth.LAUGH
+                p.armL = 165f
+                p.armR = 165f
+                p.ears = 18f
+                p.tilt = sin(e * 7f) * 5f
+            }
+            Act.DANCE -> {
+                val beat = e / 0.48f
+                val swing = sin(beat * PI.toFloat())
+                p.tilt = swing * 11f
+                p.shakeX = swing * 7f
+                p.lift = -8f * abs(sin(beat * PI.toFloat()))
+                if (abs(sin(beat * PI.toFloat())) < 0.18f) {
+                    p.sx = 1.05f
+                    p.sy = 0.95f
+                }
+                p.face = Face.HAPPY
+                p.mouth = Mouth.OPEN
+                p.armL = 70f + 80f * max(0f, swing)
+                p.armR = 70f + 80f * max(0f, -swing)
+                p.ears = 10f * swing
+            }
+            Act.SURPRISE -> {
+                when {
+                    e < 0.14f -> {
+                        val k = e / 0.14f
+                        p.sx = 1f + 0.09f * k
+                        p.sy = 1f - 0.1f * k
+                        p.face = Face.OPEN
+                    }
+                    e < 0.55f -> {
+                        val k = (e - 0.14f) / 0.41f
+                        p.lift = -22f * sin(k * PI.toFloat())
+                        p.sx = 0.93f
+                        p.sy = 1.1f
+                        p.face = Face.WIDE
+                    }
+                    else -> {
+                        p.face = Face.WIDE
+                        val k = ((e - 0.55f) / 0.4f).coerceIn(0f, 1f)
+                        p.shakeX = sin(e * 60f) * 1.6f * (1f - k)
+                    }
+                }
+                p.mouth = Mouth.O
+                p.open = 1f
+                p.brows = Brows.UP
+                p.ears = 24f
+                p.armL = if (e > 0.14f) 120f else 30f
+                p.armR = p.armL
+                p.lookY = -0.2f
+            }
+            Act.LAUGH -> {
+                p.face = Face.HAPPY
+                p.mouth = Mouth.LAUGH
+                p.shakeX = sin(e * 42f) * 2.4f
+                p.tilt = -5f + sin(e * 6f) * 6f
+                p.lift = -5f * abs(sin(e * 11f))
+                p.armL = -24f + sin(e * 22f) * 6f
+                p.armR = -24f - sin(e * 22f) * 6f
+                p.ears = 8f + sin(e * 22f) * 6f
+            }
+            Act.SCARED -> {
+                p.face = Face.WIDE
+                p.mouth = Mouth.WOBBLY
+                p.brows = Brows.WORRIED
+                p.shakeX = sin(e * 58f) * 2.2f
+                p.lift = if (e < 0.3f) -12f * sin(e / 0.3f * PI.toFloat()) else 0f
+                p.sx = 0.97f
+                p.sy = 1.02f
+                p.armL = 150f + sin(e * 40f) * 8f
+                p.armR = 150f - sin(e * 40f) * 8f
+                p.ears = -24f
+                p.lookX = sin(e * 3f) * 0.6f
+            }
+            Act.LOVE -> {
+                p.face = Face.HEARTS
+                p.mouth = Mouth.OPEN
+                p.tilt = sin(e * 3f) * 7f
+                p.lift = -3f * abs(sin(e * 3f))
+                p.armL = -30f
+                p.armR = -30f
+                p.ears = 6f
+            }
+            Act.TROLL -> {
+                p.face = Face.SMIRK
+                p.mouth = Mouth.SMIRK
+                p.brows = Brows.MISCHIEF
+                p.lookX = 0.85f
+                p.tilt = 6f
+                p.shakeX = sin(e * 30f) * 0.8f
+                p.armL = 35f + sin(e * 18f) * 9f
+                p.armR = 35f - sin(e * 18f) * 9f
+                p.ears = 4f
+            }
+            Act.WAVE -> {
+                p.mouth = Mouth.OPEN
+                p.face = if (e > 0.3f) Face.HAPPY else Face.OPEN
+                p.tilt = 5f * sin(min(e, 1f) * PI.toFloat())
+                p.lift = if (e < 0.35f) -8f * sin(e / 0.35f * PI.toFloat()) else 0f
+                p.armR = 135f + sin(e * 15f) * 28f
+                p.ears = 8f
+                if (m.rig == null) p.tilt = 9f * sin(e * 6f)
+            }
+            Act.CHAT -> {
+                p.mouth = Mouth.TALK
+                p.open = 0.25f + 0.75f * abs(sin(e * 9f) * sin(e * 3.3f + 1f))
+                p.tilt = sin(e * 2.4f) * 5f
+                p.lift = -3f * abs(sin(e * 4.5f))
+                p.armR = 60f + sin(e * 5f) * 40f
+                p.armL = 30f + sin(e * 4f + 1f) * 30f
+                p.ears = sin(e * 9f) * 6f
+                p.brows = if (sin(e * 1.7f) > 0.6f) Brows.UP else Brows.NONE
+            }
+            Act.SHOWER -> {
+                p.face = Face.CLOSED
+                p.mouth = Mouth.SMALL
+                p.ears = -14f
+                if (e > 1.15f) {
+                    // Se sacude como un perro mojado.
+                    p.shakeX = sin(e * 52f) * 3.5f
+                    p.tilt = sin(e * 52f) * 4f
+                    p.face = Face.HAPPY
+                    p.mouth = Mouth.OPEN
+                }
+            }
+        }
+        if (level > 0.03f && action != Act.SHOWER) {
+            // Reacciona a lo que suena: la boca sigue el volumen y da un saltito con cada golpe.
+            if (p.mouth != Mouth.LAUGH) p.mouth = Mouth.TALK
+            p.open = max(p.open, level)
+            p.lift -= level * 7f
+            p.sy *= 1f + level * 0.04f
+            p.sx *= 1f - level * 0.02f
+            p.ears += level * 12f
+        }
+        if (expecting) {
+            p.face = Face.OPEN
+            p.mouth = Mouth.O
+            p.open = 1f
+            p.brows = Brows.UP
+            p.ears = 16f
+        }
+        if (lookFixed) {
+            p.lookX = lookTargetX
+            p.lookY = lookTargetY
+        }
+    }
+
+    /** Tranquila no está quieta: cada ~6 s hace algo chiquito (como Duo en la pantalla de inicio). */
+    private fun idleGesture(p: Pose, m: PetArt.Model, t: Float) {
+        val cycle = 6.5f
+        val n = floor(t / cycle).toInt()
+        val g = ((n.toLong() * 2654435761L) ushr 9).toInt() and 7
+        val k = t - n * cycle
+        p.lookX = sin(t * 0.7f) * 0.25f
+        if (k > 1.6f) return
+        val q = k / 1.6f
+        val bell = sin(q * PI.toFloat())
+        when (g) {
+            0, 5 -> p.lookX = sin(q * 2 * PI.toFloat()) * 0.9f
+            1 -> {
+                p.lift = -9f * abs(sin(q * 2 * PI.toFloat()))
+                p.mouth = Mouth.OPEN
+                p.armL = 30f * bell
+                p.armR = 30f * bell
+            }
+            2 -> if (m.rig != null) {
+                p.armR = 120f * bell + sin(q * 22f) * 22f * bell
+                p.mouth = Mouth.OPEN
+                p.face = if (bell > 0.5f) Face.HAPPY else Face.OPEN
+            } else {
+                p.lookY = -0.8f * bell
+            }
+            3 -> p.ears = sin(q * 30f) * 12f * bell
+            4 -> {
+                p.tilt = 9f * bell
+                p.lookX = 0.6f * bell
+                p.brows = Brows.UP
+            }
+            else -> Unit
+        }
+    }
+
+    // ---------------------------------------------------------------- Piezas
+
+    private fun drawGlow(canvas: Canvas, t: Float, level: Float) {
+        val paint = glowPaint ?: Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                100f, 120f, 96f,
+                intArrayOf((glow and 0x00FFFFFF) or 0x88000000.toInt(), (glow and 0x00FFFFFF) or 0x22000000, glow and 0x00FFFFFF),
+                floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP,
+            )
+        }.also { glowPaint = it }
+        val s = 0.9f + 0.08f * sin(t * 3f) + 0.25f * level
+        canvas.save()
+        canvas.scale(s, s, 100f, 120f)
+        canvas.drawCircle(100f, 120f, 96f, paint)
+        canvas.restore()
+    }
+
+    private fun drawEar(canvas: Canvas, shapes: List<PetArt.Shape>, x: Float, y: Float, degrees: Float) {
+        canvas.save()
+        canvas.rotate(degrees, x, y)
+        shapes.forEach { canvas.drawPath(it.path, it.paint) }
+        canvas.restore()
+    }
+
+    private fun drawLimb(canvas: Canvas, shapes: List<PetArt.Shape>, x: Float, y: Float, degrees: Float) {
+        canvas.save()
+        canvas.rotate(degrees, x, y)
+        shapes.forEach { canvas.drawPath(it.path, it.paint) }
+        canvas.restore()
+    }
+
+    /** Antena de Bulla: tallo curvo hasta una bolita que se queda atrás y rebota (resorte). */
+    private fun drawAntenna(canvas: Canvas, rig: PetArt.Rig, p: Pose, dt: Float, live: Boolean, level: Float) {
+        val bodyX = p.shakeX + p.tilt * 1.4f
+        val bodyY = p.lift
+        if (live && dt > 0f) {
+            antX -= bodyX - lastBodyX
+            antY -= bodyY - lastBodyY
+            val steps = 2
+            val h = dt / steps
+            repeat(steps) {
+                antVX += (-170f * antX - 9f * antVX) * h
+                antVY += (-170f * antY - 9f * antVY) * h
+                antX += antVX * h
+                antY += antVY * h
+            }
+            antX = antX.coerceIn(-16f, 16f)
+            antY = antY.coerceIn(-12f, 12f)
+        } else if (!live) {
+            antX = 0f
+            antY = 0f
+        }
+        lastBodyX = bodyX
+        lastBodyY = bodyY
+        val tipX = rig.antennaTipX + antX
+        val tipY = rig.antennaTipY + antY - level * 4f
+        path.reset()
+        path.moveTo(rig.antennaX, rig.antennaY)
+        path.quadTo(rig.antennaX + antX * 0.2f, (rig.antennaY + tipY) / 2f, tipX, tipY)
+        canvas.drawPath(path, rig.stalk)
+        if (glow != 0) {
+            paint.shader = null
+            paint.color = glow
+            paint.alpha = (90 + 120 * level).toInt().coerceAtMost(220)
+            canvas.drawCircle(tipX, tipY, rig.ballR * (1.7f + level), paint)
+            paint.alpha = 255
+        }
+        canvas.save()
+        canvas.translate(tipX - rig.antennaTipX, tipY - rig.antennaTipY)
+        rig.ball.forEach { canvas.drawPath(it.path, it.paint) }
+        canvas.restore()
+    }
+
+    private fun drawEgg(canvas: Canvas, m: PetArt.Model, t: Float, live: Boolean, elapsed: Float) {
+        // Cada 2,2 s se tambalea un poco; más fuerte si le falta poco para nacer o si algo la sorprende.
+        val phase = (t % 2.2f) / 2.2f
+        val strength = if (progress > 0.7f || action != Act.NONE) 9f else 5f
+        var wobble = if (live && phase > 0.6f) sin((phase - 0.6f) / 0.4f * 4 * PI.toFloat()) * strength * (1f - phase) * 2.5f else 0f
+        if (live && action != Act.NONE && elapsed < 1f) wobble += sin(elapsed * 30f) * 8f * (1f - elapsed)
+        canvas.save()
+        canvas.scale(1.18f, 1.18f, 100f, 174f)
+        canvas.rotate(wobble, 100f, 172f)
+        canvas.drawPath(PetArt.egg.path, PetArt.egg.paint)
+        m.eggSpots.forEach { canvas.drawPath(it.path, it.paint) }
+        canvas.drawPath(PetArt.eggShine.path, PetArt.eggShine.paint)
+        if (progress > 0.5f) canvas.drawPath(PetArt.crack.path, PetArt.crack.paint)
+        canvas.restore()
+    }
+
+    /** Ojos de las mascotas de siempre (pequeños y oscuros). */
+    private fun drawEyes(canvas: Canvas, m: PetArt.Model, p: Pose, t: Float, live: Boolean) {
+        val e = m.eyes
+        val face = p.face
+        val blink = blinkAmount(t, live, face)
+        val dx = p.lookX * 2.6f
+        val dy = p.lookY * 2f
+        for (x in floatArrayOf(e.left, e.right)) {
+            if (e.sclera > 0f) {
+                // Rana: ojos sobre la cabeza, con blanco.
+                canvas.save()
+                canvas.scale(1f, if (face == Face.OPEN || face == Face.WIDE) blink else 1f, x, e.y - 2f)
+                canvas.drawCircle(if (x < 100f) x - 2f else x + 2f, e.y - 2f, e.sclera * if (face == Face.WIDE) 1.1f else 1f, m.scleraPaint)
+                canvas.restore()
+            }
+            val ex = x + dx
+            val ey = e.y + dy
+            when (face) {
+                Face.OPEN, Face.SAD, Face.WIDE, Face.SMIRK -> {
+                    val grow = if (face == Face.WIDE) 1.22f else 1f
+                    val rx = e.rx * grow
+                    val ry = (if (face == Face.SAD) e.ry * 0.8f else e.ry) * grow
+                    canvas.save()
+                    if (face == Face.SMIRK) canvas.clipRect(ex - rx - 2f, ey - ry * 0.1f, ex + rx + 2f, ey + ry + 2f)
+                    canvas.scale(1f, blink, ex, ey)
+                    paint.shader = null
+                    if (e.dark) {
+                        paint.color = 0xFF06050A.toInt()
+                        canvas.drawOval(ex - rx, ey - ry, ex + rx, ey + ry, paint)
+                    } else {
+                        canvas.drawOval(ex - rx, ey - ry, ex + rx, ey + ry, m.eyePaint(x, e.y, e.rx, e.ry))
+                    }
+                    paint.color = 0xFFFFFFFF.toInt()
+                    val shine = if (face == Face.WIDE) 0.3f else 0.4f
+                    canvas.drawCircle(ex - rx * 0.33f, ey - ry * 0.42f, rx * shine, paint)
+                    canvas.drawCircle(ex + rx * 0.33f, ey + ry * 0.42f, rx * 0.18f, paint)
+                    canvas.restore()
+                    if (face == Face.SMIRK) {
+                        line.color = m.ink
+                        line.strokeWidth = 2.6f
+                        canvas.drawLine(ex - rx - 1f, ey - ry * 0.1f, ex + rx + 1f, ey - ry * 0.1f, line)
+                    }
+                }
+                Face.HAPPY -> {
+                    // El panda tiene los ojos sobre manchas negras: ahí la línea va en blanco.
+                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
+                    line.strokeWidth = 3.2f
+                    path.reset()
+                    path.moveTo(x - 7f, e.y + 2f)
+                    path.quadTo(x, e.y - 7f, x + 7f, e.y + 2f)
+                    canvas.drawPath(path, line)
+                }
+                Face.CLOSED -> {
+                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
+                    line.strokeWidth = 3.2f
+                    path.reset()
+                    path.moveTo(x - 7f, e.y - 1f)
+                    path.quadTo(x, e.y + 6f, x + 7f, e.y - 1f)
+                    canvas.drawPath(path, line)
+                }
+                Face.HEARTS -> drawHeartEye(canvas, x, e.y, 0.62f, t)
+            }
+        }
+        if ((face == Face.OPEN || face == Face.WIDE) && blink > 0.5f) m.lashes.forEach { canvas.drawPath(it.path, it.paint) }
+    }
+
+    /** Ojos grandes de Bulla: blanco con pupila que mira a los lados, como Duo. */
+    private fun drawBigEyes(canvas: Canvas, m: PetArt.Model, rig: PetArt.Rig, p: Pose, t: Float, live: Boolean) {
+        val e = m.eyes
+        val face = p.face
+        val blink = blinkAmount(t, live, face)
+        for (x in floatArrayOf(e.left, e.right)) {
+            when (face) {
+                Face.OPEN, Face.SAD, Face.WIDE, Face.SMIRK -> {
+                    val grow = if (face == Face.WIDE) 1.12f else 1f
+                    val rx = rig.scleraRx * grow
+                    val ry = rig.scleraRy * grow * (if (face == Face.SAD) 0.9f else 1f)
+                    canvas.save()
+                    if (face == Face.SMIRK) canvas.clipRect(x - rx - 3f, e.y - ry * 0.05f, x + rx + 3f, e.y + ry + 3f)
+                    canvas.scale(1f, blink, x, e.y)
+                    oval.set(x - rx, e.y - ry, x + rx, e.y + ry)
+                    canvas.drawOval(oval, rig.sclera)
+                    canvas.drawOval(oval, rig.scleraEdge)
+                    val pr = rig.pupil * (if (face == Face.WIDE) 0.72f else 1f)
+                    val px = x + p.lookX * (rx - pr - 2.5f) * 0.85f
+                    val py = e.y + p.lookY * (ry - pr - 2.5f) * 0.85f + (if (face == Face.SAD) 2f else 0f)
+                    paint.shader = null
+                    paint.color = rig.pupilColor
+                    canvas.drawCircle(px, py, pr, paint)
+                    paint.color = 0xFFFFFFFF.toInt()
+                    canvas.drawCircle(px - pr * 0.35f, py - pr * 0.4f, pr * 0.38f, paint)
+                    canvas.drawCircle(px + pr * 0.38f, py + pr * 0.36f, pr * 0.16f, paint)
+                    canvas.restore()
+                    if (face == Face.SMIRK) {
+                        line.color = m.ink
+                        line.strokeWidth = 3.4f
+                        canvas.drawLine(x - rx - 1f, e.y - ry * 0.05f, x + rx + 1f, e.y - ry * 0.05f, line)
+                    }
+                }
+                Face.HAPPY -> {
+                    line.color = m.ink
+                    line.strokeWidth = 4.6f
+                    path.reset()
+                    path.moveTo(x - 10f, e.y + 4f)
+                    path.quadTo(x, e.y - 10f, x + 10f, e.y + 4f)
+                    canvas.drawPath(path, line)
+                }
+                Face.CLOSED -> {
+                    line.color = m.ink
+                    line.strokeWidth = 4.2f
+                    path.reset()
+                    path.moveTo(x - 10f, e.y)
+                    path.quadTo(x, e.y + 8f, x + 10f, e.y)
+                    canvas.drawPath(path, line)
+                }
+                Face.HEARTS -> drawHeartEye(canvas, x, e.y, 1f, t)
+            }
+        }
+    }
+
+    private fun blinkAmount(t: Float, live: Boolean, face: Face): Float {
+        if (!live || (face != Face.OPEN && face != Face.SAD)) return 1f
+        // Parpadeo: cada ~4,4 s se cierran un instante (a veces, dos veces seguidas).
+        val phase = (t % 4.4f) / 4.4f
+        return when {
+            phase > 0.93f -> 0.08f + 0.92f * abs(1f - 2f * (phase - 0.93f) / 0.07f)
+            phase in 0.86f..0.9f && ((t / 4.4f).toInt() % 3 == 0) -> 0.08f + 0.92f * abs(1f - 2f * (phase - 0.86f) / 0.04f)
+            else -> 1f
+        }
+    }
+
+    private fun drawHeartEye(canvas: Canvas, x: Float, y: Float, scale: Float, t: Float) {
+        paint.shader = null
+        paint.color = 0xFFFF3D7F.toInt()
+        val pulse = scale * (1f + 0.12f * sin(t * 10f))
+        canvas.save()
+        canvas.translate(x, y - 3f * scale)
+        canvas.scale(pulse, pulse)
+        canvas.drawPath(PetArt.heart, paint)
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.alpha = 200
+        canvas.drawCircle(-6f, -3f, 2.4f, paint)
+        paint.alpha = 255
+        canvas.restore()
+    }
+
+    private fun drawBrows(canvas: Canvas, m: PetArt.Model, p: Pose, big: Boolean) {
+        if (p.brows == Brows.NONE && !big) return
+        if (p.face == Face.HAPPY && p.brows == Brows.NONE) return
+        val e = m.eyes
+        val reach = if (big) (m.rig?.scleraRy ?: e.ry) + 5f else e.ry + 4f
+        val half = if (big) 10f else 7f
+        line.color = m.ink
+        line.strokeWidth = if (big) 3.4f else 2.6f
+        for (x in floatArrayOf(e.left, e.right)) {
+            val inner = if (x < 100f) 1f else -1f
+            val top = e.y - reach
+            path.reset()
+            when (p.brows) {
+                Brows.NONE -> {
+                    path.moveTo(x - half, top + 1f)
+                    path.quadTo(x, top - 3f, x + half, top + 1f)
+                }
+                Brows.UP -> {
+                    path.moveTo(x - half, top - 4f)
+                    path.quadTo(x, top - 11f, x + half, top - 4f)
+                }
+                Brows.SAD, Brows.WORRIED -> {
+                    val lift = if (p.brows == Brows.WORRIED) 4f else 0f
+                    path.moveTo(x - inner * half, top + 2f - lift)
+                    path.lineTo(x + inner * (half - 2f), top - 5f - lift)
+                }
+                Brows.MISCHIEF -> if (x < 100f) {
+                    path.moveTo(x - half, top - 6f)
+                    path.quadTo(x, top - 12f, x + half, top - 5f)
+                } else {
+                    path.moveTo(x - half, top + 4f)
+                    path.lineTo(x + half, top - 1f)
+                }
+            }
+            canvas.drawPath(path, line)
+        }
+    }
+
+    private fun drawMouth(canvas: Canvas, m: PetArt.Model, p: Pose, elapsed: Float) {
+        val x = m.mouthX
+        val y = m.mouthY
+        val big = if (m.rig != null) 1.25f else 1f
+        paint.shader = null
+        paint.color = 0xFF5A1A2A.toInt()
+        line.color = m.ink
+        line.strokeWidth = 2.3f * big
+        when (p.mouth) {
+            Mouth.NORMAL -> m.mouth.forEach { canvas.drawPath(it.path, it.paint) }
+            Mouth.OPEN -> {
+                path.reset()
+                path.moveTo(x - 10f * big, y - 1f)
+                path.quadTo(x, y + 14f * big, x + 10f * big, y - 1f)
+                path.close()
+                canvas.drawPath(path, paint)
+                paint.color = 0xFFFF7FA5.toInt()
+                canvas.drawOval(x - 4.5f * big, y + 4.5f * big, x + 4.5f * big, y + 7.5f * big, paint)
+            }
+            Mouth.CHEW -> {
+                val open = 0.2f + 0.8f * abs(sin((elapsed - 0.8f) * 2.6f * PI.toFloat()))
+                canvas.drawOval(x - 8f * big, y + 5f - 6.5f * open * big, x + 8f * big, y + 5f + 6.5f * open * big, paint)
+            }
+            Mouth.SMALL -> canvas.drawOval(x - 4f, y + 1f, x + 4f, y + 7f, paint)
+            Mouth.SAD -> {
+                path.reset()
+                path.moveTo(x - 8f * big, y + 6f)
+                path.quadTo(x, y - 1f, x + 8f * big, y + 6f)
+                canvas.drawPath(path, line)
+            }
+            Mouth.O -> {
+                val r = (3.5f + 3f * p.open) * big
+                canvas.drawOval(x - r, y + 2f, x + r, y + 2f + r * 2.2f, paint)
+            }
+            Mouth.LAUGH -> {
+                path.reset()
+                path.moveTo(x - 13f * big, y - 2f)
+                path.quadTo(x, y + 24f * big, x + 13f * big, y - 2f)
+                path.close()
+                canvas.drawPath(path, paint)
+                paint.color = 0xFFFF7FA5.toInt()
+                canvas.drawOval(x - 6f * big, y + 6f * big, x + 6f * big, y + 11f * big, paint)
+            }
+            Mouth.TALK -> {
+                val open = 0.15f + 0.85f * p.open.coerceIn(0f, 1f)
+                canvas.drawOval(x - 8f * big, y + 1f, x + 8f * big, y + 1f + 15f * open * big, paint)
+                if (open > 0.45f) {
+                    paint.color = 0xFFFF7FA5.toInt()
+                    canvas.drawOval(x - 4.5f * big, y + 1f + 10f * open * big, x + 4.5f * big, y + 1f + 14f * open * big, paint)
+                }
+            }
+            Mouth.SMIRK -> {
+                path.reset()
+                path.moveTo(x - 9f * big, y + 3f)
+                path.quadTo(x + 2f, y + 7f * big, x + 11f * big, y - 3f)
+                canvas.drawPath(path, line)
+            }
+            Mouth.WOBBLY -> {
+                path.reset()
+                path.moveTo(x - 10f * big, y + 5f)
+                path.lineTo(x - 5f * big, y + 2f)
+                path.lineTo(x, y + 5f)
+                path.lineTo(x + 5f * big, y + 2f)
+                path.lineTo(x + 10f * big, y + 5f)
+                canvas.drawPath(path, line)
+            }
+        }
     }
 
     /** La calabaza o el regalo junto a la mascota, en el piso. */
@@ -240,115 +1067,65 @@ class PetView(context: Context) : View(context) {
         prop.forEach { canvas.drawPath(it.path, it.paint) }
     }
 
-    private enum class Face { OPEN, HAPPY, SAD, CLOSED }
-
-    private enum class Mouth { NORMAL, OPEN, CHEW, SMALL, SAD }
-
-    private fun drawEgg(canvas: Canvas, m: PetArt.Model, t: Float, live: Boolean) {
-        // Cada 2,2 s se tambalea un poco; más fuerte si le falta poco para nacer.
-        val phase = (t % 2.2f) / 2.2f
-        val strength = if (progress > 0.7f) 9f else 5f
-        val wobble = if (live && phase > 0.6f) sin((phase - 0.6f) / 0.4f * 4 * PI.toFloat()) * strength * (1f - phase) * 2.5f else 0f
-        canvas.save()
-        canvas.scale(1.18f, 1.18f, 100f, 174f)
-        canvas.rotate(wobble, 100f, 172f)
-        canvas.drawPath(PetArt.egg.path, PetArt.egg.paint)
-        m.eggSpots.forEach { canvas.drawPath(it.path, it.paint) }
-        canvas.drawPath(PetArt.eggShine.path, PetArt.eggShine.paint)
-        if (progress > 0.5f) canvas.drawPath(PetArt.crack.path, PetArt.crack.paint)
-        canvas.restore()
-    }
-
-    private fun drawEyes(canvas: Canvas, m: PetArt.Model, t: Float, live: Boolean, face: Face) {
-        val e = m.eyes
-        // Parpadeo: cada ~4,4 s se cierran un instante.
-        val phase = (t % 4.4f) / 4.4f
-        val blink = if (live && face == Face.OPEN && phase > 0.93f) {
-            val k = (phase - 0.93f) / 0.07f
-            0.08f + 0.92f * abs(1f - 2f * k)
-        } else 1f
-        for (x in floatArrayOf(e.left, e.right)) {
-            val pupilX = x
-            if (e.sclera > 0f) {
-                // Rana: ojos sobre la cabeza, con blanco.
-                canvas.save()
-                canvas.scale(1f, if (face == Face.OPEN) blink else 1f, x, e.y - 2f)
-                canvas.drawCircle(if (x < 100f) x - 2f else x + 2f, e.y - 2f, e.sclera, m.scleraPaint)
-                canvas.restore()
-            }
-            when (face) {
-                Face.OPEN, Face.SAD -> {
-                    val ry = if (face == Face.SAD) e.ry * 0.8f else e.ry
-                    canvas.save()
-                    canvas.scale(1f, blink, pupilX, e.y)
-                    paint.shader = null
-                    if (e.dark) {
-                        paint.color = 0xFF06050A.toInt()
-                        canvas.drawOval(pupilX - e.rx, e.y - ry, pupilX + e.rx, e.y + ry, paint)
-                    } else {
-                        canvas.drawOval(pupilX - e.rx, e.y - ry, pupilX + e.rx, e.y + ry, m.eyePaint(pupilX, e.y, e.rx, ry))
-                    }
-                    paint.color = 0xFFFFFFFF.toInt()
-                    canvas.drawCircle(pupilX - e.rx * 0.33f, e.y - ry * 0.42f, e.rx * 0.4f, paint)
-                    canvas.drawCircle(pupilX + e.rx * 0.33f, e.y + ry * 0.42f, e.rx * 0.18f, paint)
-                    canvas.restore()
-                    if (face == Face.SAD) {
-                        // Cejas tristes: el lado de adentro más arriba.
-                        line.color = m.ink
-                        line.strokeWidth = 2.6f
-                        val inner = if (x < 100f) 1f else -1f
-                        canvas.drawLine(x - inner * 9f, e.y - e.ry - 1f, x + inner * 7f, e.y - e.ry - 6f, line)
-                    }
-                }
-                Face.HAPPY -> {
-                    // El panda tiene los ojos sobre manchas negras: ahí la línea va en blanco.
-                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
-                    line.strokeWidth = 3.2f
-                    path.reset()
-                    path.moveTo(pupilX - 7f, e.y + 2f)
-                    path.quadTo(pupilX, e.y - 7f, pupilX + 7f, e.y + 2f)
-                    canvas.drawPath(path, line)
-                }
-                Face.CLOSED -> {
-                    line.color = if (e.dark) 0xFFFFFFFF.toInt() else 0xFF06050A.toInt()
-                    line.strokeWidth = 3.2f
-                    path.reset()
-                    path.moveTo(pupilX - 7f, e.y - 1f)
-                    path.quadTo(pupilX, e.y + 6f, pupilX + 7f, e.y - 1f)
-                    canvas.drawPath(path, line)
-                }
-            }
-        }
-        if (face == Face.OPEN && blink > 0.5f) m.lashes.forEach { canvas.drawPath(it.path, it.paint) }
-    }
-
-    private fun drawMouth(canvas: Canvas, m: PetArt.Model, mouth: Mouth, elapsed: Float) {
-        val x = m.mouthX
-        val y = m.mouthY
+    private fun drawHorns(canvas: Canvas, m: PetArt.Model, elapsed: Float) {
+        val k = (elapsed / 0.25f).coerceIn(0f, 1f)
+        val pop = if (k < 1f) k * 1.2f else 1f
+        val top = m.headTop
         paint.shader = null
-        paint.color = 0xFF5A1A2A.toInt()
-        line.color = m.ink
-        line.strokeWidth = 2.3f
-        when (mouth) {
-            Mouth.NORMAL -> m.mouth.forEach { canvas.drawPath(it.path, it.paint) }
-            Mouth.OPEN -> {
-                path.reset()
-                path.moveTo(x - 10f, y - 1f)
-                path.quadTo(x, y + 14f, x + 10f, y - 1f)
-                path.close()
-                canvas.drawPath(path, paint)
-            }
-            Mouth.CHEW -> {
-                val open = 0.2f + 0.8f * abs(sin((elapsed - 0.8f) * 2.6f * PI.toFloat()))
-                canvas.drawOval(x - 8f, y + 5f - 6.5f * open, x + 8f, y + 5f + 6.5f * open, paint)
-            }
-            Mouth.SMALL -> canvas.drawOval(x - 4f, y + 1f, x + 4f, y + 7f, paint)
-            Mouth.SAD -> {
-                path.reset()
-                path.moveTo(x - 8f, y + 6f)
-                path.quadTo(x, y - 1f, x + 8f, y + 6f)
-                canvas.drawPath(path, line)
-            }
+        paint.color = 0xFFE03153.toInt()
+        for (side in floatArrayOf(-1f, 1f)) {
+            val x = 100f + side * 20f
+            canvas.save()
+            canvas.translate(x, top + 4f)
+            canvas.scale(pop * side, pop)
+            path.reset()
+            path.moveTo(-7f, 2f)
+            path.quadTo(-6f, -12f, 6f, -18f)
+            path.quadTo(1f, -8f, 7f, 2f)
+            path.close()
+            canvas.drawPath(path, paint)
+            canvas.restore()
+        }
+    }
+
+    private fun drawDirt(canvas: Canvas) {
+        paint.shader = null
+        paint.color = 0xFF7A5230.toInt()
+        val count = (DIRT.size * dirt).toInt().coerceIn(1, DIRT.size)
+        for (i in 0 until count) {
+            val (x, y, r) = DIRT[i]
+            paint.alpha = (110 * dirt).toInt() + 40
+            canvas.drawOval(x - r, y - r * 0.7f, x + r, y + r * 0.7f, paint)
+            canvas.drawCircle(x + r * 0.9f, y + r * 0.5f, r * 0.3f, paint)
+        }
+        paint.alpha = 255
+    }
+
+    /** Espuma del baño: burbujas blancas sobre el cuerpo y unas que suben. */
+    private fun drawFoam(canvas: Canvas, t: Float, live: Boolean) {
+        val count = (FOAM.size * foam).toInt().coerceIn(1, FOAM.size)
+        for (i in 0 until count) {
+            val (x, y, r) = FOAM[i]
+            val wobble = if (live) 1f + 0.06f * sin(t * 3f + i) else 1f
+            paint.shader = null
+            paint.color = 0xFFFFFFFF.toInt()
+            paint.alpha = 235
+            canvas.drawCircle(x, y, r * wobble, paint)
+            line.color = 0xFFB9E3FF.toInt()
+            line.strokeWidth = 1.2f
+            canvas.drawCircle(x, y, r * wobble, line)
+            paint.alpha = 255
+        }
+        if (!live) return
+        for (i in 0 until 4) {
+            val k = ((t * 0.5f) + i / 4f) % 1f
+            val x = 70f + i * 20f + sin(t * 2f + i) * 6f
+            val y = 70f - 60f * k
+            line.color = 0xFFB9E3FF.toInt()
+            line.strokeWidth = 1.4f
+            line.alpha = (255 * (1f - k)).toInt()
+            canvas.drawCircle(x, y, 3f + 3f * k, line)
+            line.alpha = 255
         }
     }
 
@@ -360,7 +1137,7 @@ class PetView(context: Context) : View(context) {
             val y = -10f + (m.mouthY + 4f + 10f) * (fall * fall)
             text.textSize = 30f * shrink
             text.alpha = 255
-            canvas.drawText(m.food, m.mouthX, y + text.textSize * 0.35f, text)
+            canvas.drawText(food ?: m.food, m.mouthX, y + text.textSize * 0.35f, text)
         }
         if (elapsed in 0.9f..2.0f) {
             val k = (elapsed - 0.9f) / 1.1f
@@ -376,24 +1153,38 @@ class PetView(context: Context) : View(context) {
 
     private fun drawTear(canvas: Canvas, m: PetArt.Model, t: Float) {
         val k = (t % 2.2f) / 2.2f
+        drawDrop(canvas, m.eyes.right + 8f, m.eyes.y + 8f + 26f * k, if (k < 0.2f) k / 0.2f else 1f - (k - 0.2f) / 0.8f)
+    }
+
+    private fun drawJoyTears(canvas: Canvas, m: PetArt.Model, elapsed: Float) {
+        val k = (elapsed % 0.7f) / 0.7f
+        val alpha = if (k < 0.2f) k / 0.2f else 1f - (k - 0.2f) / 0.8f
+        drawDrop(canvas, m.eyes.left - 10f - 10f * k, m.eyes.y + 2f - 6f * k + 22f * k * k, alpha)
+        drawDrop(canvas, m.eyes.right + 10f + 10f * k, m.eyes.y + 2f - 6f * k + 22f * k * k, alpha)
+    }
+
+    private fun drawSweat(canvas: Canvas, m: PetArt.Model, elapsed: Float) {
+        val k = (elapsed % 1.1f) / 1.1f
+        drawDrop(canvas, m.eyes.right + 20f, m.headTop + 18f + 20f * k, if (k < 0.15f) k / 0.15f else 1f - (k - 0.15f) / 0.85f, 1.4f)
+    }
+
+    private fun drawDrop(canvas: Canvas, x: Float, y: Float, alpha: Float, scale: Float = 1f) {
         paint.shader = null
         paint.color = 0xFF74C0FC.toInt()
-        paint.alpha = (255 * (if (k < 0.2f) k / 0.2f else 1f - (k - 0.2f) / 0.8f)).toInt()
-        val x = m.eyes.right + 8f
-        val y = m.eyes.y + 8f + 26f * k
+        paint.alpha = (255 * alpha.coerceIn(0f, 1f)).toInt()
         path.reset()
         path.moveTo(x, y)
-        path.quadTo(x + 4f, y + 7f, x, y + 10f)
-        path.quadTo(x - 4f, y + 7f, x, y)
+        path.quadTo(x + 4f * scale, y + 7f * scale, x, y + 10f * scale)
+        path.quadTo(x - 4f * scale, y + 7f * scale, x, y)
         canvas.drawPath(path, paint)
         paint.alpha = 255
     }
 
-    private fun drawHearts(canvas: Canvas, elapsed: Float) {
+    private fun drawHearts(canvas: Canvas, elapsed: Float, length: Float) {
         paint.shader = null
         paint.color = 0xFFFF5FAE.toInt()
         HEARTS.forEach { (x, y, delay) ->
-            val k = ((elapsed - delay) / 1.1f)
+            val k = ((elapsed - delay) / length)
             if (k <= 0f || k >= 1f) return@forEach
             paint.alpha = (255 * (if (k < 0.2f) k / 0.2f else 1f - (k - 0.2f) / 0.8f)).toInt()
             canvas.save()
@@ -404,6 +1195,122 @@ class PetView(context: Context) : View(context) {
             canvas.restore()
         }
         paint.alpha = 255
+    }
+
+    /** Notas musicales que suben bailando. */
+    private fun drawNotes(canvas: Canvas, elapsed: Float) {
+        text.typeface = Fonts.display(context, 700)
+        for (i in 0 until 4) {
+            val k = ((elapsed / 1.6f) + i / 4f) % 1f
+            val x = (if (i % 2 == 0) 30f else 170f) + sin(k * 9f + i) * 8f
+            val y = 110f - 90f * k
+            text.color = NOTE_COLORS[i % NOTE_COLORS.size]
+            text.alpha = (255 * (if (k < 0.15f) k / 0.15f else 1f - (k - 0.15f) / 0.85f)).toInt()
+            text.textSize = 22f + 8f * k
+            canvas.drawText(if (i % 2 == 0) "♪" else "♫", x, y, text)
+        }
+        text.alpha = 255
+        text.color = 0xFFFFFFFF.toInt()
+    }
+
+    /** «!» que salta al sorprenderse. */
+    private fun drawBang(canvas: Canvas, elapsed: Float) {
+        if (elapsed < 0.12f || elapsed > 1.4f) return
+        val k = (elapsed - 0.12f) / 0.25f
+        val pop = if (k < 1f) 0.4f + 0.9f * k else 1f + 0.12f * sin((elapsed - 0.37f) * 14f) * max(0f, 1f - (elapsed - 0.37f))
+        text.typeface = Fonts.display(context, 700)
+        text.textSize = 46f * pop
+        text.color = 0xFFFFC93C.toInt()
+        text.alpha = if (elapsed > 1.15f) (255 * (1.4f - elapsed) / 0.25f).toInt() else 255
+        canvas.save()
+        canvas.rotate(12f, 160f, 40f)
+        canvas.drawText("!", 160f, 56f, text)
+        canvas.restore()
+        text.alpha = 255
+        text.color = 0xFFFFFFFF.toInt()
+    }
+
+    /** «JA» que salen a los lados mientras se ríe. */
+    private fun drawHaHa(canvas: Canvas, elapsed: Float) {
+        text.typeface = Fonts.display(context, 700)
+        for (i in 0 until 3) {
+            val start = i * 0.45f
+            val k = ((elapsed - start) % 1.35f) / 0.9f
+            if (elapsed < start || k > 1f) continue
+            val left = i % 2 == 0
+            val x = if (left) 36f - 6f * k else 164f + 6f * k
+            val y = 70f - 26f * k + i * 6f
+            text.color = if (left) 0xFFFFC93C.toInt() else 0xFFFF7AB8.toInt()
+            text.alpha = (255 * (if (k < 0.2f) k / 0.2f else 1f - (k - 0.2f) / 0.8f)).toInt()
+            text.textSize = 18f + 10f * min(1f, k * 3f)
+            canvas.save()
+            canvas.rotate(if (left) -14f else 14f, x, y)
+            canvas.drawText("JA", x, y, text)
+            canvas.restore()
+        }
+        text.alpha = 255
+        text.color = 0xFFFFFFFF.toInt()
+    }
+
+    /** Estrellas que salen hacia afuera al festejar. */
+    private fun drawBurst(canvas: Canvas, elapsed: Float) {
+        val k = (elapsed / 1.3f).coerceIn(0f, 1f)
+        if (k >= 1f) return
+        paint.shader = null
+        for (i in 0 until 10) {
+            val angle = i * (2 * PI.toFloat() / 10) + 0.3f
+            val r = 30f + 80f * k
+            paint.color = NOTE_COLORS[i % NOTE_COLORS.size]
+            paint.alpha = (255 * (1f - k)).toInt()
+            canvas.save()
+            canvas.translate(100f + kotlin.math.cos(angle) * r, 105f + sin(angle) * r * 0.85f)
+            val s = 0.6f + 0.5f * (1f - k)
+            canvas.scale(s, s)
+            canvas.drawPath(PetArt.star, paint)
+            canvas.restore()
+        }
+        paint.alpha = 255
+    }
+
+    /** Gotas de la ducha. */
+    private fun drawRain(canvas: Canvas, elapsed: Float) {
+        if (elapsed > 1.2f) return
+        paint.shader = null
+        paint.color = 0xFF74C0FC.toInt()
+        for (i in 0 until 14) {
+            val k = ((elapsed * 1.6f) + i * 0.137f) % 1f
+            val x = 46f + (i * 37 % 110)
+            val y = -6f + 180f * k
+            paint.alpha = 210
+            canvas.drawRoundRect(x - 1.6f, y, x + 1.6f, y + 11f, 2f, 2f, paint)
+        }
+        paint.alpha = 255
+    }
+
+    /** Burbujitas de conversación mientras «habla». */
+    private fun drawChatter(canvas: Canvas, elapsed: Float) {
+        val k = (elapsed % 0.9f) / 0.9f
+        paint.shader = null
+        paint.color = 0xFFFFFFFF.toInt()
+        for (i in 0 until 3) {
+            paint.alpha = (255 * (0.3f + 0.7f * abs(sin((k + i / 3f) * PI.toFloat())))).toInt()
+            canvas.drawCircle(150f + i * 9f, 52f - i * 4f, 3f, paint)
+        }
+        paint.alpha = 255
+    }
+
+    /** Ondas de sonido junto a la oreja mientras escucha. */
+    private fun drawListening(canvas: Canvas, t: Float) {
+        line.color = 0xFF48DBFB.toInt()
+        line.strokeWidth = 2.6f
+        for (i in 0 until 3) {
+            val k = ((t * 0.9f) + i / 3f) % 1f
+            line.alpha = (255 * (1f - k)).toInt()
+            val r = 10f + 18f * k
+            oval.set(150f - r, 60f - r, 150f + r, 60f + r)
+            canvas.drawArc(oval, -50f, 100f, false, line)
+        }
+        line.alpha = 255
     }
 
     private fun drawZs(canvas: Canvas, t: Float) {
@@ -437,17 +1344,21 @@ class PetView(context: Context) : View(context) {
 
     private companion object {
         val STAGE_SCALE = floatArrayOf(1f, 0.7f, 0.85f, 1f, 1f)
-        const val EAT_S = 2.6f
-        const val JOY_S = 1.4f
-        /** Quieta, 20 cuadros por segundo alcanzan para respirar y parpadear; jugando, 30. */
-        const val FRAME_IDLE_MS = 50L
-        const val FRAME_ACTION_MS = 33L
+        /** Quieta, 30 cuadros por segundo; haciendo algo, al ritmo de la pantalla. */
+        const val FRAME_IDLE_MS = 33L
         val HEARTS = listOf(Triple(40f, 70f, 0f), Triple(160f, 60f, 0.3f), Triple(150f, 120f, 0.55f), Triple(52f, 130f, 0.8f))
         val SPARKLES = listOf(Triple(34f, 72f, 1f), Triple(166f, 58f, 0.8f), Triple(170f, 146f, 0.8f), Triple(28f, 154f, 0.7f))
+        val NOTE_COLORS = intArrayOf(0xFFFFC93C.toInt(), 0xFFFF7AB8.toInt(), 0xFF48DBFB.toInt(), 0xFF3DDC97.toInt())
+        val FOAM = listOf(
+            Triple(84f, 56f, 10f), Triple(110f, 52f, 12f), Triple(96f, 46f, 9f), Triple(126f, 62f, 9f), Triple(70f, 70f, 8f),
+            Triple(64f, 120f, 9f), Triple(138f, 118f, 10f), Triple(90f, 146f, 11f), Triple(116f, 150f, 10f), Triple(102f, 132f, 8f),
+            Triple(74f, 156f, 8f), Triple(130f, 160f, 8f), Triple(56f, 96f, 7f), Triple(146f, 92f, 7f), Triple(100f, 162f, 9f),
+        )
+        val DIRT = listOf(Triple(78f, 140f, 7f), Triple(124f, 148f, 6f), Triple(132f, 84f, 5f), Triple(70f, 96f, 5f), Triple(104f, 160f, 5f))
     }
 }
 
-/** Las 8 mascotas, dibujadas con las mismas formas del diseño (viewBox de 200×200). */
+/** Las mascotas, dibujadas con las mismas formas del diseño (viewBox de 200×200). */
 object PetArt {
     class Shape(val path: Path, val paint: Paint)
 
@@ -471,6 +1382,14 @@ object PetArt {
         val food: String,
         val crumb: Int,
         val eggSpots: List<Shape>,
+        /** Arriba de la cabeza (gorros), el cuello (corbatín) y medio ancho de la cabeza (audífonos). */
+        val headTop: Float = 46f,
+        val neckY: Float = 132f,
+        val headHalf: Float = 47f,
+        /** Tamaño dentro del cuadro: Bulla es más alta (orejas y antena) y deja lugar para saltar. */
+        val scale: Float = 1f,
+        /** Partes que se mueven aparte (Bulla): orejas, brazos, antena y ojos grandes. */
+        val rig: Rig? = null,
     ) {
         val scleraPaint = fill(0xFFF8F6FC.toInt())
         private val eyeCache = HashMap<Long, Paint>()
@@ -480,6 +1399,21 @@ object PetArt {
             return eyeCache.getOrPut(key) { gradient(RectF(x - rx, y - ry, x + rx, y + ry), EYE_TONE) }
         }
     }
+
+    /**
+     * Las piezas articuladas de Bulla. Cada una gira desde su punto (x, y): orejas y brazos.
+     * La antena va de (antennaX, antennaY) a la bolita en (antennaTipX, antennaTipY).
+     */
+    class Rig(
+        val earL: List<Shape>, val earLX: Float, val earLY: Float,
+        val earR: List<Shape>, val earRX: Float, val earRY: Float,
+        val armL: List<Shape>, val armLX: Float, val armLY: Float,
+        val armR: List<Shape>, val armRX: Float, val armRY: Float,
+        val antennaX: Float, val antennaY: Float, val antennaTipX: Float, val antennaTipY: Float,
+        val stalk: Paint, val ball: List<Shape>, val ballR: Float,
+        val sclera: Paint, val scleraEdge: Paint, val scleraRx: Float, val scleraRy: Float,
+        val pupil: Float, val pupilColor: Int,
+    )
 
     class Tone(val light: Int, val base: Int, val shade: Int)
 
@@ -551,6 +1485,7 @@ object PetArt {
     val star: Path = svg("M0 -11 L3 -3 L11 0 L3 3 L0 11 L-3 3 L-11 0 L-3 -3 Z")
 
     fun build(species: String): Model = when (species) {
+        "bulla" -> bulla()
         "perro" -> perro()
         "zorro" -> zorro()
         "rana" -> rana()
@@ -565,6 +1500,56 @@ object PetArt {
     }
 
     // ---------------------------------------------------------------- Especies
+
+    /**
+     * Bulla, la mascota de Friend Game: una bolita celeste con orejas grandes para oír los
+     * sonidos, una antena que brilla y ojos grandes que miran a todos lados (ver el lienzo
+     * «Friend Game · Diseño 2.0»).
+     */
+    private fun bulla(): Model {
+        val body = Tone(0xFFA8ECFF.toInt(), 0xFF3DBBF5.toInt(), 0xFF1A72C2.toInt())
+        val belly = Tone(0xFFFFFFFF.toInt(), 0xFFEFFBFF.toInt(), 0xFFC4EBFF.toInt())
+        val foot = Tone(0xFFFFE08A.toInt(), 0xFFFFB534.toInt(), 0xFFE07B00.toInt())
+        val inner = 0xFFFF9EC7.toInt()
+        val b = Builder()
+        b.fill(oval(55f, 42f, 15f, 28f, -28f), body)
+        b.fill(oval(56f, 45f, 8f, 18f, -28f), inner, 0.9f)
+        val earL = b.take()
+        b.fill(oval(145f, 42f, 15f, 28f, 28f), body)
+        b.fill(oval(144f, 45f, 8f, 18f, 28f), inner, 0.9f)
+        val earR = b.take()
+        b.fill(oval(82f, 175f, 15f, 7.5f), foot)
+        b.fill(oval(118f, 175f, 15f, 7.5f), foot)
+        b.fill(svg("M100 46 C 138 46, 156 78, 157 114 C 158 152, 136 177, 100 177 C 64 177, 42 152, 43 114 C 44 78, 62 46, 100 46 Z"), body)
+        b.fill(oval(100f, 150f, 33f, 24f), belly)
+        b.fill(oval(76f, 64f, 17f, 8f, -28f), 0xFFFFFFFF.toInt(), 0.45f)
+        val front = b.take()
+        b.fill(oval(49f, 128f, 10f, 19f, 22f), body)
+        b.stroke(oval(49f, 128f, 10f, 19f, 22f), 0xFF1A72C2.toInt(), 1.6f, 0.5f)
+        val armL = b.take()
+        b.fill(oval(151f, 128f, 10f, 19f, -22f), body)
+        b.stroke(oval(151f, 128f, 10f, 19f, -22f), 0xFF1A72C2.toInt(), 1.6f, 0.5f)
+        val armR = b.take()
+        cheeks(b, 61f, 139f, 114f, 0.55f, 8.5f, 5f)
+        val over = b.take()
+        b.fill(circle(100f, 16f, 8f), Tone(0xFFFFF6B0.toInt(), 0xFFFFD43B.toInt(), 0xFFF08C00.toInt()))
+        b.fill(circle(97.5f, 13.5f, 2.6f), 0xFFFFFFFF.toInt(), 0.85f)
+        val ball = b.take()
+        val ink = 0xFF0E2A4A.toInt()
+        b.stroke(svg("M88 116 q12 11 24 0"), ink, 3.2f)
+        val mouth = b.take()
+        val rig = Rig(
+            earL, 67f, 66f, earR, 133f, 66f,
+            armL, 56f, 112f, armR, 144f, 112f,
+            100f, 50f, 100f, 16f, stroke(0xFF1A72C2.toInt(), 3.8f), ball, 8f,
+            fill(0xFFFBFDFF.toInt()), stroke(0xFF1A72C2.toInt(), 1.4f, 0.35f), 14f, 16f, 7.5f, 0xFF0E1E3A.toInt(),
+        )
+        return Model(
+            emptyList(), 0f, 0f, 0f, 1f, emptyList(), front, over, mouth, emptyList(),
+            Eyes(80f, 120f, 92f, 7f, 8f), 100f, 115f, ink, "🍩", 0xFFC98A4B.toInt(), spots(body.base),
+            headTop = 50f, neckY = 134f, headHalf = 56f, scale = 0.88f, rig = rig,
+        )
+    }
 
     private fun gato(): Model {
         val body = Tone(0xFFFFE0B8.toInt(), 0xFFFFA94D.toInt(), 0xFFD9480F.toInt())
@@ -680,6 +1665,7 @@ object PetArt {
         return Model(
             emptyList(), 0f, 0f, 0f, 1f, emptyList(), front, over, b.take(), emptyList(),
             Eyes(74f, 126f, 66f, 6.5f, 8f, sclera = 13f), 100f, 110f, ink, "🐛", 0xFF94D82D.toInt(), spots(body.base),
+            headTop = 52f, headHalf = 54f,
         )
     }
 
@@ -733,6 +1719,7 @@ object PetArt {
         return Model(
             tail, 100f, 136f, 3f, 1.6f, emptyList(), front, over, b.take(), emptyList(),
             Eyes(82f, 118f, 102f, 8f, 10f), 100f, 118f, ink, "🦐", 0xFFFF8787.toInt(), spots(body.base),
+            headTop = 44f, neckY = 142f, headHalf = 52f,
         )
     }
 

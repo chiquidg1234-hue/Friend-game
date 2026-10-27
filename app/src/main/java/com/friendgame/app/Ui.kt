@@ -9,7 +9,9 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.SystemClock
 import android.text.Layout
 import android.text.StaticLayout
@@ -17,6 +19,7 @@ import android.text.TextPaint
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -24,9 +27,13 @@ import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
 
-/** Colores del rediseño (ver el lienzo "Friend Game · Rediseño"). */
+/**
+ * Colores del diseño 2.0 (ver el lienzo "Friend Game · Diseño 2.0" y docs/design/tokens.json).
+ * Los botones y tarjetas tienen un «labio» más oscuro abajo que les da profundidad.
+ */
 object Palette {
     val BG = 0xFF150C2C.toInt()
+    val BG_HIGH = 0xFF1E1240.toInt()
     val SURFACE = 0xFF231848.toInt()
     val SURFACE2 = 0xFF30235F.toInt()
     val NAV = 0xFF1D1340.toInt()
@@ -42,10 +49,33 @@ object Palette {
     val BADGE = 0xFF3A2D6E.toInt()
     val YELLOW = 0xFFFFC93C.toInt()
     val OK = 0xFF3DDC97.toInt()
-    val DANGER = 0xFFC62F3B.toInt()
+    val DANGER = 0xFFD93545.toInt()
     val DANGER_TEXT = 0xFFFF8A93.toInt()
     val CUSTOM = 0xFFFFB86B.toInt()
     val DASHED = 0xFF5B4A9A.toInt()
+    /** Texto tenue que igual se lee sobre el fondo (4,5:1). */
+    val MUTED_TEXT = 0xFF9A8FD0.toInt()
+    /** Celeste de Bulla. */
+    val BULLA = 0xFF3DBBF5.toInt()
+
+    /** Labios 3D de cada color. */
+    val LIP = 0xFF3A2D6E.toInt()
+    val ACCENT_LIP = 0xFFC22E78.toInt()
+    val YELLOW_LIP = 0xFFD99A00.toInt()
+    val OK_LIP = 0xFF1FA56B.toInt()
+    val BULLA_LIP = 0xFF1A72C2.toInt()
+    val DANGER_LIP = 0xFF9A1F2C.toInt()
+
+    /** El labio que le corresponde a un color (los de la paleta; los demás, más oscuro). */
+    fun lip(color: Int): Int = when (color) {
+        ACCENT -> ACCENT_LIP
+        YELLOW -> YELLOW_LIP
+        OK -> OK_LIP
+        BULLA -> BULLA_LIP
+        DANGER -> DANGER_LIP
+        SURFACE, SURFACE2, BG, BG_HIGH, NAV -> LIP
+        else -> shade(color, -0.3f)
+    }
 
     /** Para compatibilidad con pantallas sencillas (escáner). */
     val MUTED = SURFACE2
@@ -149,8 +179,33 @@ fun Context.icon(res: Int, color: Int, sizeDp: Int = 20): ImageView = ImageView(
 }
 
 /**
+ * Fila con «labio» 3D, como los botones de Duolingo: al presionar, la cara baja y tapa el labio
+ * (el contenido baja con ella). No cambia de tamaño, así la pantalla se puede leer siempre.
+ */
+class Chunky(context: Context, private val lipPx: Int) : LinearLayout(context) {
+    override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        val down = isPressed && isEnabled && Anim.enabled()
+        for (i in 0 until childCount) getChildAt(i).translationY = if (down) lipPx.toFloat() else 0f
+    }
+}
+
+/** Fondo con labio: normal, la cara arriba y el labio asomando; presionado, la cara abajo. */
+fun Context.chunkyBackground(color: Int, radiusDp: Int, lip: Int = Palette.lip(color), strokeColor: Int? = null, lipDp: Int = 4): StateListDrawable {
+    val lipPx = dp(lipDp)
+    val normal = LayerDrawable(arrayOf(rounded(lip, radiusDp), rounded(color, radiusDp, strokeColor))).apply {
+        setLayerInset(1, 0, 0, 0, lipPx)
+    }
+    val pressed = LayerDrawable(arrayOf(rounded(color, radiusDp, strokeColor))).apply { setLayerInset(0, 0, lipPx, 0, 0) }
+    return StateListDrawable().apply {
+        addState(intArrayOf(android.R.attr.state_pressed), pressed)
+        addState(intArrayOf(), normal)
+    }
+}
+
+/**
  * Botón con texto y, si se quiere, un ícono a la izquierda. [display] usa la fuente de títulos
- * (para los botones grandes).
+ * (para los botones grandes). Tiene labio 3D (ver [Chunky]) y vibra un poquito al tocarlo.
  */
 fun Context.button(
     text: CharSequence,
@@ -164,14 +219,14 @@ fun Context.button(
     strokeColor: Int? = null,
     iconColor: Int = textColor,
     onClick: () -> Unit,
-): LinearLayout = row().apply {
+): LinearLayout = Chunky(this, dp(4)).apply {
+    orientation = LinearLayout.HORIZONTAL
     gravity = Gravity.CENTER
     minimumHeight = dp(heightDp)
-    setPadding(dp(14), dp(6), dp(14), dp(6))
-    background = clickable(rounded(color, radiusDp, strokeColor))
+    setPadding(dp(14), dp(6), dp(14), dp(10))
+    background = chunkyBackground(color, radiusDp, strokeColor = strokeColor)
     isClickable = true
     isFocusable = true
-    stateListAnimator = Anim.press()
     if (iconRes != null) {
         addView(icon(iconRes, iconColor, 18), LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(8) })
     }
@@ -181,7 +236,10 @@ fun Context.button(
         maxLines = 2
         ellipsize = TextUtils.TruncateAt.END
     }, LinearLayout.LayoutParams(WRAP, WRAP))
-    setOnClickListener { onClick() }
+    setOnClickListener {
+        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        onClick()
+    }
 }
 
 /** Botón sencillo (lo usa el escáner de QR). */
@@ -233,11 +291,15 @@ fun Context.column(): LinearLayout = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
 }
 
-/** Tarjeta: fondo redondeado con relleno. */
+/** Tarjeta: fondo redondeado con relleno y un labio abajo, como las de Duolingo. */
 fun Context.card(color: Int = Palette.SURFACE, radiusDp: Int = 24, padDp: Int = 16): LinearLayout = column().apply {
-    background = rounded(color, radiusDp)
-    setPadding(dp(padDp), dp(padDp), dp(padDp), dp(padDp))
+    background = lipped(color, radiusDp)
+    setPadding(dp(padDp), dp(padDp), dp(padDp), dp(padDp) + dp(4))
 }
+
+/** Fondo redondeado con labio de [lipDp] abajo (sin cambio al tocar). */
+fun Context.lipped(color: Int, radiusDp: Int, lip: Int = Palette.lip(color), lipDp: Int = 4): LayerDrawable =
+    LayerDrawable(arrayOf(rounded(lip, radiusDp), rounded(color, radiusDp))).apply { setLayerInset(1, 0, 0, 0, dp(lipDp)) }
 
 fun Context.divider(color: Int = Palette.SURFACE2): View = View(this).apply {
     setBackgroundColor(color)
@@ -306,6 +368,133 @@ fun Context.soundTile(
     setOnLongClickListener {
         onLongClick()
         true
+    }
+}
+
+/**
+ * Tarjeta de sonido grande (diseño 2.0): emoji, nombre, categoría con su ícono y un botón para
+ * escucharlo sin mandarlo. El color es el de la categoría, o el que eligió la persona ([swatch]).
+ * Tocar la tarjeta hace lo de siempre (mandar, o escuchar en modo escuchar).
+ */
+fun Context.soundCard(
+    emoji: String,
+    text: String,
+    vibe: Vibe,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onPreview: (() -> Unit)?,
+    swatch: Looks.Swatch? = null,
+    /** Con borde blanco: en modo escuchar, tocarlo no lo manda. */
+    outlined: Boolean = false,
+): View {
+    val face = swatch?.main ?: vibe.color
+    val ink = if (swatch != null) Palette.INK else vibe.onColor
+    val radius = 22
+    val card = Chunky(this, dp(5)).apply {
+        orientation = LinearLayout.VERTICAL
+        minimumHeight = dp(132)
+        setPadding(dp(14), dp(12), dp(14), dp(17))
+        val faceDrawable = swatch?.drawable(context, radius) ?: rounded(face, radius)
+        if (outlined) faceDrawable.setStroke(dp(3), Palette.TEXT, dp(8).toFloat(), dp(5).toFloat())
+        val lip = rounded(Palette.lip(face), radius)
+        val normal = LayerDrawable(arrayOf(lip, faceDrawable)).apply { setLayerInset(1, 0, 0, 0, dp(5)) }
+        val pressed = LayerDrawable(arrayOf(faceDrawable.constantState?.newDrawable()?.mutate() ?: faceDrawable)).apply { setLayerInset(0, 0, dp(5), 0, 0) }
+        background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), pressed)
+            addState(intArrayOf(), normal)
+        }
+        isClickable = true
+        isFocusable = true
+        contentDescription = "$emoji $text, ${vibe.label}"
+    }
+    val top = row().apply { gravity = Gravity.TOP }
+    top.addView(label(emoji, 34f).apply {
+        includeFontPadding = false
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }, LinearLayout.LayoutParams(0, WRAP, 1f))
+    card.addView(top, lp())
+    card.addView(View(this), lp(MATCH, 0, weight = 1f))
+    card.addView(title(text, 18f, ink, 600).apply {
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+    }, lp(topDp = 6))
+    val cat = row()
+    cat.addView(icon(vibe.icon, ink, 14).apply { alpha = 0.85f }, LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginEnd = dp(5) })
+    cat.addView(label(vibe.label.uppercase(), 11f, ink, bold = true).apply {
+        letterSpacing = 0.08f
+        alpha = 0.85f
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    })
+    card.addView(cat, lp(topDp = 2))
+    card.setOnClickListener {
+        it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+        onClick()
+    }
+    card.setOnLongClickListener {
+        onLongClick()
+        true
+    }
+    if (onPreview != null) {
+        // Va después del nombre: el botón se lee (y se encuentra) después de la tarjeta.
+        val play = android.widget.FrameLayout(this).apply {
+            background = clickable(oval(0xD9150C2C.toInt()))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Escuchar este sonido"
+            stateListAnimator = Anim.press()
+            addView(icon(R.drawable.ic_play, Palette.TEXT, 14), android.widget.FrameLayout.LayoutParams(dp(14), dp(14), Gravity.CENTER).apply { leftMargin = dp(2) })
+            setOnClickListener { onPreview() }
+        }
+        top.addView(play, LinearLayout.LayoutParams(dp(40), dp(40)))
+    }
+    return card
+}
+
+/** Chip de filtro: elegido, relleno con el color; si no, oscuro con borde y el texto de color. */
+fun Context.filterChip(text: String, selected: Boolean, color: Int, onColor: Int, textColor: Int, iconRes: Int? = null, onClick: () -> Unit): View =
+    row().apply {
+        gravity = Gravity.CENTER
+        setPadding(dp(14), 0, dp(14), 0)
+        background = if (selected) rounded(color, 999) else rounded(Palette.SURFACE, 999, Palette.LIP)
+        isClickable = true
+        isSelected = selected
+        stateListAnimator = Anim.press()
+        contentDescription = "Filtro $text" + if (selected) ", elegido" else ""
+        val fg = if (selected) onColor else textColor
+        if (iconRes != null) addView(icon(iconRes, fg, 16), LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginEnd = dp(6) })
+        addView(label(text, 14f, fg, bold = true).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO })
+        setOnClickListener { onClick() }
+    }
+
+/**
+ * Barra de avance gordita con brillo arriba (como las de Duolingo). Se dibuja: no cambia de
+ * tamaño ni de texto.
+ */
+class ProgressPill(context: Context, private val fraction: Float, private val fill: Int, private val track: Int = Palette.LIP) : View(context) {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+
+    init {
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val h = height.toFloat()
+        val r = h / 2f
+        rect.set(0f, 0f, width.toFloat(), h)
+        paint.color = track
+        canvas.drawRoundRect(rect, r, r, paint)
+        val f = fraction.coerceIn(0f, 1f)
+        if (f <= 0f) return
+        rect.right = maxOf(h, width * f)
+        paint.color = fill
+        canvas.drawRoundRect(rect, r, r, paint)
+        if (h >= context.dp(8)) {
+            paint.color = 0x55FFFFFF
+            val pad = h * 0.28f
+            rect.set(pad + r * 0.4f, h * 0.2f, maxOf(pad + r, rect.right - pad - r * 0.4f), h * 0.2f + maxOf(2f, h * 0.22f))
+            canvas.drawRoundRect(rect, h * 0.12f, h * 0.12f, paint)
+        }
     }
 }
 

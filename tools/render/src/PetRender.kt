@@ -12,13 +12,13 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PetRender {
     @Test
     fun render() {
         val context = RuntimeEnvironment.getApplication()
-        val species = listOf("gato", "perro", "zorro", "rana", "conejo", "pollito", "oso", "panda", "pulpo", "dragon", "unicornio")
+        val species = listOf("bulla", "gato", "perro", "zorro", "rana", "conejo", "pollito", "oso", "panda", "pulpo", "dragon", "unicornio")
         val cell = 220
         val bitmap = Bitmap.createBitmap(cell * species.size, cell * 8, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

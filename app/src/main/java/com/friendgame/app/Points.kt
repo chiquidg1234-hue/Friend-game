@@ -357,6 +357,16 @@ object Points {
         unlock("custom")
     }
 
+    /**
+     * Terminaste un minijuego: de 1 a 5 puntos según el puntaje, como mucho 6 partidas con puntos
+     * al día (hasta 30). Devuelve cuántos ganaste (0 si ya llegaste al tope de hoy).
+     */
+    @Synchronized
+    fun onGamePlayed(score: Int): Int {
+        val points = (score / 10).coerceIn(1, 5)
+        return if (add(points, "game", 6)) points else 0
+    }
+
     fun onQuestDone() {
         add(Rule.QUEST_DONE)
     }

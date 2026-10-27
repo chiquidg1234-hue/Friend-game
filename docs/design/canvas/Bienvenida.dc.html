@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Bienvenida</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&amp;family=Nunito:wght@400;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#FF7AB8}a:hover{color:#FFC93C}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 40px 20px 28px; background: linear-gradient(180deg, #1E1240 0%, #150C2C 60%); color: #FFFFFF; font-family: Nunito, sans-serif; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; justify-content: center; position: relative; height: 200px">
+    <div style="position: absolute; top: 18px; left: 50%; margin-left: -84px; width: 168px; height: 168px; border-radius: 999px; background: radial-gradient(circle, rgba(61,187,245,.35), rgba(61,187,245,0) 70%)"></div>
+    <img src="/_blob/8ab34b398cc57879a810ee9732cef746" alt="Bulla saluda" style="width: 196px; height: 196px; position: relative">
+    <div style="position: absolute; top: 6px; right: 10px; padding: 10px 14px; border-radius: 18px 18px 18px 4px; background: #FFFFFF; color: #150C2C; font-weight: 800; font-size: 14px; box-shadow: 0 4px 0 #BDB2E6">¡Hola! Soy Bulla</div>
+  </div>
+  <h1 style="margin: 0; text-align: center; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 30px; line-height: 1.1">Hazle sonar el celular a tus amigos</h1>
+  <p style="margin: 0; text-align: center; font-size: 15px; color: #BDB2E6">Una bocina, un pato, una sirena… les llega al instante, aunque tengan la pantalla apagada.</p>
+  <label style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px">
+    <span style="font-weight: 800; font-size: 12px; letter-spacing: .08em; color: #BDB2E6">¿CÓMO TE LLAMAS?</span>
+    <input value="Robot" style="height: 56px; box-sizing: border-box; padding: 0 18px; border-radius: 18px; border: 2px solid #FF4FA3; background: #231848; color: #FFFFFF; font-family: Nunito, sans-serif; font-weight: 700; font-size: 18px; outline: none">
+  </label>
+  <span style="font-size: 13px; color: #BDB2E6">Es lo que verán tus amigos cuando les suene algo tuyo.</span>
+  <div style="display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: 20px; background: #231848; box-shadow: 0 4px 0 #3A2D6E">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3DDC97" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <b style="font-size: 13px">Cada quien manda en su celular.</b>
+      <span style="font-size: 13px; color: #BDB2E6">Solo te suenan los amigos que aceptes y siempre puedes detener, silenciar o bloquear.</span>
+    </div>
+  </div>
+  <div style="flex: 1"></div>
+  <a href="Sonar.dc.html" style="display: flex; align-items: center; justify-content: center; height: 58px; border-radius: 18px; background: #FF4FA3; box-shadow: 0 5px 0 #C22E78; color: #150C2C; font-family: Fredoka, sans-serif; font-weight: 700; font-size: 20px; text-decoration: none">Empezar</a>
+  <span style="text-align: center; font-size: 12px; color: #BDB2E6">Sin cuenta, sin número de teléfono y sin anuncios.</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

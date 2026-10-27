@@ -179,7 +179,7 @@ object Retos {
                 val group = Chats.group(reto.chat)
                 val info = Player.NowPlaying(
                     "reto-$id", reto.from, "Reto en $title", sound.label, sound.key, group?.id, retoId = id,
-                    loop = reto.kind == FASTEST,
+                    loop = reto.kind == FASTEST, vibe = sound.vibe,
                 )
                 Notifs.soundReceived(context, "⚡ Reto en $title", sound.label, canStop = true)
                 Player.play(context, Player.Source.Asset(sound.asset), info, incoming = true)
