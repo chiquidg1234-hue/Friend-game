@@ -16,7 +16,12 @@
     <!-- Leer el QR de invitación a un grupo y grabar audios propios. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Grabar la broma: la pantalla (con su servicio en primer plano), el micrófono y, en Android 8 y 9, guardar en la galería. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- Para actualizarse sola desde GitHub sin pasar por el navegador. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -24,6 +29,8 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -55,6 +62,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Mantiene la conexión para recibir en tiempo real los sonidos de los amigos que el usuario aceptó." />
         </service>
+
+        <!-- Graba la pantalla mientras haces la broma (la cámara va en una burbuja dentro de la app). -->
+        <service
+            android:name=".GrabacionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
+
+        <!-- Entrega a la app que elijas el video de la broma, solo lectura (Android 8 y 9 sin permiso de almacenamiento). -->
+        <provider
+            android:name=".ClipProvider"
+            android:authorities="${applicationId}.clips"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <receiver
             android:name=".BootReceiver"

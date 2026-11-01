@@ -59,7 +59,7 @@ import java.util.Date
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class MainActivity : Activity(), Store.Listener {
+class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private companion object {
         const val REQ_PICK_AUDIO = 10
@@ -67,6 +67,8 @@ class MainActivity : Activity(), Store.Listener {
         const val REQ_SCAN = 12
         const val REQ_MIC = 13
         const val REQ_TALK = 14
+        const val REQ_REC_PERMS = 15
+        const val REQ_PROJECTION = 16
 
         /** Tiempo durante el que se muestra el botón para detener el sonido que mandaste. */
         const val STOP_WINDOW_MS = 15_000L
@@ -204,6 +206,7 @@ class MainActivity : Activity(), Store.Listener {
         val fromLauncher = intent?.action == Intent.ACTION_MAIN && intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true
         Store.init(this)
         Notifs.createChannels(this)
+        recCamera = Store.recCamera
         goEdgeToEdge()
         if (savedInstanceState != null) {
             tab = Tab.entries.getOrNull(savedInstanceState.getInt(STATE_TAB)) ?: Tab.SOUND
@@ -289,6 +292,9 @@ class MainActivity : Activity(), Store.Listener {
         }
         render()
         ui.post(clock)
+        Grabacion.addListener(this)
+        syncRecording()
+        bubble?.resume()
         // Tras una actualización con la app abierta en segundo plano, se pregunta al volver.
         if (Store.myName.isNotBlank() && welcome == null && !Store.loudAnswered) askLoud()
         if (!BuildConfig.STORE_BUILD) Updater.check(this)
@@ -316,6 +322,10 @@ class MainActivity : Activity(), Store.Listener {
         // Android no deja usar el micrófono en segundo plano: la grabación se cancela.
         cancelRecording?.invoke()
         if (petRoomBuilt) petRoom.leave()
+        // La cámara no se puede usar en segundo plano: la burbuja se apaga (la pantalla se sigue grabando).
+        bubble?.pause()
+        clipSheet?.pause()
+        Grabacion.removeListener(this)
         super.onStop()
     }
 
@@ -355,6 +365,8 @@ class MainActivity : Activity(), Store.Listener {
             // Con candado el sonido no se corta, pero atrás tampoco saca de la pantalla.
             overlay.visibility == View.VISIBLE -> Player.stopByUser(this)
             upload != null -> upload?.close()
+            clipSheet != null -> clipSheet?.close()
+            recordSheet != null -> recordSheet?.close()
             games != null -> games?.back()
             searching && pages.isEmpty() && tab == Tab.SOUND -> closeSearch()
             pages.isNotEmpty() -> closePage()
@@ -375,7 +387,7 @@ class MainActivity : Activity(), Store.Listener {
      */
     private fun updateBackCallback() {
         if (Build.VERSION.SDK_INT < 33) return
-        val needed = welcome == null && (overlay.visibility == View.VISIBLE || upload != null || games != null || searching || pages.isNotEmpty() || tab != Tab.SOUND)
+        val needed = welcome == null && (overlay.visibility == View.VISIBLE || upload != null || games != null || recordSheet != null || clipSheet != null || searching || pages.isNotEmpty() || tab != Tab.SOUND)
         if (needed && backCallback == null) {
             val callback = OnBackInvokedCallback { handleBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
@@ -451,6 +463,14 @@ class MainActivity : Activity(), Store.Listener {
         overlay.setPadding(left, top, right, bottom)
         upload?.setPadding(left, top, right, maxOf(bottom, imeBottom))
         games?.setPadding(left, top, right, bottom)
+        recordSheet?.setPadding(left, top, right, bottom)
+        clipSheet?.setPadding(left, top, right, bottom)
+        (recBar?.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            if (params.topMargin != top + dp(8)) {
+                params.topMargin = top + dp(8)
+                recBar?.layoutParams = params
+            }
+        }
         bullaToast.topInset = top
         // Bulla asoma justo arriba de la barra de abajo.
         (peek.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
@@ -955,6 +975,8 @@ class MainActivity : Activity(), Store.Listener {
             addPowerButton(extras)
             add(extras, 10)
         }
+
+        if (!Grabacion.active) add(recordCard(), 12)
 
         val listening = target != null && listenMode
         val cooling = target != null && !listening && coolingDown()
@@ -3559,6 +3581,221 @@ class MainActivity : Activity(), Store.Listener {
         addFooter()
     }
 
+    // ------------------------------------------------------------------ Grabar la broma
+
+    /** «Graba tu broma» abierta (ver RecordStartSheet), o null. */
+    private var recordSheet: RecordStartSheet? = null
+    /** El video recién grabado, a la vista (ver ClipSheet), o null. */
+    private var clipSheet: ClipSheet? = null
+    /** Píldora roja de arriba y burbuja de la cámara mientras se graba. */
+    private var recBar: RecordingBar? = null
+    private var bubble: CameraBubble? = null
+    /**
+     * Lo elegido para la grabación: cámara ("front", "back", "off") y micrófono. Si la app se vuelve
+     * a abrir mientras graba, la burbuja vuelve con la cámara de la última vez.
+     */
+    private var recCamera = "front"
+    private var recMic = true
+
+    /** Tarjeta de Sonar para empezar a grabar. */
+    private fun recordCard(): View {
+        val card = Chunky(this, dp(4)).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(12), dp(16))
+            background = chunkyBackground(Palette.SURFACE, 20, strokeColor = Palette.LIP)
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Graba tu broma: tu pantalla y tu cámara, y voltea la cámara cuando quieras"
+            setOnClickListener { openRecordSheet() }
+        }
+        val badge = FrameLayout(this).apply { background = oval(Palette.DANGER) }
+        badge.addView(icon(R.drawable.ic_video, Palette.TEXT, 22), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        card.addView(badge, LinearLayout.LayoutParams(dp(44), dp(44)))
+        val texts = column()
+        texts.addView(label("Graba tu broma 🎬", 16f, bold = true), lp())
+        texts.addView(label("Tu pantalla + tu cámara. Voltéala cuando quieras.", 13f, Palette.SUB).apply {
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp(topDp = 2))
+        card.addView(texts, lp(0, WRAP, weight = 1f).apply {
+            marginStart = dp(12)
+            marginEnd = dp(8)
+        })
+        card.addView(icon(R.drawable.ic_chevron, Palette.SUB, 20), LinearLayout.LayoutParams(dp(20), dp(20)))
+        card.stateListAnimator = Anim.press()
+        return card
+    }
+
+    private fun openRecordSheet() {
+        if (recordSheet != null || Grabacion.active) return
+        if (Grabacion.consentIntent(this) == null) {
+            info("No se puede grabar", "Este celular no deja grabar la pantalla.")
+            return
+        }
+        val sheet = RecordStartSheet(
+            this,
+            onStart = { camera, mic -> startRecordingFlow(camera, mic) },
+            onClose = {
+                recordSheet = null
+                restoreShellAccessibility()
+                updateBackCallback()
+            },
+        )
+        recordSheet = sheet
+        root.addView(sheet, root.indexOfChild(overlay), FrameLayout.LayoutParams(MATCH, MATCH))
+        shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        applyInsets()
+        sheet.enter()
+        updateBackCallback()
+    }
+
+    private fun restoreShellAccessibility() {
+        if (overlay.visibility != View.VISIBLE && upload == null && games == null && recordSheet == null && clipSheet == null) {
+            shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+    }
+
+    /** Pide los permisos que hagan falta (cámara, micrófono y, en Android 8 y 9, almacenamiento). */
+    private fun startRecordingFlow(camera: String, mic: Boolean) {
+        recCamera = camera
+        recMic = mic
+        val needed = ArrayList<String>()
+        if (camera != "off" && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.CAMERA
+        if (mic && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) needed += Manifest.permission.RECORD_AUDIO
+        if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            needed += Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            needed += Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (needed.isEmpty()) askScreenCapture() else requestPermissions(needed.toTypedArray(), REQ_REC_PERMS)
+    }
+
+    /** Lo que falte se avisa y se sigue igual: sin cámara no hay burbuja, sin micrófono no hay sonido. */
+    private fun askScreenCapture() {
+        if (recCamera != "off" && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            recCamera = "off"
+            toast("Sin permiso de cámara: se graba solo la pantalla")
+        }
+        if (recMic && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            recMic = false
+            toast("Sin permiso de micrófono: el video va sin sonido")
+        }
+        val intent = Grabacion.consentIntent(this) ?: return
+        try {
+            startActivityForResult(intent, REQ_PROJECTION)
+        } catch (_: ActivityNotFoundException) {
+            info("No se puede grabar", "Este celular no deja grabar la pantalla.")
+        }
+    }
+
+    private fun onProjectionResult(resultCode: Int, data: Intent?) {
+        if (resultCode != RESULT_OK || data == null) {
+            toast("No se grabó: hace falta que Android deje grabar la pantalla")
+            return
+        }
+        val (width, height) = screenSize()
+        recordSheet?.close()
+        Grabacion.start(this, resultCode, data, width, height, resources.displayMetrics.densityDpi, recMic)
+        syncRecording()
+    }
+
+    /** Tamaño real de la pantalla (con las barras de Android), para que el video la cubra entera. */
+    private fun screenSize(): Pair<Int, Int> {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            return bounds.width() to bounds.height()
+        }
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+        return metrics.widthPixels to metrics.heightPixels
+    }
+
+    /** Si estaba grabando la última vez que se dibujó (para esconder o mostrar la tarjeta de Sonar). */
+    private var renderedRecording = false
+
+    override fun onRecordingChanged() {
+        syncRecording()
+        if (Grabacion.active != renderedRecording) {
+            renderedRecording = Grabacion.active
+            if (started) render()
+        }
+    }
+
+    /** Muestra u oculta la píldora y la burbuja según la grabación; al terminar, abre el video. */
+    private fun syncRecording() {
+        if (!::root.isInitialized) return
+        if (Grabacion.active) {
+            if (recBar == null) {
+                val bar = RecordingBar(this) { Grabacion.stop(this) }
+                recBar = bar
+                root.addView(bar, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                    topMargin = systemBars[1] + dp(8)
+                })
+                bar.announceForAccessibility("Grabando")
+            }
+            recBar?.refresh()
+            val cameraOk = checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            if (recCamera != "off" && cameraOk && bubble == null && Grabacion.state != Grabacion.State.SAVING) {
+                val view = CameraBubble(this, recCamera == "front") { toast(it) }
+                bubble = view
+                root.addView(view, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply {
+                    topMargin = systemBars[1] + dp(72)
+                    marginEnd = dp(12)
+                })
+                if (!started) view.pause()
+            }
+            if (Grabacion.state == Grabacion.State.SAVING) removeBubble()
+        } else {
+            recBar?.let { root.removeView(it) }
+            recBar = null
+            removeBubble()
+            Grabacion.problem?.let { problem ->
+                Grabacion.problem = null
+                info("No se guardó la grabación", problem)
+            }
+            val clip = Grabacion.finished
+            if (clip != null && started && !isFinishing) {
+                Grabacion.finished = null
+                showClip(clip)
+            }
+        }
+    }
+
+    private fun removeBubble() {
+        bubble?.let { root.removeView(it) }
+        bubble = null
+    }
+
+    private fun showClip(clip: Grabacion.Clip) {
+        clipSheet?.close()
+        val sheet = ClipSheet(
+            this, clip,
+            onShare = { startSafely(Grabacion.shareIntent(clip)) },
+            onDelete = {
+                confirm("¿Borrar este video?", if (clip.inGallery) "Se borra también de tu galería." else null) {
+                    if (Grabacion.delete(this, clip)) toast("🗑️ Video borrado") else toast("No se pudo borrar: búscalo en tu galería")
+                    clipSheet?.close()
+                }
+            },
+            onAgain = { openRecordSheet() },
+            onClose = {
+                clipSheet = null
+                restoreShellAccessibility()
+                updateBackCallback()
+            },
+        )
+        clipSheet = sheet
+        root.addView(sheet, root.indexOfChild(overlay), FrameLayout.LayoutParams(MATCH, MATCH))
+        shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        applyInsets()
+        sheet.enter()
+        updateBackCallback()
+        if (Anim.enabled()) Anim.confetti(root)
+    }
+
     // ------------------------------------------------------------------ Minijuegos
 
     private var games: GamesScreen? = null
@@ -5083,11 +5320,17 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun removeFriend(friend: Friend) {
+        // El adiós se arma (y se cifra) antes de borrarlo: después ya no está su clave.
+        val topic = Relay.topicFor(friend.code)
+        val goodbye = if (friend.state == Friend.BLOCKED) null else try {
+            Relay.outgoing(topic, Relay.payload("bye"))
+        } catch (_: Exception) {
+            null
+        }
         Store.removeFriend(friend.code)
         Player.stopIfFrom(friend.code)
-        if (friend.state == Friend.BLOCKED) return
-        val payload = Relay.payload("bye")
-        runInBackground({ Relay.publish(friend.code, payload) }) {}
+        if (goodbye == null) return
+        runInBackground({ Relay.publishTopic(topic, goodbye, raw = true) }) {}
     }
 
     private fun sendRequest(code: String) {
@@ -5244,6 +5487,10 @@ class MainActivity : Activity(), Store.Listener {
             else confirmJoin(invite)
             return
         }
+        if (requestCode == REQ_PROJECTION) {
+            onProjectionResult(resultCode, data)
+            return
+        }
         if (requestCode != REQ_PICK_AUDIO || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         runInBackground({
@@ -5332,6 +5579,10 @@ class MainActivity : Activity(), Store.Listener {
                 else "Sin permiso de micrófono no te puede escuchar. Prueba con las frases de abajo.",
             )
         }
+        if (requestCode == REQ_REC_PERMS) {
+            askScreenCapture()
+            return
+        }
         if (requestCode == REQ_MIC) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) recordAudio()
             else toast("Sin permiso de micrófono no se puede grabar. Puedes subir un archivo.")
@@ -5410,6 +5661,17 @@ class MainActivity : Activity(), Store.Listener {
     }
 
     private fun askBatteryExemption() {
+        // En Google Play no se pide la excepción directo (su política la limita a pocos casos): se
+        // abre la lista de Android y la persona elige Friend Game.
+        if (BuildConfig.STORE_BUILD) {
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                toast("Busca Friend Game y elige «No optimizar» (o «Sin restricciones»)")
+            } catch (_: Exception) {
+                toast("Búscalo en Ajustes → Batería → Friend Game → Sin restricciones.")
+            }
+            return
+        }
         try {
             startActivity(
                 Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
@@ -5450,10 +5712,18 @@ class MainActivity : Activity(), Store.Listener {
         ) {
             // Los avisos se arman antes de cambiar el código: llevan el código viejo, que es el
             // que conocen tus amigos y los grupos.
-            val goodbyes = Store.friends()
+            // Se cifran ahora, con las claves de este código (después del cambio ya no existen).
+            val goodbyes = (Store.friends()
                 .filter { it.state == Friend.FRIEND || it.state == Friend.OUTGOING }
                 .map { Relay.topicFor(it.code) to Relay.payload("bye") } +
-                Store.groups().map { Groups.goodbye(it) }
+                Store.groups().map { Groups.goodbye(it) })
+                .mapNotNull { (topic, payload) ->
+                    try {
+                        topic to Relay.outgoing(topic, payload)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
             Player.stop()
             Store.resetCode()
             Points.clearScores()
@@ -5464,7 +5734,7 @@ class MainActivity : Activity(), Store.Listener {
             runInBackground({
                 goodbyes.forEach { (topic, payload) ->
                     try {
-                        Relay.publishTopic(topic, payload)
+                        Relay.publishTopic(topic, payload, raw = true)
                     } catch (_: Exception) {
                     }
                 }

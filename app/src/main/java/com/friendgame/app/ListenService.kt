@@ -254,7 +254,7 @@ class ListenService : Service() {
 
     private fun handleMessage(myCode: String, event: JSONObject) {
         if (!Store.markProcessed(event.optString("id"))) return
-        val payload = try {
+        var payload = try {
             JSONObject(event.optString("message"))
         } catch (_: JSONException) {
             return
@@ -262,13 +262,49 @@ class ListenService : Service() {
         if (payload.optInt("fg") != Relay.PROTOCOL_VERSION) return
         val from = Codes.normalize(payload.optString("from")) ?: return
         if (from == myCode) return
-        val name = payload.optString("name").trim().take(24).ifEmpty { "Alguien" }
         val topic = event.optString("topic")
         if (topic.startsWith(Relay.GROUP_PREFIX)) {
+            val name = payload.optString("name").trim().take(24).ifEmpty { "Alguien" }
             val group = Store.group(topic.removePrefix(Relay.GROUP_PREFIX)) ?: return
             handleGroupMessage(group, from, name, payload, event)
             return
         }
+        // Canal personal: lo de un amigo con clave llega cifrado (ver Cifrado).
+        var plain = true
+        if (payload.optString("t") == Cifrado.TYPE) {
+            payload = unseal(myCode, from, payload) ?: return
+            plain = false
+        } else if (Store.friend(from)?.sealed == true && payload.optString("t") !in Cifrado.PLAIN_OK) {
+            // Ese amigo ya cifra: algo sin cifrar a su nombre es de otra persona.
+            return
+        }
+        val name = payload.optString("name").trim().take(24).ifEmpty { "Alguien" }
+        handlePersonal(myCode, from, name, payload, event)
+        // Después de procesarlo (la solicitud crea al amigo), se aprende su clave si no la teníamos.
+        if (plain) Cifrado.validPublic(payload.optString("pk"))?.let { Store.learnKey(from, it) }
+    }
+
+    /**
+     * Abre un mensaje cifrado de [from]. La primera vez puede traer la clave del amigo (si aún no la
+     * conocíamos); después solo vale la que ya teníamos. Un sobre repetido (reenviado) no se abre.
+     */
+    private fun unseal(myCode: String, from: String, envelope: JSONObject): JSONObject? {
+        val friend = Store.friend(from) ?: return null
+        if (friend.state == Friend.BLOCKED) return null
+        val pk = friend.pk.ifEmpty { Cifrado.validPublic(envelope.optString("pk")) ?: return null }
+        val inner = try {
+            Cifrado.open(Cifrado.sharedKey(Store.myKeys.second, pk, myCode, from), from, myCode, envelope)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        if (inner.optInt("fg") != Relay.PROTOCOL_VERSION) return null
+        if (!Store.markNonce(envelope.optString("n").take(24))) return null
+        if (friend.pk.isEmpty()) Store.learnKey(from, pk)
+        Store.markSealed(from)
+        return inner
+    }
+
+    private fun handlePersonal(myCode: String, from: String, name: String, payload: JSONObject, event: JSONObject) {
         val friend = Store.friend(from)?.takeIf { it.state == Friend.FRIEND }
         if (friend != null) {
             Points.updateScore(from, friend.name, payload)

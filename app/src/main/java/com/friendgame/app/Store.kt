@@ -13,6 +13,10 @@ data class Friend(
     val name: String,
     val state: String,
     val muted: Boolean = false,
+    /** Su clave pública para el cifrado de punta a punta (ver Cifrado), o "" si aún no llega. */
+    val pk: String = "",
+    /** Ya mandó mensajes cifrados: desde ahora se ignora lo que llegue a su nombre sin cifrar. */
+    val sealed: Boolean = false,
 ) {
     companion object {
         /** Ya se aceptaron mutuamente: se pueden mandar sonidos. */
@@ -215,6 +219,9 @@ object Store {
             .putString("seen_ids", "")
             .putString("retos", "[]")
             .putString("locks", "[]")
+            // Código nuevo, claves nuevas: lo anterior no se puede asociar al código nuevo.
+            .remove("e2e_pub")
+            .remove("e2e_priv")
             .apply()
         chatPrefs.edit().clear().apply()
         notifyChanged()
@@ -241,6 +248,19 @@ object Store {
         set(value) {
             prefs.edit().putBoolean("receiving", value).apply()
             notifyChanged()
+        }
+
+    /** Grabar la broma: cámara de la burbuja ("front", "back" u "off") y si se graba el micrófono. */
+    var recCamera: String
+        get() = prefs.getString("rec_camera", "front") ?: "front"
+        set(value) {
+            prefs.edit().putString("rec_camera", value).apply()
+        }
+
+    var recMic: Boolean
+        get() = prefs.getBoolean("rec_mic", true)
+        set(value) {
+            prefs.edit().putBoolean("rec_mic", value).apply()
         }
 
     /**
@@ -290,6 +310,19 @@ object Store {
             prefs.edit().putLong("last_update_check", value).apply()
         }
 
+    /**
+     * Sobres cifrados ya abiertos (su nonce): uno reenviado tal cual por otra persona no se vuelve a
+     * abrir. Lista aparte y más larga que la de mensajes.
+     */
+    @Synchronized
+    fun markNonce(nonce: String): Boolean {
+        if (nonce.isEmpty()) return false
+        val seen = (prefs.getString("seen_nonces", "") ?: "").split(',').filter { it.isNotEmpty() }
+        if (nonce in seen) return false
+        prefs.edit().putString("seen_nonces", (seen + nonce).takeLast(400).joinToString(",")).apply()
+        return true
+    }
+
     /** Devuelve false si el mensaje ya se había procesado (evita repetir sonidos). */
     @Synchronized
     fun markProcessed(id: String): Boolean {
@@ -313,16 +346,50 @@ object Store {
                 name = o.optString("name"),
                 state = o.optString("state", Friend.FRIEND),
                 muted = o.optBoolean("muted", false),
+                pk = o.optString("pk", ""),
+                sealed = o.optBoolean("sealed", false),
             )
         }
     }
 
     fun friend(code: String): Friend? = friends().firstOrNull { it.code == code }
 
+    /** Guarda un amigo. Si no trae clave, conserva la que ya tenía (la primera que llegó es la que vale). */
     @Synchronized
     fun putFriend(friend: Friend) {
-        saveFriends(friends().filter { it.code != friend.code } + friend)
+        val all = friends()
+        val old = all.firstOrNull { it.code == friend.code }
+        val merged = if (old != null && friend.pk.isEmpty()) friend.copy(pk = old.pk, sealed = old.sealed || friend.sealed) else friend
+        saveFriends(all.filter { it.code != friend.code } + merged)
     }
+
+    /** Aprende la clave pública de alguien que ya está en la lista, solo si todavía no tenía una. */
+    @Synchronized
+    fun learnKey(code: String, pk: String): Boolean {
+        val all = friends()
+        val old = all.firstOrNull { it.code == code } ?: return false
+        if (old.pk.isNotEmpty()) return old.pk == pk
+        saveFriends(all.map { if (it.code == code) it.copy(pk = pk) else it })
+        return true
+    }
+
+    @Synchronized
+    fun markSealed(code: String) {
+        val all = friends()
+        if (all.none { it.code == code && !it.sealed }) return
+        saveFriends(all.map { if (it.code == code) it.copy(sealed = true) else it })
+    }
+
+    /** Mi par de claves para el cifrado de punta a punta: (pública, privada). Se crea la primera vez. */
+    val myKeys: Pair<String, String>
+        @Synchronized get() {
+            val pub = prefs.getString("e2e_pub", null)
+            val priv = prefs.getString("e2e_priv", null)
+            if (pub != null && priv != null) return pub to priv
+            val pair = Cifrado.newKeyPair()
+            prefs.edit().putString("e2e_pub", pair.first).putString("e2e_priv", pair.second).apply()
+            return pair
+        }
 
     @Synchronized
     fun removeFriend(code: String) {
@@ -340,6 +407,8 @@ object Store {
                     .put("name", it.name)
                     .put("state", it.state)
                     .put("muted", it.muted)
+                    .put("pk", it.pk)
+                    .put("sealed", it.sealed)
             )
         }
         prefs.edit().putString("friends", array.toString()).apply()

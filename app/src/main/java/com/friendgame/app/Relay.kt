@@ -58,9 +58,34 @@ object Relay {
 
     fun publish(toCode: String, payload: JSONObject) = publishTopic(topicFor(toCode), payload)
 
+    /**
+     * Lo que de verdad sale hacia [topic]. En el canal personal de un amigo cuya clave ya
+     * conocemos, el mensaje va cifrado de punta a punta (ver Cifrado); si no, va como siempre pero
+     * con nuestra clave pública (`pk`), para que la próxima vez sí se pueda cifrar.
+     */
+    fun outgoing(topic: String, payload: JSONObject): JSONObject {
+        if (topic.startsWith(GROUP_PREFIX) || !topic.startsWith("fgame-")) return payload
+        val to = Codes.normalize(topic.removePrefix("fgame-")) ?: return payload
+        val (myPublic, myPrivate) = Store.myKeys
+        val friend = Store.friend(to)
+        val type = payload.optString("t")
+        if (friend != null && friend.pk.isNotEmpty() && type !in Cifrado.PLAIN_OK && type != Cifrado.TYPE) {
+            try {
+                val key = Cifrado.sharedKey(myPrivate, friend.pk, Store.myCode, to)
+                return Cifrado.seal(key, Store.myCode, to, payload).put("pk", myPublic)
+            } catch (_: Exception) {
+                // Clave rota: mejor no mandar nada sin cifrar a quien ya cifra.
+                throw IOException("No se pudo cifrar el mensaje")
+            }
+        }
+        return JSONObject(payload.toString()).put("pk", myPublic)
+    }
+
     fun publishFile(toCode: String, payload: JSONObject, file: File) = publishFileTopic(topicFor(toCode), payload, file)
 
-    fun publishTopic(topic: String, payload: JSONObject) {
+    /** [raw]: el mensaje ya pasó por [outgoing] (por ejemplo, armado antes de borrar al amigo). */
+    fun publishTopic(topic: String, payload: JSONObject, raw: Boolean = false) {
+        val body = (if (raw) payload else outgoing(topic, payload)).toString().toByteArray(Charsets.UTF_8)
         val conn = URL("${baseUrl()}/$topic").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
@@ -69,7 +94,6 @@ object Relay {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
             conn.setRequestProperty("User-Agent", "FriendGame")
-            val body = payload.toString().toByteArray(Charsets.UTF_8)
             conn.setFixedLengthStreamingMode(body.size)
             conn.outputStream.use { it.write(body) }
             finish(conn)
@@ -95,6 +119,7 @@ object Relay {
 
     /** Mensaje con un adjunto que ya está en el servidor ([url], de [publishFileTopicForUrl]). */
     fun publishAttachTopic(topic: String, payload: JSONObject, url: String, filename: String) {
+        val body = outgoing(topic, payload).toString().toByteArray(Charsets.UTF_8)
         val conn = URL("${baseUrl()}/$topic").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
@@ -105,7 +130,6 @@ object Relay {
             conn.setRequestProperty("User-Agent", "FriendGame")
             conn.setRequestProperty("X-Attach", url)
             conn.setRequestProperty("X-Filename", filename)
-            val body = payload.toString().toByteArray(Charsets.UTF_8)
             conn.setFixedLengthStreamingMode(body.size)
             conn.outputStream.use { it.write(body) }
             finish(conn)
@@ -153,7 +177,7 @@ object Relay {
     }
 
     private fun uploadFile(topic: String, payload: JSONObject, file: File): String {
-        val message = URLEncoder.encode(payload.toString(), "UTF-8")
+        val message = URLEncoder.encode(outgoing(topic, payload).toString(), "UTF-8")
         val filename = "sonido." + file.extension.ifEmpty { "mp3" }
         val url = URL("${baseUrl()}/$topic?filename=$filename&message=$message")
         val conn = url.openConnection() as HttpURLConnection

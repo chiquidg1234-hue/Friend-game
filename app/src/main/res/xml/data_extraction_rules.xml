@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copia en la nube y paso a un celular nuevo (Android 12 o más): se copian amigos, grupos, chats y
+  claves (así el celular nuevo sigue siendo "tú"), pero no los videos de bromas que quedaron dentro
+  de la app: pesan mucho y ya están en la galería.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="clips/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="clips/" />
+    </device-transfer>
+</data-extraction-rules>

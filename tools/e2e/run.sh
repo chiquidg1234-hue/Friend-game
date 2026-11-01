@@ -612,6 +612,71 @@ open_settings
 check "Ajustes de animación y fondo" $UI see "Reducir movimiento"
 check "El fondo reacciona a los sonidos" $UI see "El fondo reacciona a los sonidos"
 
+echo "== 9o. Grabar la broma: pantalla + cámara que se voltea"
+check "Pestaña Sonar" $UI tab Sonar
+check "Abre «Graba tu broma»" $UI tap "Graba tu broma"
+check "Explica la burbuja de la cámara" $UI wait "Tu cámara en una burbuja" 10
+check "Explica que se voltea la cámara" $UI see "Voltea la cámara"
+check "Recuerda grabar solo a quien esté de acuerdo" $UI see "solo si están de acuerdo"
+shot "grabar-broma"
+# El permiso de grabar la pantalla se da por adb (si Android igual muestra su aviso, se acepta).
+adb shell appops set "$PKG" PROJECT_MEDIA allow >/dev/null 2>&1 || true
+check "Empieza a grabar" $UI tap "Empezar a grabar"
+for answer in "Start now" "Start" "Start recording" "Empezar ahora" "Comenzar"; do $UI tapexact "$answer" >/dev/null 2>&1 && break; done
+soft "Graba: aparece la píldora REC con Detener" $UI wait "Detener y guardar la grabación" 20
+if $UI see "Detener y guardar la grabación" >/dev/null 2>&1; then
+  check "El servicio de grabación está en primer plano" sh -c "adb shell dumpsys activity services $PKG | grep -q GrabacionService"
+  # El emulador no tiene cámara: la burbuja lo dice y la pantalla se sigue grabando.
+  soft "La burbuja de la cámara se puede voltear" $UI see "Voltear a la cámara"
+  shot "grabando"
+  sleep 4
+  check "Detiene y guarda" $UI tap "Detener y guardar la grabación"
+  check "Muestra el video grabado" $UI wait "Quedó grabada" 25
+  check "Se puede compartir" $UI see "Compartir"
+  check "Quedó en la galería" sh -c "adb shell content query --uri content://media/external/video/media --projection _display_name | grep -q broma-"
+  shot "broma-grabada"
+  check "Borra el video" $UI tapexact "Borrar"
+  $UI tapexact "Sí" >/dev/null 2>&1 || $UI tapexact "Borrar" >/dev/null 2>&1 || true
+  check "Ya no está en la galería" sh -c "sleep 2; ! adb shell content query --uri content://media/external/video/media --projection _display_name | grep -q broma-"
+else
+  adb shell input keyevent KEYCODE_BACK
+  sleep 1
+fi
+$UI tab Sonar >/dev/null 2>&1 || true
+
+echo "== 9p. Cifrado de punta a punta con una amiga nueva (Eva)"
+SOBRE="python3 $HERE/sobre.py"
+EVA=$(new_code)
+read -r EVA_PUB EVA_PRIV < <($SOBRE keygen)
+curl -s -N "$SERVER/fgame-$EVA/json" > "$OUT/inbox-eva.jsonl" &
+sleep 2
+publish "$MYCODE" "{\"fg\":1,\"t\":\"req\",\"from\":\"$EVA\",\"name\":\"Eva\",\"pk\":\"$EVA_PUB\"}" >/dev/null
+check "Aparece la solicitud de Eva" $UI wait "Eva quiere ser tu amigo" 30
+check "Pestaña Amigos" $UI tab Amigos
+check "Acepta a Eva" $UI tap "Aceptar"
+ACC=$($INBOX "$OUT/inbox-eva.jsonl" acc from="$MYCODE" --wait 20)
+APP_PUB=$(echo "$ACC" | python3 -c 'import json, sys; print(json.loads(sys.stdin.read() or "{}").get("pk", ""))')
+check "La aceptación lleva la clave pública de la app" test -n "$APP_PUB"
+ENV=$($SOBRE seal "$EVA_PRIV" "$APP_PUB" "$EVA" "$MYCODE" "{\"fg\":1,\"t\":\"msg\",\"from\":\"$EVA\",\"name\":\"Eva\",\"id\":\"m1cifrado1\",\"text\":\"Secreto cifrado\"}")
+publish "$MYCODE" "$ENV" >/dev/null
+check "Pestaña Chats" $UI tab Chats
+check "Abre el chat con Eva" $UI tap "Chat con Eva"
+check "Muestra el mensaje que llegó cifrado" $UI wait "Secreto cifrado" 20
+# El mismo sobre reenviado por otra persona no se vuelve a mostrar, y algo sin cifrar a nombre de Eva se ignora.
+publish "$MYCODE" "$ENV" >/dev/null
+publish "$MYCODE" "{\"fg\":1,\"t\":\"msg\",\"from\":\"$EVA\",\"name\":\"Eva\",\"id\":\"m2falso1234\",\"text\":\"Mensaje falso\"}" >/dev/null
+sleep 8
+check "Ignora el mensaje sin cifrar a nombre de Eva" sh -c "! $UI find 'Mensaje falso'"
+$UI tapclass android.widget.EditText
+adb shell input text "Oculto"
+check "Botón Enviar" $UI tap "Enviar mensaje"
+check "A Eva le llega cifrado y se puede abrir" $SOBRE inbox "$OUT/inbox-eva.jsonl" "$EVA_PRIV" "$EVA" msg text=Oculto --wait 20
+check "Nada del chat sale sin cifrar" sh -c "[ \"\$($INBOX "$OUT/inbox-eva.jsonl" msg --count)\" = 0 ]"
+shot "chat-cifrado"
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+$UI tab Sonar >/dev/null 2>&1 || true
+
 echo "== 10. Pausar la recepción"
 open_settings
 $UI top

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copia de seguridad (Android 11 o menos): todo menos los videos de bromas a medio guardar y la caché. -->
+<full-backup-content>
+    <exclude domain="file" path="clips/" />
+</full-backup-content>
