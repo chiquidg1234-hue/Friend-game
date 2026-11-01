@@ -122,7 +122,14 @@ class ScanActivity : Activity(), SurfaceHolder.Callback, Camera.PreviewCallback 
             } ?: 0
             Camera.getCameraInfo(id, info)
             val cam = Camera.open(id)
-            cam.setDisplayOrientation(info.orientation % 360) // la pantalla está fija en vertical
+            // Vertical en los teléfonos; en tablets Android 16 puede ignorar el bloqueo y girar.
+            val screen = when (if (android.os.Build.VERSION.SDK_INT >= 30) display?.rotation else @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation) {
+                android.view.Surface.ROTATION_90 -> 90
+                android.view.Surface.ROTATION_180 -> 180
+                android.view.Surface.ROTATION_270 -> 270
+                else -> 0
+            }
+            cam.setDisplayOrientation((info.orientation - screen + 360) % 360)
             val params = cam.parameters
             val size = params.supportedPreviewSizes.minByOrNull {
                 Math.abs(it.width * it.height - 1280 * 720)

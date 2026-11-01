@@ -26,6 +26,10 @@ Las políticas de Google cambian seguido: antes de enviar la app, revisa las pá
 | Derechos de autor: aviso y retiro, reincidentes | ✅ Explicado en los términos (punto 7) y aplicado con la lista de retiro |
 | Premios al azar (cofre del día) | ✅ Gratis y sin compras: no es una «caja de botín» pagada |
 | Notificaciones con medida | ✅ A lo más un recordatorio al día, de 18:00 a 21:00, y se apaga en Ajustes |
+| Grabar la pantalla con permiso y aviso | ✅ «Graba tu broma» usa MediaProjection: Android pide permiso cada vez, hay aviso fijo con Detener y el video queda en el celular |
+| Servicios en primer plano declarados por tipo | ✅ `specialUse` (recibir sonidos) y `mediaProjection` + `microphone` (grabar la broma) |
+| Sin `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` en Play | ✅ La versión `play` abre la lista de batería de Android en vez de pedir la excepción |
+| Cifrado de los mensajes | ✅ En tránsito (HTTPS) y, entre amigos, de punta a punta (ver `docs/SEGURIDAD.md`) |
 | Ícono 512 × 512 y gráfico 1024 × 500 | ✅ `store/icono-512.png` y `store/grafico-1024x500.png`; textos de la ficha en `store/ficha.md` |
 
 ### Las dos versiones de la app
@@ -139,10 +143,12 @@ En el menú **Política → Contenido de la app**:
 - **Público objetivo**: **13 años o más** (no marques menores de 13: eso activa la política de Familias).
 - **Seguridad de los datos**:
   - Se **recopilan y comparten**: nombre (nombre visible), mensajes (chat), audio (audios propios y los que compartes en la Sonoteca) y otro contenido (puntos, avatar, mascota, ❤️ y usos de tus sonidos). Para la **funcionalidad de la app**.
-  - Los datos viajan **cifrados en tránsito**.
+  - Los datos viajan **cifrados en tránsito**. Además, entre amigos van cifrados de punta a punta.
+  - **Fotos y videos:** no se recopilan. Los videos de «Graba tu broma» quedan en el celular y solo salen si la persona los comparte con otra app. La cámara se usa en el momento (QR y la burbuja de la grabación) y no se guarda ni se manda.
   - No hay forma de pedir el borrado en un servidor porque no hay cuentas; se borra con **Cambiar mi código** o desinstalando. Indícalo así.
   - Menciona que pasa por **ntfy.sh**, un servicio de terceros.
 - **Servicio en primer plano**: la app usa uno de tipo `specialUse` para recibir sonidos en tiempo real. Explica: «Mantiene la conexión para que los sonidos que mandan los amigos aceptados suenen al instante, aunque la pantalla esté apagada». Graba un video corto mostrando el aviso fijo y un sonido que llega con la pantalla apagada.
+- **Servicio en primer plano de tipo `mediaProjection` y `microphone`** (Play lo pide para cada tipo): «Graba tu broma» graba la pantalla y, si la persona lo deja activado, el micrófono, solo después de tocar «Empezar a grabar» y aceptar el aviso de Android. Hay un aviso fijo con «Detener y guardar» y el video queda en la galería del celular. Graba un video corto: Sonar → Graba tu broma → Empezar a grabar → aviso de Android → la píldora REC y la burbuja de la cámara → Detener → el video guardado.
 - **Alarmas exactas**: explica que los retos suenan a la hora exacta en todos los celulares.
 
 ### Paso 8. Ficha de la tienda

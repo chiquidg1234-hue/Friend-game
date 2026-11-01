@@ -43,7 +43,10 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Ui.kt` | `Palette` (colores del diseño 2.0 y sus labios 3D), `Fonts`, piezas de interfaz: `button` (con labio, `Chunky`), `card`, `soundCard` (tarjeta grande de sonido con categoría y ▶), `filterChip`, `ProgressPill`, `label`, `title`… También `TimeBar` y `LiveText`. |
 | `Store.kt` | Todo lo guardado (SharedPreferences): amigos, grupos, historial, audios propios, chats (archivo aparte), retos y candados. Avisa los cambios con `notifyChanged()`. |
 | `ListenService.kt` | Servicio en primer plano. Mantiene la conexión con ntfy, procesa cada mensaje (`handleMessage`, `handleGroupMessage`) y dispara retos atrasados en cada keepalive. |
-| `Relay.kt` | Publica en ntfy. `payload(tipo)` arma el mensaje base, con puntos, avatar y mascota; `signed()` arma los mensajes del admin de un grupo, firmados con ECDSA. |
+| `Relay.kt` | Publica en ntfy. `payload(tipo)` arma el mensaje base, con puntos, avatar y mascota; `signed()` arma los mensajes del admin de un grupo, firmados con ECDSA. `outgoing()` cifra lo que va al canal personal de un amigo con clave (o le agrega nuestra `pk`). |
+| `Cifrado.kt` | Cifrado de punta a punta entre amigos: ECDH P-256 → HKDF-SHA256 → AES-256-GCM (`seal`, `open`). Núcleo sin Android, igual a `tools/e2e/sobre.py`. Ver `docs/SEGURIDAD.md`. |
+| `Grabacion.kt` | «Graba tu broma»: estado de la grabación (`Grabacion`), el servicio que graba la pantalla con MediaProjection y el micrófono (`GrabacionService`, tipo `mediaProjection|microphone`), guardar en la galería y `ClipProvider` para compartir. |
+| `GrabacionUi.kt` | La burbuja de la cámara (`CameraBubble`: se arrastra, se toca para cambiar el tamaño, 🔄 voltea frontal/trasera), la píldora REC (`RecordingBar`), «Graba tu broma» (`RecordStartSheet`) y el video terminado (`ClipSheet`). |
 | `Player.kt` | Un sonido a la vez: tope de 10 s, altavoz principal (`setPreferredDevice`) y volumen de alarma al máximo que después devuelve (`restoreVolume`), repetir (`loop`), empezar desde (`startMs`) y `stopByUser` (respeta el candado y anota el tiempo en los retos). |
 | `Chats.kt` | Chat por amigo (`f:código`) o por grupo (`g:id`). |
 | `Retos.kt` | Retos: crear, recibir, alarmas (AlarmManager exacta, o aproximada si no hay permiso), sonar, tabla de tiempos y `RetoReceiver`. |
@@ -72,7 +75,9 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 
 ## Protocolo (JSON en el cuerpo de cada mensaje de ntfy)
 
-Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "wid":"AAAA-S", "lvl":..., "av":emoji, "ac":color, "pet":"especie:etapa"}`.
+Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "wid":"AAAA-S", "lvl":..., "av":emoji, "ac":color, "pet":"especie:etapa"}`. En el canal personal, lo que va sin cifrar lleva además `pk` (nuestra clave pública).
+
+**Cifrado entre amigos:** a un amigo cuya `pk` conocemos, todo (salvo `req`/`acc`) va como `{"fg":1,"t":"enc","from":código,"pk":…,"n":nonce,"c":cifrado}`, y adentro va el mensaje normal. Desde el primer sobre de un amigo, lo que llegue sin cifrar a su nombre se ignora. La primera clave que llega es la que vale.
 
 | Tipo | Canal | Campos | Qué hace |
 | --- | --- | --- | --- |
@@ -85,6 +90,7 @@ Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "w
 | `retono` | igual | `id` | El creador cancela el reto |
 | `lockreq` / `lockacc` / `lockno` | personal | `id`, `min` | Candado: propuesta, aceptación, rechazo o cancelación |
 | `pts` | personal o grupo | — | Solo actualiza puntos, avatar y mascota |
+| `enc` | personal | `pk`, `n`, `c` | Sobre cifrado de punta a punta con cualquiera de los otros tipos adentro |
 | `sndpub` | personal o grupo | `id`, `label`, `e`, `st`, `by`, `byn`, `g?` + adjunto | Comparte un sonido en la Sonoteca (`by`: el autor original) |
 | `sndfan` | personal | `id`, `k` (`like`/`use`) | Al autor: a alguien le gustó o usa su sonido |
 | `gjoin` / `gleave` | grupo | `g` | Entrar o salir de un grupo |
@@ -122,6 +128,7 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 - **Envíos:** un sonido a la vez, con 2,5 s de recarga y como mucho 4 cada 20 s al mismo destino (`MainActivity.sendWait`). No lo quites: evita colas de envíos y sonidos que el otro celular igual descartaría.
 - **Animaciones:** cortas y sobre vistas (`Anim`); lo que se mueve todo el rato se dibuja en una vista propia (`PetView`, `SceneView`, `PulseRings`, `TimeBar`, los juegos). Respeta `Anim.enabled()`: la prueba en emulador corre sin animaciones, y es el «prefers-reduced-motion» de Android. Nada se crea dentro de `onDraw`, y lo que está quieto no se redibuja (gama media: Honor X7c).
 - **Diseño 2.0 (estilo Duolingo, oscuro):** botones con labio 3D (`button`), tarjetas con labio (`card`), Fredoka y Nunito, colores de `Palette` y de cada categoría (`Vibe.color`/`lip`). Bulla aparece en la intro, las pantallas vacías (`bullaSays`), los avisos, al mandar (`peek`) y al recibir. Los cambios visuales primero en el lienzo y después en el código.
+- **Grabar la broma:** la cámara va en una burbuja dentro de la app (no en una ventana flotante, que Play mira con lupa), así sale en la grabación de pantalla. Siempre con el permiso de Android cada vez, aviso fijo con Detener y el video solo en el celular. No dar puntos por grabar.
 - **Modo escuchar:** en Sonar, «Escuchar» hace que tocar un sonido lo escuches tú (`Player.preview`) y «Como le llega a…» lo hace sonar como a tu amigo (`NowPlaying.trialFor`: pantalla completa, alarma, poder listo) sin mandarlo.
 - **Enganche sano:** nada se compra con dinero, perder una racha no quita nada, a lo más un recordatorio al día (18:00–21:00) y se apaga en Ajustes, sin cuentas regresivas falsas. Lo exige Google Play y el público es de 13+.
 - **Secretos:**

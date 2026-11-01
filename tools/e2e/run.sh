@@ -662,6 +662,7 @@ publish "$MYCODE" "$ENV" >/dev/null
 check "Pestaña Chats" $UI tab Chats
 check "Abre el chat con Eva" $UI tap "Chat con Eva"
 check "Muestra el mensaje que llegó cifrado" $UI wait "Secreto cifrado" 20
+check "El chat avisa que va cifrado de punta a punta" $UI wait "Cifrado de punta a punta" 5
 # El mismo sobre reenviado por otra persona no se vuelve a mostrar, y algo sin cifrar a nombre de Eva se ignora.
 publish "$MYCODE" "$ENV" >/dev/null
 publish "$MYCODE" "{\"fg\":1,\"t\":\"msg\",\"from\":\"$EVA\",\"name\":\"Eva\",\"id\":\"m2falso1234\",\"text\":\"Mensaje falso\"}" >/dev/null

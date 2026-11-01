@@ -87,10 +87,10 @@ class CameraBubble(context: Context, startFront: Boolean, private val onProblem:
         texture.surfaceTextureListener = this
         addView(lens)
 
-        flip = context.iconButton(R.drawable.ic_flip, flipDescription(), Palette.ACCENT, Palette.INK, 40) { toggleCamera() }.apply {
+        flip = context.iconButton(R.drawable.ic_flip, flipDescription(), Palette.ACCENT, Palette.INK, 48) { toggleCamera() }.apply {
             elevation = context.dp(10).toFloat()
         }
-        addView(flip, LayoutParams(context.dp(40), context.dp(40), Gravity.BOTTOM or Gravity.END))
+        addView(flip, LayoutParams(context.dp(48), context.dp(48), Gravity.BOTTOM or Gravity.END))
         applySize()
         setupDrag()
     }
@@ -101,7 +101,7 @@ class CameraBubble(context: Context, startFront: Boolean, private val onProblem:
         val size = context.dp(sizes[sizeIndex])
         lens.layoutParams = LayoutParams(size, size, Gravity.TOP or Gravity.START)
         // La burbuja deja lugar para que el botón 🔄 quede montado en su borde.
-        val extra = context.dp(12)
+        val extra = context.dp(16)
         layoutParams?.let {
             it.width = size + extra
             it.height = size + extra
@@ -111,6 +111,8 @@ class CameraBubble(context: Context, startFront: Boolean, private val onProblem:
         minimumHeight = size + extra
     }
 
+    // El toque sin arrastre llama a performClick (lo lee TalkBack) y cambia el tamaño.
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     private fun setupDrag() {
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         var downX = 0f
@@ -136,17 +138,15 @@ class CameraBubble(context: Context, startFront: Boolean, private val onProblem:
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!dragging) {
-                        lens.performClick()
-                        cycleSize()
-                    }
+                    if (!dragging) lens.performClick()
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> true
                 else -> false
             }
         }
-        lens.setOnClickListener { }
+        // Con TalkBack, tocar dos veces llega aquí directo (sin pasar por el toque).
+        lens.setOnClickListener { cycleSize() }
     }
 
     /** Mueve la burbuja sin que se salga de la pantalla. */

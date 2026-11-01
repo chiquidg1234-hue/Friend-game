@@ -100,6 +100,9 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         const val FILTER_ALL = "todos"
         const val FILTER_MINE = "mios"
 
+        /** Ancho máximo del contenido en pantallas grandes (tablets, plegables, Chromebooks). */
+        const val MAX_COLUMN_DP = 640
+
         /** La intro sale una vez cada vez que se abre la app (no al girar la pantalla). */
         var introShown = false
 
@@ -377,6 +380,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     @Deprecated("Se usa mientras la app no active el gesto de atrás predictivo")
+    @android.annotation.SuppressLint("GestureBackNavigation") // En Android 13+ manda updateBackCallback.
     override fun onBackPressed() {
         if (!handleBack()) super.onBackPressed()
     }
@@ -456,6 +460,17 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     private fun applyInsets() {
         val (left, top, right, bottom) = systemBars
         shell.setPadding(left, top, right, 0)
+        // Tablets, plegables abiertos y Chromebooks: una columna centrada de lectura cómoda (el
+        // fondo animado sigue a pantalla completa).
+        (shell.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+            val wide = resources.configuration.screenWidthDp > MAX_COLUMN_DP + 80
+            val width = if (wide) dp(MAX_COLUMN_DP) + left + right else MATCH
+            if (params.width != width) {
+                params.width = width
+                params.gravity = Gravity.CENTER_HORIZONTAL
+                shell.layoutParams = params
+            }
+        }
         nav.setPadding(dp(8), dp(8), dp(8), dp(12) + bottom)
         // En el chat no hay navegación: la caja para escribir queda sobre el teclado.
         composer.setPadding(dp(12), dp(8), dp(12), dp(10) + maxOf(bottom, imeBottom))
@@ -2245,6 +2260,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         val all = Store.chat(key)
         val messages = all.takeLast(120)
         chatTail = key + "/" + (all.lastOrNull()?.id ?: "") + "/" + all.size
+        // Como en WhatsApp: arriba del chat se dice si va cifrado (y se explica al tocarlo).
+        add(encryptionLine(friend), 2)
         if (messages.isEmpty()) {
             val hint = if (friend != null) "Escribe el primer mensaje 👋\nCon ⚡ creas un reto y con 🔒 propones un candado."
             else "Escribe el primer mensaje 👋\nCon ⚡ creas un reto para todo el grupo."
@@ -2300,6 +2317,29 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         )
         line.addView(box, LinearLayout.LayoutParams(WRAP, WRAP))
         return line
+    }
+
+    /** «🔐 Cifrado de punta a punta» (amigo con clave) o por qué no (grupos, versión antigua). */
+    private fun encryptionLine(friend: Friend?): View {
+        val sealed = friend != null && friend.pk.isNotEmpty()
+        val text = when {
+            sealed -> "🔐 Cifrado de punta a punta"
+            friend != null -> "🔓 Sin cifrar hasta que ${friend.name} actualice la app"
+            else -> "🔓 Los chats de grupo no van cifrados de punta a punta"
+        }
+        return infoLine(text).apply {
+            isClickable = true
+            isFocusable = true
+            contentDescription = "$text. Toca para saber más"
+            setOnClickListener {
+                info(
+                    if (sealed) "Cifrado de punta a punta" else "Sin cifrado de punta a punta",
+                    if (sealed) "Lo que se mandan tú y ${friend!!.name} (mensajes, sonidos, retos y candados) solo lo pueden leer sus dos celulares. Ni el servidor ni alguien que sepa tu código lo pueden leer ni hacerse pasar por ${friend.name}.\n\nLos audios adjuntos todavía viajan sin cifrar."
+                    else if (friend != null) "Cuando ${friend.name} tenga la versión nueva de Friend Game, lo que se manden va a ir cifrado solo. Mientras tanto viaja cifrado hasta el servidor (HTTPS), como antes."
+                    else "Los mensajes del grupo viajan cifrados hasta el servidor (HTTPS), pero quien tenga la invitación del grupo podría leerlos. No mandes datos privados.",
+                )
+            }
+        }
     }
 
     private fun infoLine(text: String): View = row().apply {

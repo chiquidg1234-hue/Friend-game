@@ -1,6 +1,6 @@
 # Informe para seguir con Friend Game (ChatGPT, Codex u otra IA)
 
-Fecha: 27 de octubre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
+Fecha: 1 de noviembre de 2026. Rama principal: `ccr-6689175d-7fdoa9`. Repositorio: https://github.com/chiquidg1234-hue/Friend-game
 
 Primero lee [AGENTS.md](../AGENTS.md): explica la arquitectura, el protocolo, cómo compilar y las reglas que no se pueden romper.
 
@@ -54,6 +54,8 @@ Apunta a Android 16 (API 36).
 - **Escuchar antes de mandar:** en Sonar, el selector «🔊 Mandar / 🎧 Escuchar»; con «Como le llega a Ana» suena tal como a tu amigo (pantalla, alarma, poder), solo en tu celular. También en el menú de cada botón.
 - **Psicología del juego** (`docs/PSICOLOGIA.md`): «Devolvérsela» en Sonar y en el aviso, punto verde de amigo activo, temporadas con disfraz (Halloween 20 oct – 2 nov, Navidad 18 dic – 1 ene) y logro de temporada, festejo al ganar un reto y «te falta poco» para subir de nivel.
 - **Animaciones:** intro al abrir desde el ícono (Bulla cae y rebota, las letras caen, emojis y ondas; se salta tocando), rebote al tocar, entrada de pantallas, confeti en logros y cofres, emoji que vuela al mandar, anillos al recibir, avisos con Bulla (`BullaToast`). Se apagan con «Quitar animaciones» de Android o con Ajustes → «Reducir movimiento».
+- **Graba tu broma** (Sonar → «Graba tu broma»): graba la pantalla y el micrófono, con tu cámara en una burbuja dentro de la app que sale en el video. La burbuja se arrastra, se toca para cambiar el tamaño y el botón 🔄 voltea entre la cámara frontal y la trasera sin cortar la grabación. Arriba va una píldora REC con el tiempo y Detener (hasta 5 min). Al terminar, el video queda en la galería (Películas → Friend Game) y se puede compartir o borrar. Capturas en `screenshots/fase-4/`.
+- **Cifrado de punta a punta entre amigos** (`Cifrado.kt`, ver [SEGURIDAD.md](SEGURIDAD.md)): ni ntfy ni quien sepa tu código pueden leer ni falsificar lo que se mandan dos amigos con la versión nueva. Los grupos y los audios adjuntos todavía no van cifrados.
 - **Poderes**, que se compran con puntos: Súper sonido (pantalla dorada), Eco (se repite hasta 10 s) y Doble puntos (en el próximo reto).
 - **Legal:**
   - Términos de uso y política de privacidad en `docs/legal/` (también dentro de la app).
@@ -100,14 +102,14 @@ El resultado de cada ejecución está en GitHub → **Actions → Probar en emul
    - crear la clave de subida;
    - hacer la prueba cerrada con 12 personas durante 14 días.
 3. **Capturas para la tienda:** elegir 6–8 de la prueba en emulador (ver `store/ficha.md`).
-4. **Seguridad:**
-   - El chat no está cifrado de extremo a extremo. Se podría intercambiar una clave al aceptarse como amigos (ECDH) y cifrar con AES-GCM.
-   - Los mensajes de amigos no van firmados.
+4. **Seguridad** (lo que falta después de la revisión de `docs/SEGURIDAD.md`):
+   - Cifrar los grupos (una clave por grupo, repartida por el admin con el cifrado entre amigos) y los audios adjuntos.
    - El ranking lo informa cada celular, así que se puede inflar.
-5. **Servidor:** ntfy.sh es gratis pero tiene límites y puede caerse. Opciones: un ntfy propio, o Firebase Cloud Messaging (permite quitar el servicio en primer plano).
-6. **Idiomas:** los textos están en el código. Moverlos a `res/values/strings.xml` y traducir al inglés y al portugués.
-7. **Pruebas unitarias** de la lógica (`Points`, `Retos`, `Locks`), que hoy solo se prueba de punta a punta.
-8. **Ideas para después:**
+5. **Grabar la broma en celulares reales:** que la burbuja se vea derecha con las dos cámaras (el emulador no tiene cámara), que el video se guarde en Android 8, 9, 14 y 16, y cómo se ve en marcas que cambian el aviso de grabación.
+6. **Servidor:** ntfy.sh es gratis pero tiene límites y puede caerse. Opciones: un ntfy propio, o Firebase Cloud Messaging (permite quitar el servicio en primer plano).
+7. **Idiomas:** los textos están en el código. Moverlos a `res/values/strings.xml` y traducir al inglés y al portugués.
+8. **Pruebas unitarias** de la lógica (`Points`, `Retos`, `Locks`), que hoy solo se prueba de punta a punta.
+9. **Ideas para después:**
    - reacciones a mensajes, stickers;
    - más minijuegos y prendas para el armario;
    - un modo claro (hoy la app es solo oscura);

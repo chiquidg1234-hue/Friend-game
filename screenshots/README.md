@@ -33,3 +33,14 @@ Se generan solas con `tools/render/run.sh Phases`: la app real, dibujada con Rob
 | `fase-3/03-reaccion-al-llegar.png` | El fondo abriéndose en círculo al llegar el sonido. |
 | `fase-3/05-deteccion-de-audio.png` | La detección de la categoría de un audio subido (antes y después). |
 | `fase-3/06-elegir-fondo.png`, `07-fondo-disco-elegido.png` | Elegir el fondo a mano, y la app con el fondo «Disco». |
+
+## Fase 4: grabar la broma
+
+Se generan con `tools/render/run.sh Recording`. El entorno de prueba no dibuja `TextureView` (la cámara y el video salen como un recuadro blanco); en el celular se ven la imagen de la cámara en la burbuja redonda y el video grabado.
+
+| Archivo | Qué muestra |
+| --- | --- |
+| `fase-4/01-sonar-tarjeta.png` | La tarjeta «Graba tu broma» en Sonar. |
+| `fase-4/02-graba-tu-broma.png`, `03-graba-tu-broma-opciones.png` | Qué se graba, la cámara de la burbuja (frontal, trasera o ninguna), el micrófono y el aviso de respeto. |
+| `fase-4/04-grabando.png` | Grabando: la píldora REC con el tiempo y Detener, y la burbuja de la cámara con el botón para voltearla. |
+| `fase-4/05-quedo-grabada.png` | El video terminado: compartir, borrar o grabar otra. |

@@ -51,6 +51,18 @@ Estos cambios van firmados con una clave que solo tiene el celular de quien admi
 
 En **Chats** están las conversaciones con cada amigo y cada grupo. Los mensajes llegan con notificación y la pestaña muestra cuántos no leíste. Mantén presionado un mensaje para copiarlo o denunciar a quien lo mandó.
 
+🔐 Lo que te mandas con un amigo (mensajes, sonidos, retos y candados) va **cifrado de punta a punta** cuando los dos tienen la versión nueva: arriba del chat dice «Cifrado de punta a punta». Los grupos todavía no. Detalles en [docs/SEGURIDAD.md](docs/SEGURIDAD.md).
+
+### 🎬 Graba tu broma
+
+En **Sonar**, toca **Graba tu broma**. La app graba tu pantalla y el micrófono, y tu cámara va en una burbuja que sale en el video:
+
+- **Arrastra** la burbuja para moverla y **tócala** para hacerla más grande o más chica.
+- El botón **🔄** **voltea la cámara** entre la frontal (tu cara) y la trasera, sin cortar la grabación.
+- Arriba ves **REC** con el tiempo (hasta 5 min) y **Detener**. También puedes detenerla desde la notificación.
+
+Al terminar, el video queda en tu galería (**Películas → Friend Game**) y lo puedes **compartir** o **borrar**. Graba a otras personas solo si están de acuerdo.
+
 ### ⚡ Retos
 
 En un chat toca **⚡** (o **Crear un reto** en Sonar) y elige:

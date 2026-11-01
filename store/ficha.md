@@ -8,7 +8,7 @@ Todo listo para copiar en Play Console → **Crecimiento → Presencia en Play S
 | --- | --- | --- |
 | Ícono | `store/icono-512.png` | 512 × 512 PNG |
 | Gráfico de funciones | `store/grafico-1024x500.png` | 1024 × 500 PNG |
-| Capturas del teléfono (mínimo 2, ideal 6–8) | La prueba en emulador las guarda en GitHub → Actions → **Probar en emulador** → artefacto `e2e-capturas` (y en la pre-release `capturas` cuando corre en la rama principal). Usa: `sonar`, `sonando`, `chat`, `reto`, `perfil`, `mascota`, `sonoteca`, `racha`. | 1080 × 2400 |
+| Capturas del teléfono (mínimo 2, ideal 6–8) | La prueba en emulador las guarda en GitHub → Actions → **Probar en emulador** → artefacto `e2e-capturas` (y en la pre-release `capturas` cuando corre en la rama principal). Usa: `sonar`, `sonando`, `grabar-broma`, `chat`, `reto`, `perfil`, `mascota`, `sonoteca`, `racha`. | 1080 × 2400 |
 
 Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · Mascotas 3D»); si hay que cambiarlas, pídele a la IA que las vuelva a generar.
 
@@ -35,6 +35,9 @@ Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · 
 > • Sonido sorpresa: suena en todos los celulares a la vez, a la hora que elijas.
 > • El más rápido: cuando suene, gana quien lo detenga primero.
 >
+> **Graba tu broma** 🎬
+> Graba tu pantalla y tu cara al mismo tiempo, como BeReal pero a tu modo. Tu cámara va en una burbuja que mueves y agrandas, y la volteas a la trasera cuando quieras, sin cortar el video. El video queda en tu galería para compartirlo donde quieras.
+>
 > **Candado** 🔒
 > Si los dos aceptan, por unos minutos ninguno puede detener los sonidos del otro. ¿Quién aguanta más?
 >
@@ -51,7 +54,10 @@ Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · 
 > • Personaliza tus botones, tu avatar y los temas del chat.
 >
 > **Tú mandas en tu celular**
-> Siempre puedes detener un sonido, silenciar, bloquear o denunciar a alguien, y pausar la recepción. Sin cuenta, sin número de teléfono y sin anuncios.
+> Siempre puedes detener un sonido, silenciar, bloquear o denunciar a alguien, y pausar la recepción. Sin cuenta, sin número de teléfono, sin anuncios y sin rastreadores.
+>
+> **Privada de verdad** 🔐
+> Lo que te mandas con tus amigos va cifrado de punta a punta: ni el servidor ni nadie más lo puede leer.
 >
 > Para mayores de 13 años.
 
@@ -64,4 +70,4 @@ Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · 
 
 ## Novedades de esta versión (para «Qué hay de nuevo», máx. 500 caracteres)
 
-> 🐱 Mascotas en 3D que comen, saltan y duermen. 🎧 Sonoteca: comparte tus audios con tus amigos. 🎯 Misiones del día con cofre sorpresa y 🔥 rachas con cada amigo. ⏳ Recarga entre sonidos para que todo llegue bien. Más animaciones y un diseño más bonito.
+> 🎬 Graba tu broma: tu pantalla y tu cámara a la vez, y voltea la cámara cuando quieras. 🔐 Los mensajes con tus amigos ahora van cifrados de punta a punta. 🐱 Mascotas en 3D, 🎧 Sonoteca, 🎯 misiones con cofre y 🔥 rachas con cada amigo.
