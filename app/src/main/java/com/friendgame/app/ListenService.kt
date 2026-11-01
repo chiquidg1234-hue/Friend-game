@@ -494,7 +494,7 @@ class ListenService : Service() {
     }
 
     private fun onSound(from: String, senderName: String, group: Group?, payload: JSONObject, event: JSONObject) {
-        val kind = payload.optString("s")
+        val kind = Sounds.fromWire(payload.optString("s"), payload.optString("x").ifEmpty { null })
         val label = payload.optString("label").trim().take(30).ifEmpty { Sounds.byKey(kind)?.label ?: "Sonido" }
         // Poderes: solo cambian cómo se ve y se siente; quien recibe lo puede detener igual.
         val power = payload.optString("pw").takeIf { it == Powers.SUPER || it == Powers.ECO } ?: ""

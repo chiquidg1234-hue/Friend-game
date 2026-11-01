@@ -71,7 +71,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Updater.kt`, `ApkProvider.kt` | Solo en la versión github: se actualiza sola y se pasa por Quick Share. |
 | `Legal.kt` | Términos y privacidad (los textos están en `docs/legal/` y entran como assets) y denuncias. |
 | `CustomAudio.kt` | Importar audios: hasta 1 min y 2 MB, suenan 10 s desde `startMs`. |
-| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 12 sonidos integrados y sus categorías (`Vibes`: risa/fiesta/susto/amor/troll/voz, con color, labio e ícono), enlace para donar, códigos, QR y escáner. |
+| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 76 sonidos integrados (12 originales y 64 grabaciones CC0 de BigSoundBank, ver `tools/sounds/`) y sus categorías (`Vibes`: risa/fiesta/susto/amor/troll/voz, con color, labio e ícono), enlace para donar, códigos, QR y escáner. |
 
 ## Protocolo (JSON en el cuerpo de cada mensaje de ntfy)
 
@@ -82,10 +82,10 @@ Base: `{"fg":1, "t":TIPO, "from":código, "name":nombre, "pts":..., "wk":..., "w
 | Tipo | Canal | Campos | Qué hace |
 | --- | --- | --- | --- |
 | `req` / `acc` / `bye` | personal | — | Solicitud de amistad, aceptación, adiós o bloqueo |
-| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`), `v?` (categoría: `troll`/`risa`/`fiesta`/`amor`/`susto`/`voz`; si falta o no se conoce, la de fábrica del sonido) | Hace sonar |
+| `snd` | personal o grupo | `id`, `s` (clave o `custom` con adjunto), `x?` (sonido nuevo; `s` lleva entonces un original de la misma categoría para las versiones viejas, ver `Sounds.wire`), `label`, `g?`, `st?` (ms desde donde suena), `pw?` (`super`/`eco`), `v?` (categoría: `troll`/`risa`/`fiesta`/`amor`/`susto`/`voz`; si falta o no se conoce, la de fábrica del sonido) | Hace sonar |
 | `stop` | personal o grupo | `id` | Quien lo mandó corta su propio sonido |
 | `msg` | personal o grupo | `id`, `text` (≤500), `g?` | Chat |
-| `reto` | personal o grupo | `id`, `k` (`sorpresa`/`rapido`), `s`, `in` (segundos, 10–21600), `g?` | Crea un reto |
+| `reto` | personal o grupo | `id`, `k` (`sorpresa`/`rapido`), `s`, `x?`, `in` (segundos, 10–21600), `g?` | Crea un reto |
 | `retores` | igual | `id`, `ms` | El tiempo de alguien en «El más rápido» |
 | `retono` | igual | `id` | El creador cancela el reto |
 | `lockreq` / `lockacc` / `lockno` | personal | `id`, `min` | Candado: propuesta, aceptación, rechazo o cancelación |
@@ -110,6 +110,7 @@ Las demoras se calculan con la hora del servidor (`serverNow - event.time`), no 
 - **Prueba de punta a punta:** `tools/e2e/run.sh`. Corre en GitHub Actions (`.github/workflows/e2e.yml`) con un emulador Android 15. Simula amigos y admins con curl contra ntfy.sh real y maneja la app con `tools/e2e/ui.py` (uiautomator). Cada paso nuevo de la app debería tener su paso ahí.
 - **Revisión rápida sin el SDK de Android:** compilar el Kotlin contra un `android.jar` (por ejemplo `android-all` de Robolectric) con un `R`/`BuildConfig` de mentira.
 - **Ver cómo se ve, sin emulador:** `tools/render/run.sh` dibuja las mascotas, sus animaciones y las pantallas con Robolectric y gráficos nativos. Deja PNG en `tools/render/out/` y las capturas por fase en `screenshots/`. Úsalo antes de subir cambios visuales.
+- **Sonidos integrados nuevos:** se agregan a `tools/sounds/catalogo.json` (solo CC0 o dominio público, con su página de origen) y se bajan con `python3 tools/sounds/importar.py`; los créditos se arman con `tools/sounds/creditos.py`. Nunca audios con derechos de terceros.
 - **Detección de categorías:** `tools/audio/run.sh` prueba `AudioClassifier` con audios de prueba (necesita espeak-ng y ffmpeg).
 - **Diseño:** el lienzo «Friend Game · Diseño 2.0» en Claude Design (https://claude.ai/artifact/HMqBNoRcDAxTRu2SshHdiP; copia en `docs/design/`). Los colores están en `docs/design/tokens.json`, y `node tools/design/check-tokens.mjs` revisa que `Ui.kt` y `Sounds.kt` los usen.
 

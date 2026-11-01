@@ -16,6 +16,8 @@ object Legal {
     const val TERMS_URL = "$PAGES/terminos.html"
     const val PRIVACY_ASSET = "privacidad.html"
     const val TERMS_ASSET = "terminos.html"
+    /** De dónde salen los sonidos integrados (BigSoundBank, CC0). Se arma con tools/sounds/creditos.py. */
+    const val CREDITS_ASSET = "creditos.html"
     const val ISSUES_URL = "https://github.com/chiquidg1234-hue/Friend-game/issues"
 
     /**

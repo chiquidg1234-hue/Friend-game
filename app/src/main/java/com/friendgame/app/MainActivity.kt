@@ -96,6 +96,9 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         const val PAGE_MARKET = "market"
         const val PAGE_PETS = "pets"
 
+        /** En Sonar con «Todos»: cuántos sonidos de cada categoría se ven antes de «Ver los N». */
+        const val SOUNDS_PER_GROUP = 4
+
         /** Filtros de Sonar: todos, una categoría (clave de Vibes) o solo los tuyos. */
         const val FILTER_ALL = "todos"
         const val FILTER_MINE = "mios"
@@ -687,6 +690,28 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     /** Filtros de Sonar: todos, cada categoría y los tuyos. */
+    /** Título de una categoría en Sonar: ícono, nombre, cuántos hay y «Ver los N ›» (elige ese filtro). */
+    private fun vibeHeader(vibe: Vibe, count: Int): View = row().apply {
+        gravity = Gravity.CENTER_VERTICAL
+        addView(icon(vibe.icon, vibe.chip, 20), LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(8) })
+        addView(title(vibe.label, 18f, vibe.chip, weight = 600), lp(0, WRAP, weight = 1f))
+        if (count > SOUNDS_PER_GROUP) {
+            addView(label("Ver los $count ›", 14f, vibe.chip, bold = true).apply {
+                setPadding(dp(12), dp(10), dp(4), dp(10))
+                background = clickable(rounded(0, 12))
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Ver los $count sonidos de ${vibe.label}"
+                setOnClickListener {
+                    soundFilter = vibe.key
+                    render()
+                    // Que se vea el comienzo de la categoría, no lo que quedaba a la altura de antes.
+                    soundsAnchor?.let { anchor -> scroll.post { scroll.smoothScrollTo(0, (anchor.top - dp(8)).coerceAtLeast(0)) } }
+                }
+            }, LinearLayout.LayoutParams(WRAP, WRAP))
+        }
+    }
+
     private fun filterRow(): View {
         val (scroller, chips) = chipRow()
         fun add(key: String, text: String, color: Int, onColor: Int, textColor: Int, iconRes: Int?) {
@@ -1019,11 +1044,17 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         fun shown(name: String, vibe: Vibe, mine: Boolean): Boolean =
             (soundFilter == FILTER_ALL || soundFilter == vibe.key || (mine && soundFilter == FILTER_MINE)) &&
                 (query.isEmpty() || name.lowercase().contains(query) || vibe.label.lowercase().contains(query))
-        val builtIn = Sounds.all.mapNotNull { sound ->
+        // Con «Todos» y sin buscar, los sonidos van por categoría (unos pocos de cada una y «Ver los N»);
+        // con una categoría elegida o una búsqueda, se ven todos los que calzan.
+        val grouped = soundFilter == FILTER_ALL && query.isEmpty()
+        val builtInSounds = Sounds.all.filter { sound ->
+            val name = Looks.button(sound.key).label ?: sound.label
+            shown(name, Vibes.byKey(Looks.vibe(sound.key)), mine = false)
+        }
+        fun tileFor(sound: Sound): View {
             val look = Looks.button(sound.key)
             val name = look.label ?: sound.label
             val vibe = Vibes.byKey(Looks.vibe(sound.key))
-            if (!shown(name, vibe, mine = false)) return@mapNotNull null
             val source = Player.Source.Asset(sound.asset)
             lateinit var tile: View
             tile = soundCard(look.emoji ?: sound.emoji, name, vibe,
@@ -1040,9 +1071,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 outlined = listening,
             )
             if (cooling) tile.alpha = 0.55f
-            tile
+            return tile
         }
-        if (builtIn.isNotEmpty()) grid(builtIn, 2)
+        if (grouped) {
+            Vibes.all.forEach { vibe ->
+                val inVibe = builtInSounds.filter { Looks.vibe(it.key) == vibe.key }
+                if (inVibe.isEmpty()) return@forEach
+                add(vibeHeader(vibe, inVibe.size), 18)
+                grid(inVibe.take(SOUNDS_PER_GROUP).map { tileFor(it) }, 2)
+            }
+        } else if (builtInSounds.isNotEmpty()) {
+            grid(builtInSounds.map { tileFor(it) }, 2)
+        }
+        val builtIn = builtInSounds
 
         val mine = Store.customSounds().mapNotNull { custom ->
             val source = Player.Source.FromFile(custom.file(this))
@@ -1895,6 +1936,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }
         legalItem("Términos de uso") { showLegal("Términos de uso", Legal.TERMS_ASSET) }
         legalItem("Política de privacidad") { showLegal("Política de privacidad", Legal.PRIVACY_ASSET) }
+        legalItem("Créditos de los sonidos") { showLegal("Créditos de los sonidos", Legal.CREDITS_ASSET) }
         legalItem("Ayuda y contacto") { showContact() }
         add(legal, 8)
         if (Updater.message.isNotEmpty() && Updater.release == null) add(label(Updater.message, 13f, Palette.SUB), 8)
@@ -5082,7 +5124,11 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }
         val playbackId = Codes.random(12)
         val vibeKey = Looks.vibe(if (custom != null) "c:${custom.id}" else kind)
-        val payload = Relay.payload("snd").put("id", playbackId).put("s", kind).put("label", label).put("v", vibeKey)
+        val payload = Relay.payload("snd").put("id", playbackId).put("label", label).put("v", vibeKey)
+        // Un sonido nuevo viaja con un respaldo en «s» para las versiones viejas (ver Sounds.wire).
+        val (wireS, wireX) = Sounds.wire(kind)
+        payload.put("s", wireS)
+        if (wireX != null) payload.put("x", wireX)
         Pets.onVibeSent(vibeKey)
         target.groupId?.let { payload.put("g", it) }
         if (custom != null && custom.startMs > 0) payload.put("st", custom.startMs)

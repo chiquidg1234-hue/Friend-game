@@ -1,7 +1,21 @@
 package com.friendgame.app
 
-/** Sonidos integrados (generados con tools/generate_sounds.py). Cada botón se puede personalizar (ver Looks). */
-class Sound(val key: String, val emoji: String, val label: String, val color: Int, val vibe: String = Vibes.TROLL.key) {
+/**
+ * Sonidos integrados. Los 12 primeros son originales (tools/generate_sounds.py); los demás son
+ * grabaciones reales de BigSoundBank con licencia CC0 (ver tools/sounds/catalogo.json y
+ * docs/legal/creditos.html). Cada botón se puede personalizar (ver Looks).
+ *
+ * [fallback]: un sonido original de la misma categoría que viaja en `s` para que una versión
+ * vieja de la app (que no tiene este) igual haga sonar algo; el nuevo va en `x` (ver [wire]).
+ */
+class Sound(
+    val key: String,
+    val emoji: String,
+    val label: String,
+    val color: Int,
+    val vibe: String = Vibes.TROLL.key,
+    val fallback: String? = null,
+) {
     val asset: String get() = "sounds/$key.ogg"
 }
 
@@ -19,9 +33,88 @@ object Sounds {
         Sound("pedorreta", "💨", "Pedorreta", 0xFFC8D6E5.toInt(), Vibes.TROLL.key),
         Sound("tada", "🎉", "¡Ta-dá!", 0xFF55EFC4.toInt(), Vibes.FIESTA.key),
         Sound("grillos", "🦗", "Grillos", 0xFFB8E994.toInt(), Vibes.RISA.key),
+        // Grabaciones reales (CC0, BigSoundBank).
+        Sound("carcajada", "🤣", "Carcajada", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("risa_bebe", "👶", "Risa de bebé", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("risa_ninos", "🧒", "Niños riendo", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("risa_loca", "🤪", "Risa loca", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("risa_contagiosa", "😆", "Risa contagiosa", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("risa_explosiva", "😹", "Risa explosiva", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("cosquillas", "🪶", "Cosquillas", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("jajaja", "😂", "Jajaja", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("ba_dum_tss", "🥁", "Ba dum tss", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("burro", "🫏", "Burro", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("aplausos", "👏", "Aplausos", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("ovacion", "🙌", "Ovación", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("espantasuegras", "🥳", "Espantasuegras", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("champana", "🍾", "Champaña", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("fuegos", "🎆", "Fuegos artificiales", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("cumpleanos", "🎂", "Cumpleaños feliz", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("cohetes", "🎇", "Cohetes", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("pito", "📣", "Pito", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("montana_rusa", "🎢", "Montaña rusa", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("fantasma", "👻", "Fantasma", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("zombi", "🧟", "Zombi", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("trueno", "⛈️", "Trueno", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("puerta_chirria", "🚪", "Puerta que chirría", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("vidrio_roto", "🪟", "Vidrio roto", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("globo", "🎈", "Globo que revienta", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("despertador", "⏰", "Despertador", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("halloween", "🎃", "Halloween", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("explosion", "💥", "Explosión", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("tumba", "⚰️", "Tumba que se abre", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("petardo", "🧨", "Petardo", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("besitos", "💋", "Besitos", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("ronroneo", "🐈", "Ronroneo", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("latidos", "💓", "Latidos", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("cajita_musical", "🎶", "Cajita musical", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("marcha_nupcial", "💍", "Marcha nupcial", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("campanitas", "✨", "Campanitas", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("suspiro", "😌", "Suspiro", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("bebe_feliz", "🍼", "Bebé feliz", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("pajarito", "🐦", "Pajarito", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("gatito", "🐱", "Gatito", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("pedos", "💩", "Pedos", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("eructo", "🤢", "Eructo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("inodoro", "🚽", "Inodoro", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("ronquido", "😴", "Ronquido", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("estornudo", "🤧", "Estornudo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("gallo", "🐓", "Gallo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("cabra", "🐐", "Cabra", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("vaca", "🐄", "Vaca", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("chancho", "🐷", "Chancho", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("gargaras", "🫗", "Gárgaras", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("diana", "🎺", "¡A despertar!", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("gong", "🔔", "Gong", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("perro", "🐕", "Perro", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("risa_bruja", "🧙", "Risa malvada", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("jo_jo_jo", "🎅", "¡Jo, jo, jo!", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("sorpresa", "😮", "¡Oh, sorpresa!", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("cuenta_regresiva", "⏱️", "Cuenta regresiva", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("bostezo", "🥱", "Bostezo", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("tos", "😷", "Tos", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("silbido", "😗", "Silbido", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("gallina_imitada", "🐔", "Gallina imitada", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("miau_imitado", "😼", "Miau imitado", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("mensaje", "📨", "You have a message", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
+        Sound("pedo_robot", "🤖", "Pedo robot", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
     )
 
-    fun byKey(key: String): Sound? = all.firstOrNull { it.key == key }
+    private val index: Map<String, Sound> by lazy { all.associateBy { it.key } }
+
+    fun byKey(key: String): Sound? = index[key]
+
+    /** Los sonidos de una categoría, en el orden del catálogo. */
+    fun ofVibe(vibe: String): List<Sound> = all.filter { it.vibe == vibe }
+
+    /** Cómo viaja un sonido: `s` (lo que entiende cualquier versión) y, si es nuevo, `x`. */
+    fun wire(key: String): Pair<String, String?> {
+        val sound = byKey(key) ?: return key to null
+        return if (sound.fallback != null) sound.fallback to sound.key else key to null
+    }
+
+    /** El sonido que llegó: el nuevo (`x`) si esta versión lo tiene; si no, el de `s`. */
+    fun fromWire(s: String, x: String?): String = x?.takeIf { byKey(it) != null } ?: s
 }
 
 /**

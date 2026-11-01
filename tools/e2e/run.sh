@@ -674,8 +674,22 @@ check "Botón Enviar" $UI tap "Enviar mensaje"
 check "A Eva le llega cifrado y se puede abrir" $SOBRE inbox "$OUT/inbox-eva.jsonl" "$EVA_PRIV" "$EVA" msg text=Oculto --wait 20
 check "Nada del chat sale sin cifrar" sh -c "[ \"\$($INBOX "$OUT/inbox-eva.jsonl" msg --count)\" = 0 ]"
 shot "chat-cifrado"
-adb shell input keyevent KEYCODE_BACK
-sleep 1
+# Sale del chat (ahí no hay pestañas): primero se cierra el teclado, después atrás.
+hide_keyboard
+check "Sale del chat de Eva" $UI tap "Volver"
+check "Vuelve a las pestañas" $UI tab Sonar
+
+echo "== 9q. Sonidos nuevos (CC0): por categoría y con respaldo para versiones viejas"
+check "Pestaña Sonar" $UI tab Sonar
+$UI tapexact "Eva" >/dev/null 2>&1 || true
+check "Sonar muestra los sonidos por categoría" $UI see "Ver los"
+check "Abre todos los de Risa" $UI tap "sonidos de Risa"
+check "Queda elegido el filtro Risa" $UI wait "Carcajada" 10
+shot "sonidos-risa"
+check "Le manda la Carcajada a Eva" $UI tap "Carcajada"
+check "A Eva le llega cifrada, con la carcajada y el pato de respaldo" $SOBRE inbox "$OUT/inbox-eva.jsonl" "$EVA_PRIV" "$EVA" snd x=carcajada s=pato --wait 20
+check "Vuelve a todos los sonidos" $UI tap "Filtro Todos"
+check "Los créditos de los sonidos están en Ajustes" sh -c "$UI tab Tú && $UI tap Ajustes && $UI see 'Créditos de los sonidos'"
 $UI tab Sonar >/dev/null 2>&1 || true
 
 echo "== 10. Pausar la recepción"

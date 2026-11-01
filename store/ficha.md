@@ -22,7 +22,7 @@ Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · 
 
 ## Descripción completa (máx. 4000 caracteres)
 
-> 🔊 **Hazle sonar el celular a tus amigos.** Una bocina, un pato, una sirena o tu propia voz: les llega al instante, aunque tengan la pantalla apagada.
+> 🔊 **Hazle sonar el celular a tus amigos.** Más de 75 sonidos (carcajadas, aplausos, truenos, besos, pedos, gallos, fantasmas…) o tu propia voz: les llega al instante, aunque tengan la pantalla apagada.
 >
 > **Así se juega**
 > • Agrega a tus amigos con su código. Solo te pueden sonar las personas que tú aceptas.
@@ -70,4 +70,4 @@ Las imágenes se arman con HTML (mismas mascotas que el lienzo «Friend Game · 
 
 ## Novedades de esta versión (para «Qué hay de nuevo», máx. 500 caracteres)
 
-> 🎬 Graba tu broma: tu pantalla y tu cámara a la vez, y voltea la cámara cuando quieras. 🔐 Los mensajes con tus amigos ahora van cifrados de punta a punta. 🐱 Mascotas en 3D, 🎧 Sonoteca, 🎯 misiones con cofre y 🔥 rachas con cada amigo.
+> 🔊 64 sonidos nuevos en todas las categorías. 🎬 Graba tu broma: tu pantalla y tu cámara a la vez, y voltea la cámara cuando quieras. 🔐 Los mensajes con tus amigos ahora van cifrados de punta a punta. 🐱 Mascotas en 3D, 🎧 Sonoteca, 🎯 misiones con cofre y 🔥 rachas con cada amigo.

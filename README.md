@@ -25,7 +25,7 @@ La app tiene cinco pestañas abajo: **Sonar**, **Chats**, **Grupos**, **Amigos**
 1. **Comparte tu código.** En **Amigos** está tu código tipo `ABCD-EFGH-JKMN-PQRS`. El botón **Compartir** lo manda por WhatsApp junto con el enlace para instalar.
 2. **Agrega a un amigo.** En **Amigos**, toca **Agregar amigo** y pega su código. Le llega una solicitud (la pestaña Amigos le muestra un numerito).
 3. **Tu amigo acepta.** Desde ese momento se pueden mandar sonidos entre ustedes.
-4. **Manda sonidos.** En **Sonar**, elige a quién en **PARA** y toca un sonido. Si lo mantienes presionado, lo escuchas tú primero.
+4. **Manda sonidos.** En **Sonar**, elige a quién en **PARA** y toca un sonido. Hay 76, ordenados por categoría (Risa, Fiesta, Susto, Amor, Troll y Voz): toca **Ver los N ›** para ver todos los de una. Si lo mantienes presionado, lo escuchas tú primero.
 5. **¿Te pasaste?** Después de mandar un sonido aparece abajo una barra con **Detener** durante unos segundos y lo corta en el celular de tu amigo.
 
 Cuando a ti te llega un sonido y tienes la app abierta, ocupa toda la pantalla con un botón grande de **Detener** y otro para **silenciar** a quien lo mandó.

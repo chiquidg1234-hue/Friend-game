@@ -63,7 +63,9 @@ object Retos {
         Chats.card(chatKey, ChatMessage.RETO, id, Store.myCode, Store.myName, unread = false)
         schedule(context, reto)
         Points.onRetoCreated()
-        val payload = Relay.payload("reto").put("id", id).put("k", kind).put("s", soundKey).put("in", delaySeconds)
+        val (wireS, wireX) = Sounds.wire(soundKey)
+        val payload = Relay.payload("reto").put("id", id).put("k", kind).put("s", wireS).put("in", delaySeconds)
+        if (wireX != null) payload.put("x", wireX)
         if (Chats.isGroup(chatKey)) payload.put("g", Chats.groupIdOf(chatKey))
         return payload
     }
@@ -72,7 +74,7 @@ object Retos {
     fun receive(context: Context, chatKey: String, from: String, name: String, payload: JSONObject, sentAgoMs: Long) {
         val id = payload.optString("id").takeIf { it.matches(Regex("[a-z0-9]{8,24}")) } ?: return
         val kind = payload.optString("k").takeIf { k -> KINDS.any { it.key == k } } ?: return
-        val sound = Sounds.byKey(payload.optString("s")) ?: return
+        val sound = Sounds.byKey(Sounds.fromWire(payload.optString("s"), payload.optString("x").ifEmpty { null })) ?: return
         val delay = payload.optLong("in")
         if (delay !in MIN_DELAY_S..MAX_DELAY_S) return
         if (Store.reto(id) != null) return

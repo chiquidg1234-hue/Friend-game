@@ -58,7 +58,7 @@ La Sonoteca deja compartir audios con los amigos y grupos que cada uno eligió (
 - **Aviso y retiro:** si un titular de derechos escribe al correo de contacto con los datos del punto 7 de los términos, agrega el id del sonido a `"sounds"` en `docs/legal/retiros.json` (el id viene en el correo de la denuncia) y haz push a la rama principal. Cada celular baja esa lista una vez al día (desde GitHub Pages) y borra ese sonido.
 - **Reincidentes:** si el mismo código recibe denuncias válidas más de una vez, agrégalo a `"authors"`. Lo que comparta deja de llegar a la Sonoteca de los demás.
 - Responde los correos de retiro en pocos días y guarda una copia de cada uno (fecha, quién lo pidió, qué retiraste).
-- Los 12 sonidos de la app son originales (`tools/generate_sounds.py`): no tienen derechos de terceros.
+- Los 12 sonidos de siempre son originales (`tools/generate_sounds.py`) y los otros 64 son grabaciones de BigSoundBank con licencia **CC0** (dominio público), listadas con su página de origen en `tools/sounds/catalogo.json` y en «Créditos de los sonidos» (Ajustes). Ninguno tiene derechos de terceros.
 - En la ficha y en la app **no recomiendes sitios con audios de terceros** (como los de «botones de sonidos»): Google puede verlo como incentivar la infracción.
 
 ### Enganche sin trampas

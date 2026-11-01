@@ -1,0 +1,589 @@
+{
+ "fuente": "BigSoundBank (Joseph Sardin), https://bigsoundbank.com — licencia CC0 1.0 (dominio público). Cada página dice «License CC0 (public domain): Free and royalty-free».",
+ "respaldo": {
+  "risa": "pato",
+  "fiesta": "tada",
+  "susto": "sirena",
+  "amor": "campana",
+  "troll": "pedorreta",
+  "voz": "boing"
+ },
+ "sonidos": [
+  {
+   "key": "carcajada",
+   "id": "0490",
+   "slug": "laughter",
+   "label": "Carcajada",
+   "emoji": "🤣",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "risa_bebe",
+   "id": "0980",
+   "slug": "laughing-boy-of-16-months",
+   "label": "Risa de bebé",
+   "emoji": "👶",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "risa_ninos",
+   "id": "1660",
+   "slug": "laughter-of-children",
+   "label": "Niños riendo",
+   "emoji": "🧒",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "risa_loca",
+   "id": "2092",
+   "slug": "delirious-laughter-2",
+   "label": "Risa loca",
+   "emoji": "🤪",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "risa_contagiosa",
+   "id": "2095",
+   "slug": "delirious-laughter-5",
+   "label": "Risa contagiosa",
+   "emoji": "😆",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "risa_explosiva",
+   "id": "2101",
+   "slug": "delirious-laughter-11",
+   "label": "Risa explosiva",
+   "emoji": "😹",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "cosquillas",
+   "id": "1419",
+   "slug": "boy-2-3-years-old-tickling-2",
+   "label": "Cosquillas",
+   "emoji": "🪶",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "jajaja",
+   "id": "0475",
+   "slug": "laugh",
+   "label": "Jajaja",
+   "emoji": "😂",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "ba_dum_tss",
+   "id": "0433",
+   "slug": "battery-joke",
+   "label": "Ba dum tss",
+   "emoji": "🥁",
+   "vibe": "risa",
+   "max": 4
+  },
+  {
+   "key": "burro",
+   "id": "1549",
+   "slug": "donkey-braying-1",
+   "label": "Burro",
+   "emoji": "🫏",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "aplausos",
+   "id": "0020",
+   "slug": "applause-300-people",
+   "label": "Aplausos",
+   "emoji": "👏",
+   "vibe": "fiesta",
+   "max": 5
+  },
+  {
+   "key": "ovacion",
+   "id": "0236",
+   "slug": "shouts-and-applauses-of-teens-1",
+   "label": "Ovación",
+   "emoji": "🙌",
+   "vibe": "fiesta",
+   "max": 5
+  },
+  {
+   "key": "espantasuegras",
+   "id": "1558",
+   "slug": "party-horn-6",
+   "label": "Espantasuegras",
+   "emoji": "🥳",
+   "vibe": "fiesta",
+   "max": 4
+  },
+  {
+   "key": "champana",
+   "id": "0211",
+   "slug": "champagne-cork",
+   "label": "Champaña",
+   "emoji": "🍾",
+   "vibe": "fiesta",
+   "max": 4
+  },
+  {
+   "key": "fuegos",
+   "id": "0831",
+   "slug": "fireworks",
+   "label": "Fuegos artificiales",
+   "emoji": "🎆",
+   "vibe": "fiesta",
+   "max": 6
+  },
+  {
+   "key": "cumpleanos",
+   "id": "2194",
+   "slug": "happy-birthday",
+   "label": "Cumpleaños feliz",
+   "emoji": "🎂",
+   "vibe": "fiesta",
+   "max": 8
+  },
+  {
+   "key": "cohetes",
+   "id": "0919",
+   "slug": "firecrackers",
+   "label": "Cohetes",
+   "emoji": "🎇",
+   "vibe": "fiesta",
+   "max": 6
+  },
+  {
+   "key": "pito",
+   "id": "1017",
+   "slug": "plastic-whistle",
+   "label": "Pito",
+   "emoji": "📣",
+   "vibe": "fiesta",
+   "max": 4
+  },
+  {
+   "key": "montana_rusa",
+   "id": "1453",
+   "slug": "rollercoaster-goudurix-1",
+   "label": "Montaña rusa",
+   "emoji": "🎢",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "fantasma",
+   "id": "2046",
+   "slug": "ghost-1",
+   "label": "Fantasma",
+   "emoji": "👻",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "zombi",
+   "id": "2106",
+   "slug": "zombie-1",
+   "label": "Zombi",
+   "emoji": "🧟",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "trueno",
+   "id": "2718",
+   "slug": "thunder",
+   "label": "Trueno",
+   "emoji": "⛈️",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "puerta_chirria",
+   "id": "0302",
+   "slug": "creaking-door",
+   "label": "Puerta que chirría",
+   "emoji": "🚪",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "vidrio_roto",
+   "id": "0771",
+   "slug": "broken-glass",
+   "label": "Vidrio roto",
+   "emoji": "🪟",
+   "vibe": "susto",
+   "max": 4
+  },
+  {
+   "key": "globo",
+   "id": "0551",
+   "slug": "balloon-burst",
+   "label": "Globo que revienta",
+   "emoji": "🎈",
+   "vibe": "susto",
+   "max": 3
+  },
+  {
+   "key": "despertador",
+   "id": "1373",
+   "slug": "mechanical-alarm-clock-short-ring",
+   "label": "Despertador",
+   "emoji": "⏰",
+   "vibe": "susto",
+   "max": 5
+  },
+  {
+   "key": "halloween",
+   "id": "2129",
+   "slug": "halloween-soundscape-1",
+   "label": "Halloween",
+   "emoji": "🎃",
+   "vibe": "susto",
+   "max": 8
+  },
+  {
+   "key": "explosion",
+   "id": "1023",
+   "slug": "explosion-far-away",
+   "label": "Explosión",
+   "emoji": "💥",
+   "vibe": "susto",
+   "max": 5
+  },
+  {
+   "key": "tumba",
+   "id": "0580",
+   "slug": "tombstone-opening",
+   "label": "Tumba que se abre",
+   "emoji": "⚰️",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "petardo",
+   "id": "1138",
+   "slug": "firecracker-with-wick-2",
+   "label": "Petardo",
+   "emoji": "🧨",
+   "vibe": "susto",
+   "max": 4
+  },
+  {
+   "key": "besitos",
+   "id": "0178",
+   "slug": "kisses",
+   "label": "Besitos",
+   "emoji": "💋",
+   "vibe": "amor",
+   "max": 4
+  },
+  {
+   "key": "ronroneo",
+   "id": "0436",
+   "slug": "cat-purr",
+   "label": "Ronroneo",
+   "emoji": "🐈",
+   "vibe": "amor",
+   "max": 6
+  },
+  {
+   "key": "latidos",
+   "id": "0218",
+   "slug": "heart-beat",
+   "label": "Latidos",
+   "emoji": "💓",
+   "vibe": "amor",
+   "max": 6
+  },
+  {
+   "key": "cajita_musical",
+   "id": "0195",
+   "slug": "the-music-box-temps-des-cerises",
+   "label": "Cajita musical",
+   "emoji": "🎶",
+   "vibe": "amor",
+   "max": 8
+  },
+  {
+   "key": "marcha_nupcial",
+   "id": "2140",
+   "slug": "wedding-march-whistling-1",
+   "label": "Marcha nupcial",
+   "emoji": "💍",
+   "vibe": "amor",
+   "max": 8
+  },
+  {
+   "key": "campanitas",
+   "id": "2079",
+   "slug": "chimes-dream-1",
+   "label": "Campanitas",
+   "emoji": "✨",
+   "vibe": "amor",
+   "max": 6
+  },
+  {
+   "key": "suspiro",
+   "id": "1405",
+   "slug": "sigh-by-the-mouth",
+   "label": "Suspiro",
+   "emoji": "😌",
+   "vibe": "amor",
+   "max": 4
+  },
+  {
+   "key": "bebe_feliz",
+   "id": "0231",
+   "slug": "baby-amused-1",
+   "label": "Bebé feliz",
+   "emoji": "🍼",
+   "vibe": "amor",
+   "max": 6
+  },
+  {
+   "key": "pajarito",
+   "id": "1667",
+   "slug": "robin-1",
+   "label": "Pajarito",
+   "emoji": "🐦",
+   "vibe": "amor",
+   "max": 6
+  },
+  {
+   "key": "gatito",
+   "id": "0372",
+   "slug": "mewing-kitten-2-months",
+   "label": "Gatito",
+   "emoji": "🐱",
+   "vibe": "amor",
+   "max": 5
+  },
+  {
+   "key": "pedos",
+   "id": "0866",
+   "slug": "farts",
+   "label": "Pedos",
+   "emoji": "💩",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "eructo",
+   "id": "0242",
+   "slug": "burps",
+   "label": "Eructo",
+   "emoji": "🤢",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "inodoro",
+   "id": "0033",
+   "slug": "flush-1",
+   "label": "Inodoro",
+   "emoji": "🚽",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "ronquido",
+   "id": "0170",
+   "slug": "man-snoring",
+   "label": "Ronquido",
+   "emoji": "😴",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "estornudo",
+   "id": "0609",
+   "slug": "a-man-sneezing",
+   "label": "Estornudo",
+   "emoji": "🤧",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "gallo",
+   "id": "0474",
+   "slug": "song-of-a-rooster",
+   "label": "Gallo",
+   "emoji": "🐓",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "cabra",
+   "id": "0279",
+   "slug": "bleating-goat-1",
+   "label": "Cabra",
+   "emoji": "🐐",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "vaca",
+   "id": "0845",
+   "slug": "moo",
+   "label": "Vaca",
+   "emoji": "🐄",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "chancho",
+   "id": "1658",
+   "slug": "grumpy-pig-1",
+   "label": "Chancho",
+   "emoji": "🐷",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "gargaras",
+   "id": "1654",
+   "slug": "gargle-3",
+   "label": "Gárgaras",
+   "emoji": "🫗",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "diana",
+   "id": "3263",
+   "slug": "bugle-awake-morning-call",
+   "label": "¡A despertar!",
+   "emoji": "🎺",
+   "vibe": "troll",
+   "max": 8
+  },
+  {
+   "key": "gong",
+   "id": "1483",
+   "slug": "gong-strong-1",
+   "label": "Gong",
+   "emoji": "🔔",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "perro",
+   "id": "0916",
+   "slug": "barking-dog",
+   "label": "Perro",
+   "emoji": "🐕",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "risa_bruja",
+   "id": "0489",
+   "slug": "strident-laughter",
+   "label": "Risa malvada",
+   "emoji": "🧙",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "jo_jo_jo",
+   "id": "2074",
+   "slug": "santa-claus-oh-oh-oh-1",
+   "label": "¡Jo, jo, jo!",
+   "emoji": "🎅",
+   "vibe": "voz",
+   "max": 5
+  },
+  {
+   "key": "sorpresa",
+   "id": "3534",
+   "slug": "surprise-exclamation",
+   "label": "¡Oh, sorpresa!",
+   "emoji": "😮",
+   "vibe": "voz",
+   "max": 4
+  },
+  {
+   "key": "cuenta_regresiva",
+   "id": "2945",
+   "slug": "countdown-in-english",
+   "label": "Cuenta regresiva",
+   "emoji": "⏱️",
+   "vibe": "voz",
+   "max": 9
+  },
+  {
+   "key": "bostezo",
+   "id": "1406",
+   "slug": "yawn-1",
+   "label": "Bostezo",
+   "emoji": "🥱",
+   "vibe": "voz",
+   "max": 5
+  },
+  {
+   "key": "tos",
+   "id": "0488",
+   "slug": "man-cough",
+   "label": "Tos",
+   "emoji": "😷",
+   "vibe": "voz",
+   "max": 4
+  },
+  {
+   "key": "silbido",
+   "id": "1162",
+   "slug": "man-whistling-a-melody",
+   "label": "Silbido",
+   "emoji": "😗",
+   "vibe": "voz",
+   "max": 6
+  },
+  {
+   "key": "gallina_imitada",
+   "id": "2203",
+   "slug": "hen-imitated-to-the-mouth-1",
+   "label": "Gallina imitada",
+   "emoji": "🐔",
+   "vibe": "voz",
+   "max": 5
+  },
+  {
+   "key": "miau_imitado",
+   "id": "0926",
+   "slug": "cat-meow-made-with-mouth",
+   "label": "Miau imitado",
+   "emoji": "😼",
+   "vibe": "voz",
+   "max": 4
+  },
+  {
+   "key": "mensaje",
+   "id": "2946",
+   "slug": "you-have-a-message-1",
+   "label": "You have a message",
+   "emoji": "📨",
+   "vibe": "voz",
+   "max": 4
+  },
+  {
+   "key": "pedo_robot",
+   "id": "2948",
+   "slug": "prout-in-voice-synthesis",
+   "label": "Pedo robot",
+   "emoji": "🤖",
+   "vibe": "voz",
+   "max": 4
+  }
+ ]
+}
