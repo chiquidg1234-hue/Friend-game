@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object Updater {
     private const val REPO = "https://github.com/chiquidg1234-hue/Friend-game"
     private const val APK_ASSET = "FriendGame.apk"
-    private const val CHECK_EVERY_MS = 3 * 60 * 60 * 1000L
+    private const val CHECK_EVERY_MS = 15 * 60 * 1000L
     private const val MAX_APK_BYTES = 50_000_000L
 
     enum class State { IDLE, CHECKING, DOWNLOADING, READY, INSTALLING, FAILED }
@@ -53,7 +53,7 @@ object Updater {
     fun currentVersionName(context: Context): String =
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
 
-    /** Busca (como mucho cada 3 horas, o ya si [force]) y deja descargada la versión nueva. */
+    /** Busca (como mucho cada 15 minutos, o ya si [force]) y deja descargada la versión nueva. */
     fun check(context: Context, force: Boolean = false) {
         val app = context.applicationContext
         if (!force && System.currentTimeMillis() - Store.lastUpdateCheck < CHECK_EVERY_MS) return
