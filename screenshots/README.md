@@ -17,7 +17,7 @@ Se generan solas con `tools/render/run.sh Phases`: la app real, dibujada con Rob
 
 | Archivo | Qué muestra |
 | --- | --- |
-| `fase-2/01-sonar.png`, `02-sonar-tarjetas.png` | Sonar: tarjetas grandes con color, ícono y categoría, ▶ para escuchar, filtros y modo escuchar. |
+| `fase-2/01-sonar.png`, `02-sonar-tarjetas.png` | Sonar: los 76 sonidos por categoría (4 de cada una y «Ver los N ›»), tarjetas grandes con color, ícono y categoría, ▶ para escuchar, filtros y modo escuchar. |
 | `fase-2/03-filtro-risa.png`, `04-buscar.png` | Filtro por categoría y buscador. |
 | `fase-2/05-subir-escuchando.png`, `06-subir-detectado.png` | Subir audio: Bulla escucha y adivina la categoría. |
 | `fase-2/07-amigos.png`, `08-tu.png`, `09-ajustes.png` | Amigos, Tú y Ajustes (con «El fondo reacciona» y «Reducir movimiento»). |
