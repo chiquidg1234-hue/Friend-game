@@ -74,7 +74,11 @@ La prueba automática (`tools/e2e/run.sh`) corre en cada push en un emulador And
 - **Lo nuevo:** chat, retos (recibir, sonar, detener, mandar el tiempo, crear, cancelar), candado (aceptar, no se puede detener, se cumple), puntos y ranking, botón personalizado, mascota y poder Eco.
 - **Otros:** donación, pausa, términos, Quick Share, que se actualiza sola, sin cierres inesperados.
 
-**Último resultado (rama `ccr-26efbb5d-ww5fqz`, 27 de octubre de 2026): 268 comprobaciones bien, 0 fallos**, con el diseño 2.0. Incluye la recarga al mandar, las misiones del día, la racha con un amigo, la Sonoteca, escuchar antes de mandar, el armario y los minijuegos.
+**Último resultado (rama `claude/elegant-carson-a074oh`, 1 de noviembre de 2026): 305 comprobaciones bien, 0 fallos, 0 avisos.** Además de lo de antes (recarga, misiones, rachas, Sonoteca, escuchar antes de mandar, armario, minijuegos), prueba:
+
+- **9o, grabar la broma:** graba la pantalla, la píldora REC y la burbuja, y guarda y borra el video en la galería.
+- **9p, cifrado de punta a punta con una amiga simulada:** la clave pública, los mensajes que llegan y salen cifrados, un sobre repetido y un mensaje falso sin cifrar.
+- **9q, sonidos nuevos:** Sonar por categoría, un sonido nuevo que viaja cifrado con su respaldo, y los créditos.
 
 El paso «9n» prueba lo del diseño 2.0: filtros y buscador de Sonar, el armario, los minijuegos y los ajustes de animación.
 
