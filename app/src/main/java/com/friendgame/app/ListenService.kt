@@ -331,7 +331,7 @@ class ListenService : Service() {
             }
             "sndpub" -> if (friend != null && !friend.muted) Sonoteca.receive(this, from, friend.name, payload, event)
             "sndfan" -> if (friend != null) {
-                Sonoteca.onFan(from, friend.name, payload)?.let { Notifs.sonoteca(this, payload.optString("id"), it, "Mira tus sonidos en Tú → Mercado → Sonoteca.") }
+                Sonoteca.onFan(from, friend.name, payload)?.let { Notifs.sonoteca(this, payload.optString("id"), it, "Míralo en Sonar → Sonoteca → ⭐ Tuyos.") }
             }
             "reto" -> if (friend != null && !friend.muted) Retos.receive(this, key, from, friend.name, payload, sentAgoMs(event))
             "retores" -> if (friend != null) Retos.onResult(key, from, friend.name, payload)

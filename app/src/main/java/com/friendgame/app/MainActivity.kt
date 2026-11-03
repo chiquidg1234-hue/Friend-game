@@ -94,6 +94,15 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         const val PAGE_RANKING = "ranking:"
         const val PAGE_MARKET = "market"
         const val PAGE_PETS = "pets"
+        const val PAGE_SONOTECA = "sonoteca"
+        const val PAGE_LOGROS = "logros"
+        const val PAGE_LOOKS = "looks"
+        const val PAGE_LEVELS = "niveles"
+
+        /** Secciones de la pestaña Amigos. */
+        const val SECTION_FRIENDS = 0
+        const val SECTION_GROUPS = 1
+        const val SECTION_RANKING = 2
 
         /** En Sonar con «Todos»: cuántos sonidos de cada categoría se ven antes de «Ver los N». */
         const val SOUNDS_PER_GROUP = 4
@@ -112,12 +121,16 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         val COMMUNITY_EMOJIS = listOf("🎮", "⚽", "🎵", "🏫", "🏠", "🔥", "😂", "🐶", "🍕", "🎨")
     }
 
+    /**
+     * Pestañas de abajo, una idea cada una: mandar sonidos, conversar, la mascota, la gente (amigos,
+     * grupos y ranking) y lo tuyo (perfil, logros, tienda, personalizar y ajustes).
+     */
     private enum class Tab(val title: String, val iconRes: Int) {
         SOUND("Sonar", R.drawable.ic_nav_sound),
         CHATS("Chats", R.drawable.ic_nav_chat),
-        GROUPS("Grupos", R.drawable.ic_nav_groups),
+        PET("Mascota", R.drawable.ic_paw),
         FRIENDS("Amigos", R.drawable.ic_nav_friends),
-        ME("Tú", R.drawable.ic_trophy),
+        ME("Tú", R.drawable.ic_profile),
     }
 
     private class Sent(val topic: String, val toName: String, val playbackId: String, val label: String)
@@ -166,6 +179,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     private val page: String? get() = pages.lastOrNull()
     private val chatKey: String? get() = page?.takeIf { it.startsWith(PAGE_CHAT) }?.removePrefix(PAGE_CHAT)
     private var rankingWeekly = true
+    /** Sección elegida en la pestaña Amigos (SECTION_*). */
+    private var peopleSection = SECTION_FRIENDS
     /** Último mensaje del chat dibujado: si cambia, se baja a lo nuevo. */
     private var chatTail = ""
     private var lastChatTail = ""
@@ -280,7 +295,14 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }
         val name = intent?.getStringExtra(Notifs.EXTRA_TAB) ?: return false
         intent.removeExtra(Notifs.EXTRA_TAB)
-        tab = Tab.entries.firstOrNull { it.name == name } ?: return false
+        // Los grupos ahora son una sección de Amigos (los avisos viejos dicen "GROUPS").
+        if (name == "GROUPS") {
+            tab = Tab.FRIENDS
+            peopleSection = SECTION_GROUPS
+        } else {
+            tab = Tab.entries.firstOrNull { it.name == name } ?: return false
+            if (tab == Tab.FRIENDS) peopleSection = SECTION_FRIENDS
+        }
         pages.clear()
         return true
     }
@@ -516,10 +538,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             render()
             return
         }
-        val screen = current ?: tab.name
+        val screen = current ?: if (tab == Tab.FRIENDS) "${tab.name}:$peopleSection" else tab.name
         val sameScreen = screen == renderedScreen
         screenIsNew = !sameScreen
-        if (!sameScreen && renderedScreen == PAGE_PETS && petRoomBuilt) petRoom.leave()
+        if (!sameScreen && (renderedScreen == PAGE_PETS || renderedScreen == Tab.PET.name) && petRoomBuilt) petRoom.leave()
         val y = scroll.scrollY
         content.removeAllViews()
         topBar.removeAllViews()
@@ -533,14 +555,18 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             current == null -> when (tab) {
                 Tab.SOUND -> renderSound()
                 Tab.CHATS -> renderChats()
-                Tab.GROUPS -> renderGroups()
-                Tab.FRIENDS -> renderFriends()
+                Tab.PET -> renderPets(asTab = true)
+                Tab.FRIENDS -> renderPeople()
                 Tab.ME -> renderMe()
             }
             current == PAGE_SETTINGS -> renderSettings()
             current == PAGE_SUPPORT -> renderSupport()
             current == PAGE_MARKET -> renderMarket()
-            current == PAGE_PETS -> renderPets()
+            current == PAGE_SONOTECA -> renderSonoteca()
+            current == PAGE_LOGROS -> renderLogros()
+            current == PAGE_LOOKS -> renderLooks()
+            current == PAGE_LEVELS -> renderLevels()
+            current == PAGE_PETS -> renderPets(asTab = false)
             chat != null -> renderChat(chat)
             current.startsWith(PAGE_RANKING) -> renderRanking(current.removePrefix(PAGE_RANKING))
         }
@@ -747,8 +773,11 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     private fun openTab(target: Tab) {
+        // Con solicitudes pendientes, Amigos abre donde se aceptan.
+        if (target == Tab.FRIENDS && Store.friends().any { it.state == Friend.INCOMING }) peopleSection = SECTION_FRIENDS
         if (target == tab && pages.isEmpty()) {
             scroll.smoothScrollTo(0, 0)
+            render()
             return
         }
         pages.clear()
@@ -756,7 +785,20 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         render()
     }
 
+    /** Abre la pestaña Amigos en una sección (amigos, grupos o ranking). */
+    private fun openPeople(section: Int) {
+        peopleSection = section
+        pages.clear()
+        tab = Tab.FRIENDS
+        renderedScreen = ""
+        render()
+    }
+
     private fun openPage(name: String) {
+        if (name == PAGE_PETS) {
+            openTab(Tab.PET)
+            return
+        }
         if (page != name) pages.add(name)
         render()
     }
@@ -968,7 +1010,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             alert(
                 icon(R.drawable.ic_sonoteca, Palette.ACCENT_TEXT, 24), "$who compartió «${first.label}»$more",
                 "Escúchalo y úsalo desde la Sonoteca.", "Ver", Palette.ACCENT,
-            ) { openPage(PAGE_MARKET) }
+            ) { openPage(PAGE_SONOTECA) }
             nudges++
         }
         Seasons.current()?.takeIf { !Seasons.seen(it) && nudges < 2 }?.let { season ->
@@ -1118,15 +1160,13 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             listOf(
                 addTile(R.drawable.ic_mic, "Grabar") { recordAudio() },
                 addTile(R.drawable.ic_upload, "Subir") { pickAudio() },
-                addTile(R.drawable.ic_sonoteca, "Sonoteca") { openPage(PAGE_MARKET) }.apply { contentDescription = "Abrir la Sonoteca" },
+                addTile(R.drawable.ic_sonoteca, "Sonoteca") { openPage(PAGE_SONOTECA) }.apply { contentDescription = "Abrir la Sonoteca" },
             ),
         )
         val hint = if (Store.customSounds().isEmpty()) "Graba tu voz o sube un audio que descargaste: ${CustomAudio.HINT}. Bulla adivina de qué categoría es."
         else "${CustomAudio.HINT}. Mantén presionado uno tuyo para escucharlo, elegir la parte que suena, cambiar su categoría o borrarlo."
         add(label(hint, 12f, Palette.SUB), 8)
 
-        add(sectionTitle("Misiones de hoy", "${Quests.doneCount()} de 3"), 24)
-        add(questsCard(), 10)
         addHistory()
         addFooter()
     }
@@ -1348,7 +1388,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }, lp(0, WRAP, weight = 1f))
         actions.addView(space(8))
         actions.addView(button("Unirme a un grupo", Palette.SURFACE2, Palette.TEXT, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
-            openTab(Tab.GROUPS)
+            openPeople(SECTION_GROUPS)
         }, lp(0, WRAP, weight = 1f))
         box.addView(actions, lp(topDp = 12))
         add(box, 20)
@@ -1437,11 +1477,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     // ------------------------------------------------------------------ Pestaña Grupos
 
-    private fun renderGroups() {
+    private fun renderGroupsBody() {
         val groups = Store.groups()
-        screenTitle("Grupos", "Un sonido le llega a todos a la vez.")
         if (groups.isEmpty()) {
-            add(bullaSays("Con un grupo, un sonido le llega a todos a la vez. ¡Armemos uno!"), 14)
+            add(bullaSays("Con un grupo, un sonido le llega a todos a la vez. ¡Armemos uno!"), 20)
             val box = card()
             box.addView(title("Arma tu primer grupo", 18f, weight = 600), lp())
             box.addView(
@@ -1462,17 +1501,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }
         add(
             button(
-                "Crear grupo", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_plus,
-                heightDp = 56, radiusDp = 18, display = true, sizeSp = 18f,
-            ) { createGroup() },
-            18,
-        )
-        add(
-            button(
                 "Crear comunidad", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_trophy,
                 heightDp = 52, radiusDp = 18, iconColor = Palette.YELLOW,
             ) { createCommunity() },
-            8,
+            18,
         )
         add(
             label(
@@ -1592,13 +1624,75 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     // ------------------------------------------------------------------ Pestaña Amigos
 
-    private fun renderFriends() {
-        val friends = Store.friends()
+    /**
+     * Pestaña Amigos: arriba eliges la sección (tus amigos, tus grupos o el ranking) y abajo se ve
+     * solo esa, en vez de todo junto.
+     */
+    private fun renderPeople() {
         val head = row()
         head.addView(title("Amigos", 30f), lp(0, WRAP, weight = 1f))
-        head.addView(button("Agregar amigo", iconRes = R.drawable.ic_plus, heightDp = 46, radiusDp = 14, sizeSp = 14f) { showAddFriend() }, LinearLayout.LayoutParams(WRAP, WRAP))
+        when (peopleSection) {
+            SECTION_FRIENDS -> head.addView(button("Agregar amigo", iconRes = R.drawable.ic_plus, heightDp = 46, radiusDp = 14, sizeSp = 14f) { showAddFriend() }, LinearLayout.LayoutParams(WRAP, WRAP))
+            SECTION_GROUPS -> head.addView(button("Crear grupo", Palette.YELLOW, Palette.INK, iconRes = R.drawable.ic_plus, heightDp = 46, radiusDp = 14, sizeSp = 14f) { createGroup() }, LinearLayout.LayoutParams(WRAP, WRAP))
+        }
         add(head)
+        val requests = Store.friends().count { it.state == Friend.INCOMING }
+        add(segmented(
+            listOf(
+                Triple("Amigos", "Sección Amigos" + if (requests > 0) ", $requests ${if (requests == 1) "solicitud" else "solicitudes"}" else "", requests),
+                Triple("Grupos", "Sección Grupos", 0),
+                Triple("Ranking", "Sección Ranking", 0),
+            ),
+            peopleSection,
+        ) { section ->
+            if (section != peopleSection) {
+                peopleSection = section
+                render()
+            }
+        }, 14)
+        when (peopleSection) {
+            SECTION_GROUPS -> renderGroupsBody()
+            SECTION_RANKING -> renderRankingBody("")
+            else -> renderFriendsBody()
+        }
+    }
 
+    /**
+     * Selector de secciones (como pestañas chicas): la elegida en rosado. Cada opción es
+     * (texto, descripción para TalkBack, numerito).
+     */
+    private fun segmented(items: List<Triple<String, String, Int>>, selected: Int, onPick: (Int) -> Unit): View {
+        val bar = row().apply {
+            background = rounded(Palette.SURFACE, 18, Palette.LIP)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        items.forEachIndexed { i, (text, description, count) ->
+            val on = i == selected
+            val cell = row().apply {
+                gravity = Gravity.CENTER
+                minimumHeight = dp(44)
+                background = if (on) chunkyBackground(Palette.ACCENT, 14, lipDp = 3) else clickable(rounded(0, 14))
+                setPadding(dp(6), 0, dp(6), if (on) dp(3) else 0)
+                isClickable = true
+                isSelected = on
+                contentDescription = description + if (on) ", elegida" else ""
+                setOnClickListener { onPick(i) }
+            }
+            cell.addView(label(text, 15f, if (on) Palette.INK else Palette.SUB, bold = true))
+            if (count > 0) {
+                cell.addView(label(if (count > 9) "9+" else "$count", 11f, Palette.INK, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    background = oval(Palette.YELLOW)
+                }, LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginStart = dp(6) })
+            }
+            bar.addView(cell, lp(0, WRAP, weight = 1f))
+        }
+        return bar
+    }
+
+    private fun renderFriendsBody() {
+        val friends = Store.friends()
         val codeCard = column().apply {
             background = LayerDrawable(arrayOf(
                 rounded(Palette.LIP, 24),
@@ -2882,36 +2976,98 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         add(sectionTitle("Misiones de hoy", "${Quests.doneCount()} de 3"), 22)
         add(questsCard(), 10)
 
-        add(sectionTitle("Tu mascota"), 22)
-        addPetCard()
-
-        val market = row().apply {
-            background = clickable(rounded(Palette.SURFACE2, 20))
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            isClickable = true
-            stateListAnimator = Anim.press()
-            setOnClickListener { openPage(PAGE_MARKET) }
-        }
-        val bag = FrameLayout(this).apply { background = candy(Palette.ACCENT, 12) }
-        bag.addView(icon(R.drawable.ic_store, Palette.INK, 22), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-        market.addView(bag, LinearLayout.LayoutParams(dp(42), dp(42)))
-        val marketTexts = column()
-        marketTexts.addView(label("Mercado", 16f, bold = true), lp())
+        // Lo demás va en su propia página: aquí solo las puertas.
+        val got = Points.LOGROS.count { Points.hasLogro(it.key) }
         val armed = Powers.armed
-        val fresh = Sonoteca.unseen().size
-        marketTexts.addView(
-            label(
-                (if (fresh > 0) "🎧 $fresh ${if (fresh == 1) "sonido nuevo" else "sonidos nuevos"} · " else "Sonoteca, poderes y protector de racha · ") +
-                    (if (armed != null) "${armed.emoji} ${armed.name} listo · " else "") +
-                    "${Points.balance()} pts",
-                13f, if (fresh > 0) Palette.ACCENT_TEXT else Palette.SUB, bold = fresh > 0,
+        add(sectionTitle("Lo tuyo"), 24)
+        grid(
+            listOf(
+                menuTile("🏆", Palette.YELLOW, "Logros", "$got de ${Points.LOGROS.size}") { openPage(PAGE_LOGROS) },
+                menuTile("🛍️", Palette.ACCENT, "Tienda", if (armed != null) "${armed.emoji} ${armed.name} listo" else "${Points.balance()} pts para gastar") { openPage(PAGE_MARKET) },
+                menuTile("🎨", Palette.BULLA, "Personalizar", "Avatar y fondo de la app") { openPage(PAGE_LOOKS) },
+                menuTile("⭐", 0xFFA29BFE.toInt(), "Niveles y puntos", "Qué desbloqueas y cómo ganar") { openPage(PAGE_LEVELS) },
             ),
-            lp(),
+            2,
         )
-        market.addView(marketTexts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-        market.addView(icon(R.drawable.ic_chevron, Palette.FAINT, 16))
-        add(market, 12)
+        add(
+            button("Ajustes", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_nav_settings, heightDp = 52, iconColor = Palette.ACCENT_TEXT) {
+                openPage(PAGE_SETTINGS)
+            },
+            16,
+        )
+        addFooter()
+    }
 
+    /** Puerta grande a una página (en Tú): emoji en un círculo de color, título y una línea. */
+    private fun menuTile(emoji: String, color: Int, titleText: String, subtitle: String, onClick: () -> Unit): View {
+        val tile = Chunky(this, dp(4)).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(18))
+            background = chunkyBackground(Palette.SURFACE, 22)
+            isClickable = true
+            isFocusable = true
+            minimumHeight = dp(132)
+            contentDescription = "$titleText. $subtitle"
+            setOnClickListener { onClick() }
+        }
+        val badge = FrameLayout(this).apply { background = candy(color, 16) }
+        badge.addView(label(emoji, 24f).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(MATCH, MATCH))
+        tile.addView(badge, LinearLayout.LayoutParams(dp(48), dp(48)))
+        tile.addView(title(titleText, 17f, weight = 600).apply { maxLines = 1 }, lp(topDp = 12))
+        tile.addView(label(subtitle, 12f, Palette.SUB).apply {
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp(topDp = 2))
+        return tile
+    }
+
+    /** Encabezado de una página: volver, título y (si se quiere) una línea y algo a la derecha. */
+    private fun pageHeader(titleText: String, subtitle: String? = null, trailing: View? = null) {
+        val top = row()
+        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
+        val texts = column()
+        texts.addView(title(titleText, 28f).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp())
+        if (subtitle != null) texts.addView(label(subtitle, 13f, Palette.SUB).apply { maxLines = 2 }, lp())
+        top.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
+        if (trailing != null) top.addView(trailing)
+        add(top)
+    }
+
+    /** Píldora amarilla con los puntos para gastar. */
+    private fun balancePill(): View = label("★ ${Points.balance()} pts", 13f, Palette.INK, bold = true).apply {
+        background = lipped(Palette.YELLOW, 999, lipDp = 3)
+        setPadding(dp(12), dp(7), dp(12), dp(9))
+        contentDescription = "Tienes ${Points.balance()} puntos para gastar"
+    }
+
+    private fun renderLogros() {
+        val got = Points.LOGROS.count { Points.hasLogro(it.key) }
+        pageHeader("Logros", "$got de ${Points.LOGROS.size} conseguidos")
+        add(bullaSays(if (got == Points.LOGROS.size) "¡Los tienes todos! Eres leyenda 👑" else "Cada logro te da puntos. ¡Vamos por el siguiente!"), 14)
+        grid(Points.LOGROS.map { logroTile(it) })
+        addFooter()
+    }
+
+    private fun renderLooks() {
+        pageHeader("Personalizar", "Así te ven tus amigos y así se ve tu app")
+        val me = card(Palette.SURFACE, 24, 16)
+        val head = row()
+        head.addView(personAvatar(Store.myCode, Store.myName, 64))
+        val texts = column()
+        texts.addView(title("Tu avatar", 18f, weight = 600), lp())
+        texts.addView(label("Lo ven en el chat, el ranking y cuando les suena algo tuyo.", 13f, Palette.SUB), lp())
+        head.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(14) })
+        me.addView(head, lp())
+        me.addView(button("Cambiar avatar", Palette.ACCENT, Palette.INK, heightDp = 46, radiusDp = 14, sizeSp = 14f) { editAvatar() }, lp(topDp = 12))
+        me.addView(button("Cambiar mi nombre", Palette.SURFACE2, Palette.TEXT, heightDp = 46, radiusDp = 14, sizeSp = 14f) { askName() }, lp(topDp = 8))
+        add(me, 14)
         add(sectionTitle("Fondo de la app", "Los animados se mueven"), 22)
         val (bgScroll, bgChips) = chipRow()
         bgChips.gravity = Gravity.TOP
@@ -2950,22 +3106,13 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         add(bgScroll, 10)
         add(label("Cuando suena o mandas un sonido, el fondo cambia un rato al de su categoría (se apaga en Ajustes).", 12f, Palette.SUB), 6)
 
-        add(sectionTitle("Ranking con tus amigos", "Esta semana"), 22)
-        val people = Store.friends().filter { it.state == Friend.FRIEND }.map { it.code to it.name }
-        add(rankingList(Points.ranking(people, weekly = true).take(5)), 10)
-        if (people.isEmpty()) add(label("Agrega amigos para competir con ellos.", 13f, Palette.SUB), 8)
-        add(
-            button(
-                "Ver ranking completo", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_trophy,
-                heightDp = 44, radiusDp = 14, sizeSp = 14f, iconColor = Palette.YELLOW,
-            ) { openPage(PAGE_RANKING) },
-            10,
-        )
+        add(label("Los botones de sonido se personalizan manteniéndolos presionados en Sonar, y cada chat se decora con 🎨 arriba en el chat.", 12f, Palette.SUB), 16)
+        addFooter()
+    }
 
-        val got = Points.LOGROS.count { Points.hasLogro(it.key) }
-        add(sectionTitle("Logros", "$got de ${Points.LOGROS.size}"), 24)
-        grid(Points.LOGROS.map { logroTile(it) })
-
+    private fun renderLevels() {
+        val level = Points.level()
+        pageHeader("Niveles y puntos", "Nivel ${level.number} · ${level.name}")
         add(sectionTitle("Desbloqueas subiendo de nivel", "Colores, temas y mascotas"), 24)
         val list = card(padDp = 0)
         val unlockables = Looks.SWATCHES.filter { it.level > 1 }.map { Triple(it.level, "🎨", "Color ${it.name} para botones y avatar") } +
@@ -2996,16 +3143,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             "📤 Compartir en la Sonoteca: +5 · ❤️ si a un amigo le gusta o lo usa: +3",
             "🔥 Racha con un amigo: mándense algo los dos cada día",
             "🧊 Un protector de racha la salva si un día no abres la app",
-            "🛍️ Gasta puntos en el Mercado: no bajas de nivel ni en el ranking",
+            "🛍️ Gasta puntos en la Tienda: no bajas de nivel ni en el ranking",
         ).forEach { help.addView(label(it, 13f, Palette.SUB), lp(topDp = 6)) }
         add(help, 20)
 
-        add(
-            button("Ajustes", Palette.SURFACE, Palette.TEXT, iconRes = R.drawable.ic_nav_settings, heightDp = 52, iconColor = Palette.ACCENT_TEXT) {
-                openPage(PAGE_SETTINGS)
-            },
-            16,
-        )
         addFooter()
     }
 
@@ -3072,13 +3213,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private fun renderRanking(scope: String) {
         val group = if (scope.isEmpty()) null else Chats.group(scope)
-        val top = row()
-        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
-        val texts = column()
-        texts.addView(title("Ranking", 28f), lp())
-        texts.addView(label(group?.name ?: "Tú y tus amigos", 14f, Palette.SUB), lp())
-        top.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-        add(top)
+        pageHeader("Ranking", group?.name ?: "Tú y tus amigos")
+        renderRankingBody(scope)
+    }
+
+    private fun renderRankingBody(scope: String) {
+        val group = if (scope.isEmpty()) null else Chats.group(scope)
         if (scope.isNotEmpty() && group == null) {
             add(label("Ya no estás en ese grupo.", 14f, Palette.SUB), 16)
             return
@@ -3632,10 +3772,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         })
     }
 
-    private fun renderPets() {
+    private fun renderPets(asTab: Boolean) {
         val species = Pets.current
         val top = row()
-        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
+        if (!asTab) top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
         val heading = column()
         heading.addView(title(if (species != null) Pets.name else "Mascotas", 24f).apply {
             maxLines = 1
@@ -3645,12 +3785,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             val trait = Pets.personality()?.let { " · ${it.trait} ${it.emoji}" } ?: ""
             heading.addView(label("${species.name} · ${Pets.stage().name}$trait", 12f, Palette.YELLOW, bold = true).apply { maxLines = 1 }, lp())
         }
-        top.addView(heading, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-        top.addView(label("★ ${Points.balance()} pts", 13f, Palette.INK, bold = true).apply {
-            background = lipped(Palette.YELLOW, 999, lipDp = 3)
-            setPadding(dp(12), dp(7), dp(12), dp(9))
-            contentDescription = "Tienes ${Points.balance()} puntos para gastar"
-        })
+        top.addView(heading, lp(0, WRAP, weight = 1f).apply { if (!asTab) marginStart = dp(12) })
+        top.addView(balancePill())
         if (species != null) top.addView(iconButton(R.drawable.ic_more, "Opciones de la mascota", 0, Palette.SUB, 40) { petOptions() })
         add(top)
 
@@ -4059,22 +4195,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     // ------------------------------------------------------------------ Mercado y Sonoteca
 
-    private fun renderMarket() {
+    /** La Sonoteca: los sonidos que comparten tus amigos y grupos (se abre desde Sonar). */
+    private fun renderSonoteca() {
         Sonoteca.markSeen()
-        val top = row()
-        top.addView(iconButton(R.drawable.ic_back, "Volver", Palette.SURFACE) { closePage() })
-        val heading = column()
-        heading.addView(title("Mercado", 30f), lp())
-        heading.addView(label("Comparte sonidos y gasta tus puntos", 13f, Palette.SUB), lp())
-        top.addView(heading, lp(0, WRAP, weight = 1f).apply { marginStart = dp(12) })
-        top.addView(label("💰 ${Points.balance()}", 15f, Palette.YELLOW, bold = true).apply {
-            background = rounded(Palette.SURFACE, 999)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            contentDescription = "${Points.balance()} puntos para gastar"
-        })
-        add(top)
-
-        // ---- Sonoteca
+        pageHeader("Sonoteca", "Sonidos de tus amigos y tus grupos")
         val intro = card(Palette.SURFACE2, 24, 16)
         val introHead = row()
         val disc = FrameLayout(this).apply { background = candy(Palette.ACCENT, 16) }
@@ -4128,9 +4252,13 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             ),
             12,
         )
+        addFooter()
+    }
 
-        // ---- Tienda
-        add(sectionTitle("Tienda", "Con tus puntos, no con dinero"), 26)
+    /** La tienda: poderes y protector de racha, con puntos (nunca con dinero). */
+    private fun renderMarket() {
+        pageHeader("Tienda", "Con tus puntos, no con dinero", balancePill())
+        add(bullaSays("¿Qué te compras hoy? Gastar puntos no te baja de nivel 😉"), 14)
         val shop = card(padDp = 0)
         fun item(emoji: String, name: String, detail: String, onClick: () -> Unit) {
             if (shop.childCount > 0) shop.addView(divider(), dividerLp())
@@ -4159,6 +4287,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         ) { buyFreeze() }
         add(shop, 10)
         add(label("Los puntos no se compran con dinero y gastarlos no te baja de nivel ni en el ranking.", 12f, Palette.SUB), 8)
+        add(button("🐾 Tienda de la mascota", Palette.SURFACE2, Palette.TEXT, heightDp = 50, radiusDp = 16) { openTab(Tab.PET) }, 16)
+        addFooter()
     }
 
     /** Una tarjeta de la Sonoteca: escuchar, usar, ❤️ y opciones. */
@@ -4580,7 +4710,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             }
             dialog.dismiss()
             val group = Groups.create(name, community = true, emoji = emoji)
-            tab = Tab.GROUPS
+            tab = Tab.FRIENDS
+            peopleSection = SECTION_GROUPS
             pages.clear()
             render()
             showInvite(group)
@@ -5239,7 +5370,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             addView(image, LinearLayout.LayoutParams(size + dp(24), size + dp(24)))
             addView(
                 label(
-                    "Que lo escanee desde Friend Game → Grupos → «Escanear QR». " +
+                    "Que lo escanee desde Friend Game → Amigos → Grupos → «Escanear QR». " +
                         "Si no tiene la app, al escanearlo con la cámara le abre la página para instalarla.",
                     14f,
                 ).apply { gravity = Gravity.CENTER },
@@ -5261,7 +5392,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private fun shareInvite(group: Group) {
         val text = "Únete a mi grupo «${group.name}» en Friend Game 🔊\n" +
-            "En la app: Grupos → «Pegar enlace» y pega esto:\n${Invites.link(group)}\n" +
+            "En la app: Amigos → Grupos → «Pegar enlace» y pega esto:\n${Invites.link(group)}\n" +
             "¿No tienes la app? Abre el enlace en Chrome para instalarla."
         val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         startActivity(Intent.createChooser(intent, "Invitar al grupo"))
@@ -5309,7 +5440,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         ) {
             val group = Groups.join(invite)
             selectedTarget = "g:${group.id}"
-            tab = Tab.GROUPS
+            tab = Tab.FRIENDS
+            peopleSection = SECTION_GROUPS
             pages.clear()
             render()
             runInBackground({ Groups.announceJoin(group) }) { toast("Te uniste a «${group.name}»") }
@@ -5549,7 +5681,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_SCAN && resultCode == RESULT_OK) {
             val invite = Invites.parse(data?.getStringExtra(ScanActivity.EXTRA_TEXT))
-            if (invite == null) info("Ese QR no es de Friend Game", "Pide que te muestren el QR desde Grupos → Invitar.")
+            if (invite == null) info("Ese QR no es de Friend Game", "Pide que te muestren el QR desde Amigos → Grupos → Invitar.")
             else confirmJoin(invite)
             return
         }

@@ -57,6 +57,9 @@ sound_json() { local v=""; [ -n "${6:-}" ] && v=",\"v\":\"$6\""; echo "{\"fg\":1
 WEEK_ID=$(python3 -c 'import datetime; y, w, _ = datetime.date.today().isocalendar(); print(f"{y}-{w}")')
 # Ajustes está dentro de la pestaña Tú.
 open_settings() { $UI tab Tú && $UI tap "Ajustes" && $UI wait "Recibir sonidos" 10; }
+# Los grupos son una sección de la pestaña Amigos.
+open_groups() { $UI tab Amigos && $UI tap "Sección Grupos"; }
+open_friends() { $UI tab Amigos && $UI tap "Sección Amigos"; }
 # Volumen de alarma «actual máximo», leído de dumpsys audio.
 alarm_volume() {
   adb shell dumpsys audio | python3 -c '
@@ -262,7 +265,7 @@ check "Al aceptar, Beto aparece con su nombre" $UI wait "Beto" 20
 shot "beto"
 
 echo "== 9b. Grupos: crear, invitar con QR, sonidos y sacar a alguien"
-check "Pestaña Grupos" $UI tab Grupos
+check "Amigos → Grupos" open_groups
 check "Botón Crear grupo" $UI tap "Crear grupo"
 $UI tapclass android.widget.EditText
 adb shell input text "Primos"
@@ -298,7 +301,7 @@ check "Pestaña Sonar" $UI tab Sonar
 check "Elige el grupo como destino" $UI tap "Mandar a Primos"
 check "Toca la Bocina para el grupo" $UI tap "Bocina"
 check "Al grupo le llega la bocina" $INBOX "$OUT/inbox-grupo.jsonl" snd from="$MYCODE" s=bocina g="$GID" --wait 20
-check "Pestaña Grupos" $UI tab Grupos
+check "Amigos → Grupos" open_groups
 check "Opciones del grupo" $UI tap "Opciones de Primos"
 check "Ver miembros" $UI tap "Ver miembros"
 shot "grupo-miembros"
@@ -325,7 +328,7 @@ INVITE2="https://github.com/chiquidg1234-hue/Friend-game/releases/latest#g=$G2&n
 curl -s -N "$SERVER/fgame-g-$G2/json" > "$OUT/inbox-familia.jsonl" &
 FAM_SUB=$!
 sleep 2
-$UI tab Grupos
+open_groups
 $UI top
 check "Botón Pegar enlace" $UI tap "Pegar enlace"
 $UI tapclass android.widget.EditText
@@ -455,7 +458,7 @@ check "Al terminar el minuto, el candado se cumple" $UI wait "Candado cumplido" 
 adb shell input keyevent KEYCODE_BACK
 
 echo "== 9i. Comunidades"
-check "Pestaña Grupos" $UI tab Grupos
+check "Amigos → Grupos" open_groups
 check "Botón Crear comunidad" $UI tap "Crear comunidad"
 $UI tapclass android.widget.EditText
 adb shell input text "Barrio"
@@ -475,15 +478,16 @@ echo "== 9j. Puntos, logros y ranking"
 check "Pestaña Tú" $UI tab Tú
 check "Muestra los puntos" $UI wait "puntos" 10
 shot "perfil"
+check "Cumplió la misión de mandar 3 sonidos" $UI see "Misión: Manda 3 sonidos, completada"
+check "Abre Logros" $UI tap "Logros"
 check "Ganó el logro de su primer sonido" $UI see "Primer susto: Manda tu primer sonido, conseguido"
-check "Ana aparece en el ranking" $UI see "Ana, 30 puntos"
-check "Ranking completo" $UI tap "Ver ranking completo"
+check "Vuelve de Logros" $UI tap "Volver"
+check "Amigos → Ranking" sh -c "$UI tab Amigos && $UI tap 'Sección Ranking'"
+check "Ana aparece en el ranking de la semana" $UI see "Ana, 30 puntos"
 check "Toca Total" $UI tapexact "Total"
 check "Ana tiene 120 puntos en total" $UI wait "Ana, 120 puntos" 5
 shot "ranking"
-adb shell input keyevent KEYCODE_BACK
-check "Cumplió la misión de mandar 3 sonidos" $UI see "Misión: Manda 3 sonidos, completada"
-check "Pestaña Amigos" $UI tab Amigos
+check "Amigos → Amigos" open_friends
 check "Tiene racha con Ana (se mandaron algo los dos hoy)" $UI see "Racha de 1 día con Ana"
 shot "racha"
 
@@ -495,24 +499,23 @@ check "Elige el emoji 🐸" $UI tapexact "🐸"
 check "Guarda" $UI tapexact "Guardar"
 check "El botón ahora tiene la rana" $UI see "🐸"
 shot "boton-personalizado"
-check "Pestaña Tú" $UI tab Tú
+check "Pestaña Mascota" $UI tab Mascota
 check "Botón Adoptar" $UI tap "Adoptar"
 check "Confirma la adopción" $UI tapexact "Adoptar"
 check "Aparece la mascota" $UI see "Huevo"
 shot "mascota"
 
 echo "== 9k2. Cuidar a la mascota (tipo Pou) y cambiar el fondo"
-check "Abre Mascotas" $UI tap "Cuidar y jugar"
 check "Muestra las barras de cuidado" $UI wait "Hambre" 10
 check "Tiene la barra de Limpieza" $UI see "Limpieza"
 shot "mascotas"
 check "Juega con la mascota" $UI tap "Jugar"
 check "La colección tiene las especies nuevas" $UI see "Conejo"
 check "Ofrece mandar un saludo a un amigo" $UI see "Mandarle un saludo a un amigo"
-check "Vuelve de Mascotas" $UI tap "Volver"
+check "Tú → Personalizar" sh -c "$UI tab Tú && $UI tap Personalizar"
 # Los primeros fondos de la fila se ven sin deslizar hacia el lado.
 check "Elige el fondo Corazones" $UI tap "💘 Corazones"
-check "Sigue en la pestaña Tú" $UI see "Fondo de la app"
+check "Sigue en Personalizar" $UI see "Fondo de la app"
 
 check "Pestaña Sonar" $UI tab Sonar
 check "Abre los poderes" $UI tap "Poderes"
@@ -593,8 +596,7 @@ shot "filtro-risa"
 check "Vuelve a todos los sonidos" $UI tap "Filtro Todos"
 check "Abre el buscador" $UI tap "Buscar un sonido"
 check "Cierra el buscador" $UI tap "Cerrar el buscador"
-check "Pestaña Tú" $UI tab Tú
-check "Abre la pieza de la mascota" $UI tap "Cuidar y jugar"
+check "Pestaña Mascota" $UI tab Mascota
 check "Va al armario" $UI tap "Armario"
 check "Le pone el gorro de fiesta (gratis)" $UI tap "Gorro de fiesta"
 check "Queda puesto" $UI wait "Gorro de fiesta, puesto" 5
@@ -607,7 +609,6 @@ shot "minijuegos"
 adb shell input keyevent 4
 sleep 1
 check "Atrás vuelve a la pieza" $UI see "Mandarle un saludo a un amigo"
-check "Vuelve de Mascotas" $UI tap "Volver"
 open_settings
 check "Ajustes de animación y fondo" $UI see "Reducir movimiento"
 check "El fondo reacciona a los sonidos" $UI see "El fondo reacciona a los sonidos"
@@ -718,7 +719,7 @@ $UI tapexact "Entendido"
 $UI tab Sonar
 
 echo "== 11. Pasar la app a un amigo (Quick Share)"
-check "Pestaña Amigos" $UI tab Amigos
+check "Amigos → Amigos" open_friends
 check "Botón Pasar la app" $UI tap "Pasar la app"
 check "Se abre el menú de compartir con el APK" sh -c "sleep 3; adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | grep -qiE 'chooser|intentresolver'"
 shot "pasar-app"

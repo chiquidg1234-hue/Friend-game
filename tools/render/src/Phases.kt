@@ -197,7 +197,7 @@ class Phases {
         idle(3000)
 
         // Aviso con Bulla (toast) y pantalla vacía de Chats.
-        tap(activity, "Pestaña Grupos")
+        tap(activity, "Pestaña Amigos"); tap(activity, "Sección Grupos")
         idle(900)
         shot(activity, "fase-1/06-vacio-grupos.png")
 
@@ -261,7 +261,7 @@ class Phases {
         app.getSharedPreferences("friendgame-looks", 0).edit().putInt("pet_bonus", 600).putLong("pet_bath", System.currentTimeMillis() - 26 * 3600_000L).commit()
         Wardrobe.toggle(Wardrobe.item("fiesta")!!)
         idle(300)
-        tap(activity, "🏡 Cuidar y jugar")
+        tap(activity, "Pestaña Mascota")
         idle(800)
         val room = mutableListOf<Bitmap>()
         room += shot(activity, "fase-2/10-mascota-cocina.png")
