@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Silueta de Bulla para los íconos temáticos de Android 13+ (orejas, cuernitos, antena y cara). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:pivotX="43" android:pivotY="42" android:rotation="-20">
+        <path android:fillColor="#FFFFFF" android:pathData="M37,31 a6,12 0 1,0 12,0 a6,12 0 1,0 -12,0 z" />
+    </group>
+    <group android:pivotX="65" android:pivotY="42" android:rotation="22">
+        <path android:fillColor="#FFFFFF" android:pathData="M59,31 a6,12 0 1,0 12,0 a6,12 0 1,0 -12,0 z" />
+    </group>
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,40 L56,27"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+    <path android:fillColor="#FFFFFF" android:pathData="M52.5,24 a3.8,3.8 0 1,0 7.6,0 a3.8,3.8 0 1,0 -7.6,0 z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M44,45 l2,-8 l4,7 z M59,44 l4,-7 l2,8 z" />
+    <!-- Cabeza con los ojos entrecerrados y la sonrisa pícara recortados. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M33,63 a21,23 0 1,0 42,0 a21,23 0 1,0 -42,0 z M41,59 a5,4.5 0 0,0 10,0 z M57,60 a5,4.5 0 0,0 10,0 z M45,70 q7,4.5 14,-2.5 q-6,8.5 -14,2.5 z M42,53 l9,-1.5 l0,2.2 l-9,1.5 z" />
+</vector>
