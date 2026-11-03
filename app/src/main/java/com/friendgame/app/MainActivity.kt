@@ -5387,6 +5387,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 copyText("Invitación Friend Game", link)
                 toast("Enlace copiado")
             }) { shareInvite(group) }
+            .closeButton("Cerrar")
             .show()
     }
 

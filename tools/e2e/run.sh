@@ -276,7 +276,7 @@ INVITE=$($UI find 'https://github\.com/\S*#g=\S*')
 GID=$(echo "$INVITE" | sed -n 's/.*#g=\([a-z0-9]*\).*/\1/p')
 echo "Invitación: $INVITE"
 check "El QR lleva al grupo ($GID)" test "${#GID}" -eq 16
-$UI tapexact "Cerrar"
+$UI tapexact "Cerrar" || adb shell input keyevent KEYCODE_BACK
 CARLA=$(new_code)
 DANI=$(new_code)
 curl -s -N "$SERVER/fgame-g-$GID/json" > "$OUT/inbox-grupo.jsonl" &
@@ -380,7 +380,7 @@ check "El botón dice el monto" $UI wait "Donar 5 USD" 5
 shot "apoyar"
 check "Toca Donar" $UI tap "Donar 5 USD"
 check "Sin enlace configurado, avisa que pronto" $UI wait "Gracias por querer apoyar" 10
-$UI tapexact "Cerrar"
+$UI tapexact "Cerrar" || adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
 check "Atrás vuelve a Ajustes" $UI wait "Cuando te mandan un sonido" 10
 
@@ -467,7 +467,7 @@ check "Muestra el QR de la comunidad" $UI wait "Invitar a «Barrio»" 10
 CINVITE=$($UI find 'https://github\.com/\S*#g=\S*')
 CID=$(echo "$CINVITE" | sed -n 's/.*#g=\([a-z0-9]*\).*/\1/p')
 check "La invitación dice que es comunidad" sh -c "echo '$CINVITE' | grep -q 'c=1'"
-$UI tapexact "Cerrar"
+$UI tapexact "Cerrar" || adb shell input keyevent KEYCODE_BACK
 check "Aparece como comunidad" $UI see "Comunidad · 1 miembro"
 publish "g-$CID" "{\"fg\":1,\"t\":\"gjoin\",\"from\":\"$DANI\",\"name\":\"Dani\",\"g\":\"$CID\"}" >/dev/null
 sleep 4
