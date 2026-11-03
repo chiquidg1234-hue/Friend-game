@@ -91,6 +91,7 @@ class MascotRender {
                     Wardrobe.Slot.HAT -> Wardrobe.Outfit(item.key, null, null)
                     Wardrobe.Slot.EYES -> Wardrobe.Outfit(null, item.key, null)
                     Wardrobe.Slot.NECK -> Wardrobe.Outfit(null, null, item.key)
+                    Wardrobe.Slot.BACK -> Wardrobe.Outfit(null, null, null, item.key)
                 }
                 c2.save()
                 c2.translate((c * cell).toFloat(), (r * cell).toFloat())

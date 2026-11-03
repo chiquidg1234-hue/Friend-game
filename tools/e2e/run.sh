@@ -512,6 +512,13 @@ shot "mascotas"
 check "Juega con la mascota" $UI tap "Jugar"
 check "La colección tiene las especies nuevas" $UI see "Conejo"
 check "Ofrece mandar un saludo a un amigo" $UI see "Mandarle un saludo a un amigo"
+check "Abre la tienda de la mascota" $UI tap "Tienda"
+check "Vende comida con precio" $UI wait "Manzana: 4 puntos" 5
+check "Compra una manzana" $UI tap "Manzana: 4 puntos"
+check "Vuelve a la cocina" $UI tap "Cocina"
+check "La manzana quedó en el refri (3 de regalo + 1)" $UI wait "Darle 🍎 (quedan 4)" 5
+check "El armario edita la piel" sh -c "$UI tap Armario && $UI tap 'Piel' && $UI wait 'Piel Original' 5"
+shot "mascota-armario"
 check "Tú → Personalizar" sh -c "$UI tab Tú && $UI tap Personalizar"
 # Los primeros fondos de la fila se ven sin deslizar hacia el lado.
 check "Elige el fondo Corazones" $UI tap "💘 Corazones"

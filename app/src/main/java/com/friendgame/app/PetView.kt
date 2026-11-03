@@ -73,6 +73,22 @@ class PetView(context: Context) : View(context) {
             invalidate()
         }
 
+    /** Color de piel elegido en el armario (clave de PetShop.SKINS; "" = el de su especie). */
+    var skin: String = ""
+        set(value) {
+            if (field != value) model = null
+            field = value
+            invalidate()
+        }
+
+    /** Color de ojos (clave de PetShop.EYES; "" = oscuros). */
+    var eyeColor: String = ""
+        set(value) {
+            if (field != value) model = null
+            field = value
+            invalidate()
+        }
+
     /** Ropa puesta: gorro, lentes y algo en el cuello (ver [Wardrobe]). */
     var outfit: Wardrobe.Outfit = Wardrobe.Outfit.NONE
         set(value) {
@@ -312,7 +328,7 @@ class PetView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        val m = model ?: PetArt.build(species).also { model = it }
+        val m = model ?: PetArt.build(species, PetShop.skinTone(skin), PetShop.eyeTone(eyeColor)).also { model = it }
         val now = SystemClock.uptimeMillis()
         val live = animated && Anim.enabled()
         val t = if (live) now / 1000f + seed else 1.2f
@@ -396,6 +412,7 @@ class PetView(context: Context) : View(context) {
             drawEar(canvas, rig.earL, rig.earLX, rig.earLY, p.ears)
             drawEar(canvas, rig.earR, rig.earRX, rig.earRY, -p.ears)
         }
+        if (stage >= 2) Wardrobe.drawBack(canvas, m, outfit)
         m.back.forEach { canvas.drawPath(it.path, it.paint) }
         m.front.forEach { canvas.drawPath(it.path, it.paint) }
         if (rig != null) {
@@ -891,7 +908,7 @@ class PetView(context: Context) : View(context) {
                     val px = x + p.lookX * (rx - pr - 2.5f) * 0.85f
                     val py = e.y + p.lookY * (ry - pr - 2.5f) * 0.85f + (if (face == Face.SAD) 2f else 0f)
                     paint.shader = null
-                    paint.color = rig.pupilColor
+                    paint.color = m.eyeTone?.base ?: rig.pupilColor
                     canvas.drawCircle(px, py, pr, paint)
                     paint.color = 0xFFFFFFFF.toInt()
                     canvas.drawCircle(px - pr * 0.35f, py - pr * 0.4f, pr * 0.38f, paint)
@@ -1394,9 +1411,12 @@ object PetArt {
         val scleraPaint = fill(0xFFF8F6FC.toInt())
         private val eyeCache = HashMap<Long, Paint>()
 
+        /** Color de ojos elegido (null: los oscuros de siempre). */
+        var eyeTone: Tone? = null
+
         fun eyePaint(x: Float, y: Float, rx: Float, ry: Float): Paint {
             val key = (x.toBits().toLong() shl 32) or (ry.toBits().toLong() and 0xFFFFFFFFL)
-            return eyeCache.getOrPut(key) { gradient(RectF(x - rx, y - ry, x + rx, y + ry), EYE_TONE) }
+            return eyeCache.getOrPut(key) { gradient(RectF(x - rx, y - ry, x + rx, y + ry), eyeTone ?: EYE_TONE) }
         }
     }
 
@@ -1484,7 +1504,21 @@ object PetArt {
     val heart: Path = svg("M0 -4 C -6 -12, -18 -6, -12 4 L0 16 L12 4 C 18 -6, 6 -12, 0 -4 Z")
     val star: Path = svg("M0 -11 L3 -3 L11 0 L3 3 L0 11 L-3 3 L-11 0 L-3 -3 Z")
 
-    fun build(species: String): Model = when (species) {
+    /** Color de piel que reemplaza el del cuerpo mientras se arma un modelo (ver [build]). */
+    private var skinTone: Tone? = null
+
+    /** Arma la mascota; [skin] cambia el color del cuerpo y [eyes] el de los ojos (el «avatar»). */
+    @Synchronized
+    fun build(species: String, skin: Tone? = null, eyes: Tone? = null): Model {
+        skinTone = skin
+        try {
+            return buildSpecies(species).also { it.eyeTone = eyes }
+        } finally {
+            skinTone = null
+        }
+    }
+
+    private fun buildSpecies(species: String): Model = when (species) {
         "bulla" -> bulla()
         "perro" -> perro()
         "zorro" -> zorro()
@@ -1507,7 +1541,7 @@ object PetArt {
      * «Friend Game · Diseño 2.0»).
      */
     private fun bulla(): Model {
-        val body = Tone(0xFFA8ECFF.toInt(), 0xFF3DBBF5.toInt(), 0xFF1A72C2.toInt())
+        val body = skinTone ?: Tone(0xFFA8ECFF.toInt(), 0xFF3DBBF5.toInt(), 0xFF1A72C2.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFEFFBFF.toInt(), 0xFFC4EBFF.toInt())
         val foot = Tone(0xFFFFE08A.toInt(), 0xFFFFB534.toInt(), 0xFFE07B00.toInt())
         val inner = 0xFFFF9EC7.toInt()
@@ -1552,7 +1586,7 @@ object PetArt {
     }
 
     private fun gato(): Model {
-        val body = Tone(0xFFFFE0B8.toInt(), 0xFFFFA94D.toInt(), 0xFFD9480F.toInt())
+        val body = skinTone ?: Tone(0xFFFFE0B8.toInt(), 0xFFFFA94D.toInt(), 0xFFD9480F.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFFFF4E8.toInt(), 0xFFFFE7CC.toInt())
         val b = Builder()
         b.stroke(svg("M134 160 C 170 158, 176 116, 152 102"), body, 13f)
@@ -1578,7 +1612,7 @@ object PetArt {
     }
 
     private fun perro(): Model {
-        val body = Tone(0xFFFBE7CF.toInt(), 0xFFE3B27A.toInt(), 0xFFA86B32.toInt())
+        val body = skinTone ?: Tone(0xFFFBE7CF.toInt(), 0xFFE3B27A.toInt(), 0xFFA86B32.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFFFF7EC.toInt(), 0xFFFFEBD2.toInt())
         val ear = Tone(0xFFB98350.toInt(), 0xFF8A5A2E.toInt(), 0xFF57351A.toInt())
         val b = Builder()
@@ -1606,7 +1640,7 @@ object PetArt {
     }
 
     private fun zorro(): Model {
-        val body = Tone(0xFFFFC59A.toInt(), 0xFFFF7F3F.toInt(), 0xFFC8410A.toInt())
+        val body = skinTone ?: Tone(0xFFFFC59A.toInt(), 0xFFFF7F3F.toInt(), 0xFFC8410A.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFFFF6EE.toInt(), 0xFFFFE9DA.toInt())
         val dark = Tone(0xFF6B4A40.toInt(), 0xFF4A3029.toInt(), 0xFF2A1A16.toInt())
         val b = Builder()
@@ -1641,7 +1675,7 @@ object PetArt {
     }
 
     private fun rana(): Model {
-        val body = Tone(0xFFC3F5CB.toInt(), 0xFF5FD17A.toInt(), 0xFF23843A.toInt())
+        val body = skinTone ?: Tone(0xFFC3F5CB.toInt(), 0xFF5FD17A.toInt(), 0xFF23843A.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFF1FCF2.toInt(), 0xFFDDF7E0.toInt())
         val b = Builder()
         b.fill(oval(100f, 146f, 44f, 32f), body)
@@ -1670,7 +1704,7 @@ object PetArt {
     }
 
     private fun panda(): Model {
-        val body = Tone(0xFFFFFFFF.toInt(), 0xFFF1F1F6.toInt(), 0xFFABAFC0.toInt())
+        val body = skinTone ?: Tone(0xFFFFFFFF.toInt(), 0xFFF1F1F6.toInt(), 0xFFABAFC0.toInt())
         val dark = Tone(0xFF5D5D72.toInt(), 0xFF2D2D3A.toInt(), 0xFF121218.toInt())
         val b = Builder()
         b.fill(circle(61f, 54f, 16f), dark)
@@ -1698,7 +1732,7 @@ object PetArt {
     }
 
     private fun pulpo(): Model {
-        val body = Tone(0xFFFFD3E3.toInt(), 0xFFF7709F.toInt(), 0xFFB8235A.toInt())
+        val body = skinTone ?: Tone(0xFFFFD3E3.toInt(), 0xFFF7709F.toInt(), 0xFFB8235A.toInt())
         val b = Builder()
         b.stroke(
             svg("M66 132 C 60 158, 44 166, 52 178 M80 140 C 78 164, 64 176, 72 184 M94 144 C 94 166, 86 180, 92 188 M106 144 C 106 166, 114 180, 108 188 M120 140 C 122 164, 136 176, 128 184 M134 132 C 140 158, 156 166, 148 178"),
@@ -1724,7 +1758,7 @@ object PetArt {
     }
 
     private fun dragon(): Model {
-        val body = Tone(0xFFDCD0FF.toInt(), 0xFF9775FA.toInt(), 0xFF5F3DC4.toInt())
+        val body = skinTone ?: Tone(0xFFDCD0FF.toInt(), 0xFF9775FA.toInt(), 0xFF5F3DC4.toInt())
         val belly = Tone(0xFFFFF9E0.toInt(), 0xFFFFEBA8.toInt(), 0xFFFFDB7A.toInt())
         val wing = Tone(0xFFB197FC.toInt(), 0xFF8461F0.toInt(), 0xFF5F3DC4.toInt())
         val b = Builder()
@@ -1758,7 +1792,7 @@ object PetArt {
     }
 
     private fun unicornio(): Model {
-        val body = Tone(0xFFFFFFFF.toInt(), 0xFFFAF2FF.toInt(), 0xFFCDB2E8.toInt())
+        val body = skinTone ?: Tone(0xFFFFFFFF.toInt(), 0xFFFAF2FF.toInt(), 0xFFCDB2E8.toInt())
         val b = Builder()
         b.stroke(svg("M132 160 C 166 162, 176 130, 158 110"), 0xFFFF8FAB.toInt(), 9f)
         b.stroke(svg("M134 152 C 160 152, 168 128, 152 114"), 0xFFB197FC.toInt(), 8f)
@@ -1796,7 +1830,7 @@ object PetArt {
     }
 
     private fun oso(): Model {
-        val body = Tone(0xFFC9A17A.toInt(), 0xFF9B6B43.toInt(), 0xFF5F3C21.toInt())
+        val body = skinTone ?: Tone(0xFFC9A17A.toInt(), 0xFF9B6B43.toInt(), 0xFF5F3C21.toInt())
         val belly = Tone(0xFFF3E0C8.toInt(), 0xFFEBD1AC.toInt(), 0xFFD9B98A.toInt())
         val b = Builder()
         b.fill(circle(64f, 52f, 15f), body)
@@ -1822,7 +1856,7 @@ object PetArt {
     }
 
     private fun conejo(): Model {
-        val body = Tone(0xFFFFFFFF.toInt(), 0xFFF3EEFA.toInt(), 0xFFC9C2DE.toInt())
+        val body = skinTone ?: Tone(0xFFFFFFFF.toInt(), 0xFFF3EEFA.toInt(), 0xFFC9C2DE.toInt())
         val belly = Tone(0xFFFFFFFF.toInt(), 0xFFFBF7FF.toInt(), 0xFFEDE6F7.toInt())
         val inner = 0xFFFFB3C6.toInt()
         val b = Builder()
@@ -1847,7 +1881,7 @@ object PetArt {
     }
 
     private fun pollito(): Model {
-        val body = Tone(0xFFFFF3B0.toInt(), 0xFFFFD43B.toInt(), 0xFFF08C00.toInt())
+        val body = skinTone ?: Tone(0xFFFFF3B0.toInt(), 0xFFFFD43B.toInt(), 0xFFF08C00.toInt())
         val b = Builder()
         b.fill(oval(60f, 122f, 12f, 20f, 18f), body)
         b.fill(oval(140f, 122f, 12f, 20f, -18f), body)

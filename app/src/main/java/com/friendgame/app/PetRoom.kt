@@ -48,8 +48,19 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
         DORMIR("Dormir", R.drawable.ic_moon, 0xFFA29BFE.toInt()),
         JUGAR("Jugar", R.drawable.ic_gamepad, 0xFF3DDC97.toInt()),
         ARMARIO("Armario", R.drawable.ic_shirt, 0xFFFF7AB8.toInt()),
+        TIENDA("Tienda", R.drawable.ic_store, 0xFFFFC93C.toInt()),
+        /** No tiene pestaña: se abre desde Jugar (🎤). */
         HABLALE("Háblale", R.drawable.ic_mic, 0xFFFFC93C.toInt()),
     }
+
+    /** Qué se muestra en el armario (el editor de tu mascota). */
+    private enum class Edit(val title: String) { SKIN("🎨 Piel"), EYES("👀 Ojos"), HAT("🎩 Gorros"), GLASSES("🕶️ Lentes"), NECK("🎀 Cuello"), BACK("🎒 Espalda") }
+
+    /** Qué se muestra en la tienda. */
+    private enum class Shelf(val title: String) { FOOD("🍔 Comida"), SHOWER("🚿 Duchas"), ROOM("🏠 Cuartos"), DECOR("🛋️ Muebles") }
+
+    private var edit = Edit.HAT
+    private var shelf = Shelf.FOOD
 
     val pet = PetView(context).apply { contentDescription = "Tu mascota. Tócala para acariciarla" }
     var room = Room.COCINA
@@ -81,8 +92,8 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
         stage.background = context.rounded(0, 28)
         stage.clipToOutline = true
         stage.addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        stage.addView(pet, FrameLayout.LayoutParams(context.dp(236), context.dp(236), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-            bottomMargin = context.dp(66)
+        stage.addView(pet, FrameLayout.LayoutParams(context.dp(PET_DP), context.dp(PET_DP), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = context.dp(96)
         })
         bubble.apply {
             background = context.lipped(Palette.TEXT, 18, Palette.SUB)
@@ -102,7 +113,9 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
         stage.addView(tray, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
             setMargins(context.dp(10), 0, context.dp(10), context.dp(10))
         })
-        addView(stage, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(400)).apply { topMargin = context.dp(12) })
+        // La pieza ocupa buena parte de la pantalla (como en Pou), con la mascota en grande.
+        val tall = (resources.displayMetrics.heightPixels * 0.58f).toInt().coerceIn(context.dp(440), context.dp(580))
+        addView(stage, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tall).apply { topMargin = context.dp(12) })
         addView(tabs, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(12) })
 
         pet.isClickable = true
@@ -121,6 +134,9 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
 
     /** Pone al día la mascota, las barras y lo de la pieza. Se llama en cada redibujo. */
     fun update(species: Pets.Species, stageNumber: Int, progress: Float) {
+        PetShop.welcomeGift()
+        pet.skin = PetShop.skin
+        pet.eyeColor = PetShop.eyes
         pet.species = species.key
         pet.stage = stageNumber
         pet.mood = Pets.mood()
@@ -134,7 +150,7 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
         buildStats()
         // La bandeja se rearma solo si cambió la pieza o el nivel (precios del armario); si no, sigue igual.
         val level = Points.level().number
-        if (builtRoom != room || builtLevel != level || room == Room.ARMARIO) buildTray()
+        if (builtRoom != room || builtLevel != level || room == Room.ARMARIO || room == Room.TIENDA || room == Room.COCINA) buildTray()
         refreshTabs()
     }
 
@@ -187,7 +203,7 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
 
     private fun buildTabs() {
         tabs.removeAllViews()
-        Room.entries.forEach { r ->
+        Room.entries.filter { it != Room.HABLALE }.forEach { r ->
             val tab = Chunky(context, context.dp(4)).apply {
                 orientation = VERTICAL
                 gravity = Gravity.CENTER
@@ -224,7 +240,7 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
     private fun go(next: Room) {
         if (next == room) return
         if (room == Room.DORMIR && lightsOff) setLights(on = true, quiet = true)
-        if (room == Room.HABLALE) {
+        if (room == Room.HABLALE && next != Room.HABLALE) {
             parrot?.cancel()
             parrot = null
             micLevel = 0f
@@ -238,11 +254,12 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
             backdrop.animate().alpha(1f).setDuration(240).start()
         }
         say(when (next) {
-            Room.COCINA -> "Arrastra la comida hasta mi boca 😋 (${Pets.FEED_COST} pts)"
+            Room.COCINA -> if (PetShop.stock().isEmpty()) "¡El refri está vacío! Compra comida en la Tienda 🛒" else "Arrastra la comida hasta mi boca 😋"
             Room.BANO -> "Frótame con el jabón y después la ducha 🛁"
             Room.DORMIR -> if (Pets.careLevel(Pets.Care.ENERGIA) < 50) "Tengo sueño… ¿apagas la luz? 🌙" else "Apaga la luz cuando quieras que duerma"
             Room.JUGAR -> "¡Juguemos! Toca la pelota o elige un minijuego 🎮"
-            Room.ARMARIO -> "¿Qué me pongo hoy? 👗"
+            Room.ARMARIO -> "¡Arma mi look! Color, ojos y ropa 👗"
+            Room.TIENDA -> "¿Me compras algo? 🛍️ Comida, duchas y cosas para mi cuarto"
             Room.HABLALE -> "Mantén el botón y háblame: lo repito con mi voz 🎤"
         })
         buildTray()
@@ -254,24 +271,45 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
         builtRoom = room
         builtLevel = Points.level().number
         tray.removeAllViews()
-        val box = context.row().apply {
-            gravity = Gravity.CENTER
-            background = context.rounded(0xCC150C2C.toInt(), 20)
+        val box = context.column().apply {
+            background = context.rounded(0xD9150C2C.toInt(), 20)
             setPadding(context.dp(8), context.dp(8), context.dp(8), context.dp(8))
         }
+        val line = context.row().apply { gravity = Gravity.CENTER }
         when (room) {
             Room.COCINA -> {
-                val species = Pets.current
-                val foods = listOfNotNull(species?.food, "🍎", "🍕", "🥕", "🍪").distinct().take(5)
-                foods.forEach { food -> box.addView(foodTile(food), LayoutParams(0, context.dp(52), 1f).apply { setMargins(context.dp(3), 0, context.dp(3), 0) }) }
+                val stock = PetShop.stock()
+                // Su comida favorita primero.
+                val favorite = Pets.current?.food
+                val foods = stock.keys.sortedBy { if (it == favorite) 0 else 1 }
+                val scroller = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+                val items = context.row()
+                foods.forEach { food -> items.addView(foodTile(food, stock[food] ?: 0), LayoutParams(context.dp(62), context.dp(58)).apply { marginEnd = context.dp(6) }) }
+                items.addView(context.label("🛒", 26f).apply {
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    background = context.clickable(context.lipped(Palette.YELLOW, 16, Palette.YELLOW_LIP))
+                    isClickable = true
+                    contentDescription = "Comprar comida en la tienda"
+                    stateListAnimator = Anim.press()
+                    setOnClickListener { openShelf(Shelf.FOOD) }
+                }, LayoutParams(context.dp(62), context.dp(58)))
+                scroller.addView(items)
+                line.addView(scroller, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
             Room.BANO -> {
-                box.addView(soapTile(), LayoutParams(context.dp(64), context.dp(52)))
-                box.addView(context.space(10))
-                box.addView(context.button("🚿 Ducha", 0xFF48DBFB.toInt(), Palette.INK, heightDp = 52, radiusDp = 16, sizeSp = 15f) { shower() },
-                    LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                val current = PetShop.currentShower()
+                line.addView(soapTile(), LayoutParams(context.dp(64), context.dp(52)))
+                line.addView(context.space(10))
+                line.addView(context.button("${current.emoji} Ducha", 0xFF48DBFB.toInt(), Palette.INK, heightDp = 52, radiusDp = 16, sizeSp = 15f) { shower() }.apply {
+                    contentDescription = "Ducha: ${current.name}"
+                }, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                val owned = PetShop.SHOWERS.filter { PetShop.owns("shower:${it.key}", it.cost) }
+                if (owned.size > 1) {
+                    box.addView(chips(owned.map { it.emoji + " " + it.name.removePrefix("Ducha ") }, owned.indexOf(current)) { i -> PetShop.shower = owned[i].key; buildTray() })
+                }
             }
-            Room.DORMIR -> box.addView(
+            Room.DORMIR -> line.addView(
                 context.button(if (lightsOff) "💡 Prender la luz" else "🌙 Apagar la luz", if (lightsOff) Palette.YELLOW else 0xFFA29BFE.toInt(), Palette.INK, heightDp = 52, radiusDp = 16) {
                     setLights(on = lightsOff, quiet = false)
                 },
@@ -286,25 +324,77 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
                     stateListAnimator = Anim.press()
                     setOnClickListener { playBall(this) }
                 }
-                box.addView(ball, LayoutParams(context.dp(56), context.dp(52)))
-                box.addView(context.space(10))
-                box.addView(context.button("🎮 Minijuegos", Palette.OK, Palette.INK, heightDp = 52, radiusDp = 16, display = true, sizeSp = 17f) { host.openGames() },
+                line.addView(ball, LayoutParams(context.dp(56), context.dp(52)))
+                line.addView(context.space(8))
+                line.addView(context.button("🎮 Minijuegos", Palette.OK, Palette.INK, heightDp = 52, radiusDp = 16, display = true, sizeSp = 17f) { host.openGames() },
                     LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                line.addView(context.space(8))
+                line.addView(context.label("🎤", 26f).apply {
+                    gravity = Gravity.CENTER
+                    background = context.clickable(context.lipped(0xFFFFC93C.toInt(), 16, Palette.YELLOW_LIP))
+                    isClickable = true
+                    contentDescription = "Háblale: repite lo que dices con su voz"
+                    stateListAnimator = Anim.press()
+                    setOnClickListener { go(Room.HABLALE) }
+                }, LayoutParams(context.dp(56), context.dp(52)))
             }
             Room.ARMARIO -> {
+                box.addView(chips(Edit.entries.map { it.title }, edit.ordinal) { i -> edit = Edit.entries[i]; buildTray() })
                 val scroller = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
                 val items = context.row()
-                Wardrobe.ITEMS.forEach { item -> items.addView(itemTile(item), LayoutParams(context.dp(70), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = context.dp(6) }) }
+                val tiles: List<View> = when (edit) {
+                    Edit.SKIN -> PetShop.SKINS.map { colorTile("skin", it, PetShop.skin == it.key) { PetShop.skin = it.key } }
+                    Edit.EYES -> PetShop.EYES.map { colorTile("eye", it, PetShop.eyes == it.key) { PetShop.eyes = it.key } }
+                    Edit.HAT -> Wardrobe.bySlot(Wardrobe.Slot.HAT).map { itemTile(it) }
+                    Edit.GLASSES -> Wardrobe.bySlot(Wardrobe.Slot.EYES).map { itemTile(it) }
+                    Edit.NECK -> Wardrobe.bySlot(Wardrobe.Slot.NECK).map { itemTile(it) }
+                    Edit.BACK -> Wardrobe.bySlot(Wardrobe.Slot.BACK).map { itemTile(it) }
+                }
+                tiles.forEach { items.addView(it, LayoutParams(context.dp(76), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = context.dp(6) }) }
                 scroller.addView(items)
-                box.addView(scroller, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                line.addView(scroller, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            Room.TIENDA -> {
+                box.addView(chips(Shelf.entries.map { it.title }, shelf.ordinal) { i -> shelf = Shelf.entries[i]; buildTray() })
+                val scroller = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+                val items = context.row()
+                val tiles: List<View> = when (shelf) {
+                    Shelf.FOOD -> PetShop.FOODS.map { food ->
+                        shopTile(food.emoji, "${food.cost} pts", "${food.name}: ${food.cost} puntos" + if (food.treat) ", la pone feliz" else "", owned = false, selected = false, locked = false) { buyFood(food) }
+                    }
+                    Shelf.SHOWER -> PetShop.SHOWERS.map { shower ->
+                        val id = "shower:${shower.key}"
+                        ownedTile(shower.emoji, shower.name, id, shower.cost, shower.level, PetShop.shower == shower.key) {
+                            PetShop.shower = shower.key
+                            say("${shower.emoji} ¡Quiero probar la ${shower.name.lowercase()}! Vamos al baño")
+                        }
+                    }
+                    Shelf.ROOM -> PetShop.ROOMS.map { style ->
+                        ownedTile(style.emoji, style.name, "room:${style.key}", style.cost, style.level, PetShop.room == style.key) {
+                            PetShop.room = style.key
+                            backdrop.invalidate()
+                            say("${style.emoji} ¡Me encanta mi cuarto nuevo!")
+                        }
+                    }
+                    Shelf.DECOR -> PetShop.DECOR.map { decor ->
+                        ownedTile(decor.emoji, decor.name, "decor:${decor.key}", decor.cost, decor.level, PetShop.placed(decor.place) == decor) {
+                            PetShop.toggleDecor(decor)
+                            backdrop.invalidate()
+                            say(if (PetShop.placed(decor.place) == decor) "${decor.emoji} ¡Quedó perfecto!" else "Lo guardé")
+                        }
+                    }
+                }
+                tiles.forEach { items.addView(it, LayoutParams(context.dp(76), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = context.dp(6) }) }
+                scroller.addView(items)
+                line.addView(scroller, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
             Room.HABLALE -> {
                 val column = context.column()
                 column.addView(micButton(), LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 val phrases = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
-                val line = context.row()
+                val words = context.row()
                 PHRASES.forEach { (text, _) ->
-                    line.addView(context.label(text, 13f, Palette.TEXT, bold = true).apply {
+                    words.addView(context.label(text, 13f, Palette.TEXT, bold = true).apply {
                         background = context.clickable(context.rounded(Palette.SURFACE2, 999))
                         setPadding(context.dp(12), context.dp(7), context.dp(12), context.dp(7))
                         isClickable = true
@@ -312,23 +402,187 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
                         setOnClickListener { answer(text) }
                     }, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = context.dp(6) })
                 }
-                phrases.addView(line)
+                phrases.addView(words)
                 column.addView(phrases, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(8) })
-                box.addView(column, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                line.addView(column, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
         }
+        box.addView(line, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (box.childCount > 0) topMargin = context.dp(8) })
         tray.addView(box, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
+    /** Fila de chips para elegir categoría (en el armario y la tienda). */
+    private fun chips(titles: List<String>, selected: Int, onPick: (Int) -> Unit): View {
+        val scroller = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+        val row = context.row()
+        titles.forEachIndexed { i, text ->
+            val on = i == selected
+            row.addView(context.label(text, 13f, if (on) Palette.INK else Palette.TEXT, bold = true).apply {
+                background = context.clickable(context.rounded(if (on) Palette.YELLOW else Palette.SURFACE2, 999))
+                setPadding(context.dp(12), context.dp(7), context.dp(12), context.dp(7))
+                isClickable = true
+                isSelected = on
+                contentDescription = text + if (on) ", elegido" else ""
+                setOnClickListener { onPick(i) }
+            }, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = context.dp(6) })
+        }
+        scroller.addView(row)
+        return scroller
+    }
+
+    private fun openShelf(target: Shelf) {
+        shelf = target
+        go(Room.TIENDA)
+    }
+
+    /** Casilla de la tienda o el armario: emoji grande y abajo el precio o el estado. */
+    private fun shopTile(emoji: String, note: String, description: String, owned: Boolean, selected: Boolean, locked: Boolean, onClick: () -> Unit): View {
+        val cell = context.column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(context.dp(4), context.dp(6), context.dp(4), context.dp(8))
+            background = context.clickable(context.lipped(if (selected) Palette.ACCENT_SOFT else Palette.SURFACE2, 14, if (selected) Palette.ACCENT else Palette.LIP))
+            isClickable = true
+            isSelected = selected
+            alpha = if (locked) 0.55f else 1f
+            stateListAnimator = Anim.press()
+            contentDescription = description
+            setOnClickListener { onClick() }
+        }
+        cell.addView(context.label(emoji, 26f).apply {
+            includeFontPadding = false
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        })
+        cell.addView(context.label(note, 11f, when {
+            selected -> Palette.ACCENT_TEXT
+            owned -> Palette.OK
+            else -> Palette.YELLOW
+        }, bold = true).apply {
+            maxLines = 1
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(4) })
+        return cell
+    }
+
+    /** Algo que se compra una vez y después se elige (ducha, cuarto, mueble). */
+    private fun ownedTile(emoji: String, name: String, id: String, cost: Int, level: Int, selected: Boolean, onUse: () -> Unit): View {
+        val owned = PetShop.owns(id, cost)
+        val locked = !owned && Points.level().number < level
+        val note = when {
+            selected -> "✓ Usando"
+            owned -> "Tuyo"
+            locked -> "🔒 Nv $level"
+            else -> "$cost pts"
+        }
+        val description = name + when {
+            selected -> ", en uso"
+            owned -> ", tuyo. Toca para usarlo"
+            locked -> ", se desbloquea en el nivel $level"
+            else -> ", $cost puntos"
+        }
+        return shopTile(emoji, note, description, owned, selected, locked) {
+            if (owned) {
+                onUse()
+                buildTray()
+                return@shopTile
+            }
+            when (PetShop.buy(id, cost, level)) {
+                PetShop.Result.OK -> {
+                    pet.celebrate()
+                    host.toast("$emoji Compraste $name (−$cost pts)")
+                    onUse()
+                }
+                PetShop.Result.NO_POINTS -> host.toast("Te faltan puntos: tienes ${Points.balance()}")
+                PetShop.Result.LOCKED -> host.toast("🔒 $name se desbloquea en el nivel $level")
+            }
+            buildTray()
+        }
+    }
+
+    /** Muestra de color (piel u ojos) que se compra una vez. */
+    private fun colorTile(kind: String, skin: PetShop.Skin, selected: Boolean, onUse: () -> Unit): View {
+        val id = "$kind:${skin.key}"
+        val owned = PetShop.owns(id, skin.cost)
+        val locked = !owned && Points.level().number < skin.level
+        val cell = context.column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(context.dp(4), context.dp(8), context.dp(4), context.dp(8))
+            background = context.clickable(context.lipped(if (selected) Palette.ACCENT_SOFT else Palette.SURFACE2, 14, if (selected) Palette.ACCENT else Palette.LIP))
+            isClickable = true
+            isSelected = selected
+            alpha = if (locked) 0.55f else 1f
+            stateListAnimator = Anim.press()
+            contentDescription = "${if (kind == "skin") "Piel" else "Ojos"} ${skin.name}" + when {
+                selected -> ", puesto"
+                owned -> ", tuyo"
+                locked -> ", se desbloquea en el nivel ${skin.level}"
+                else -> ", ${skin.cost} puntos"
+            }
+            setOnClickListener {
+                if (owned) {
+                    onUse()
+                    pet.celebrate()
+                } else {
+                    when (PetShop.buy(id, skin.cost, skin.level)) {
+                        PetShop.Result.OK -> {
+                            onUse()
+                            pet.celebrate()
+                            host.toast("🎨 ${skin.name} (−${skin.cost} pts)")
+                        }
+                        PetShop.Result.NO_POINTS -> host.toast("Te faltan puntos: tienes ${Points.balance()}")
+                        PetShop.Result.LOCKED -> host.toast("🔒 ${skin.name} se desbloquea en el nivel ${skin.level}")
+                    }
+                }
+                pet.skin = PetShop.skin
+                pet.eyeColor = PetShop.eyes
+                buildTray()
+            }
+        }
+        val dot = View(context).apply {
+            background = if (skin.tone == null) {
+                android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(0xFFFFA94D.toInt(), 0xFF3DBBF5.toInt(), 0xFFF7709F.toInt())).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+            } else {
+                android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(skin.tone.light, skin.tone.base, skin.tone.shade)).apply { shape = android.graphics.drawable.GradientDrawable.OVAL }
+            }
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cell.addView(dot, LayoutParams(context.dp(30), context.dp(30)))
+        cell.addView(context.label(
+            when {
+                selected -> "✓ ${skin.name}"
+                owned -> skin.name
+                locked -> "🔒 Nv ${skin.level}"
+                else -> "${skin.cost} pts"
+            },
+            11f, if (selected) Palette.ACCENT_TEXT else if (owned) Palette.OK else Palette.YELLOW, bold = true,
+        ).apply {
+            maxLines = 1
+            importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = context.dp(4) })
+        return cell
+    }
+
+    private fun buyFood(food: PetShop.Food) {
+        when (PetShop.buyFood(food)) {
+            PetShop.Result.OK -> {
+                pet.expecting = true
+                postDelayed({ pet.expecting = false }, 600)
+                say("${food.emoji} ¡A mi refri! Tengo ${PetShop.stock()[food.emoji] ?: 1}")
+                host.toast("${food.emoji} ${food.name} al refri (−${food.cost} pts)")
+            }
+            else -> host.toast("Te faltan puntos: tienes ${Points.balance()}")
+        }
+        buildTray()
     }
 
     // ---------------------------------------------------------------- Cocina
 
     /** Comida que se arrastra hasta la boca (o se toca, para darla directo). */
-    private fun foodTile(food: String): View = context.label(food, 28f).apply {
+    private fun foodTile(food: String, count: Int): View = context.label("$food\n×$count", 15f, Palette.TEXT, bold = true).apply {
         gravity = Gravity.CENTER
         includeFontPadding = false
         background = context.lipped(Palette.SURFACE2, 16)
         isClickable = true
-        contentDescription = "Darle $food"
+        contentDescription = "Darle $food (quedan $count)"
         // Tocar (o activar con TalkBack) se la da directo; arrastrar es el juego.
         setOnClickListener { feed(food) }
         var flying: TextView? = null
@@ -393,11 +647,24 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
     }
 
     private fun feed(food: String) {
-        when (Pets.care(Pets.Care.HAMBRE)) {
+        if (Pets.careLevel(Pets.Care.HAMBRE) >= 90) {
+            pet.surprise()
+            say("¡Ya estoy llena! 🙂")
+            return
+        }
+        if (!PetShop.takeFood(food)) {
+            say("¡Se acabó! Compra más en la Tienda 🛒")
+            buildTray()
+            return
+        }
+        when (Pets.care(Pets.Care.HAMBRE, paid = false)) {
             Pets.CareResult.OK -> {
                 pet.eat(food)
                 host.petted()
-                say("¡Ñam! $food Qué rico")
+                val treat = PetShop.food(food)?.treat == true || food == Pets.current?.food
+                if (treat) Pets.care(Pets.Care.ALEGRIA)
+                say(if (food == Pets.current?.food) "¡Mi favorita! $food 😍" else "¡Ñam! $food Qué rico")
+                buildTray()
             }
             Pets.CareResult.FULL -> {
                 pet.surprise()
@@ -693,6 +960,8 @@ class PetRoom(context: Context, private val host: Host) : LinearLayout(context) 
     }
 
     private companion object {
+        /** Tamaño de la mascota en su pieza (en dp). */
+        const val PET_DP = 280
         val PHRASES = listOf(
             "¡Hola!" to "¡Hola! ¿Le mandamos un sonido a alguien? 🔊",
             "Te quiero" to "¡Yo también te quiero! 💕",
@@ -719,6 +988,7 @@ class RoomBackdrop(context: Context) : View(context) {
         }
     var showerUntil = 0L
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val text = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val path = Path()
     private var wall: Shader? = null
     private var shaderFor = -1
@@ -731,10 +1001,12 @@ class RoomBackdrop(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
         val d = resources.displayMetrics.density
-        val (top, bottom, floor) = COLORS.getValue(room)
-        if (shaderFor != height) {
+        val style = PetShop.currentRoom()
+        val (top, bottom, floor) = if (style.key.isEmpty()) COLORS.getValue(room) else Triple(style.wallTop, style.wallBottom, style.floor)
+        val styleKey = height * 31 + style.key.hashCode() * 7 + room.ordinal
+        if (shaderFor != styleKey) {
             wall = LinearGradient(0f, 0f, 0f, h, top, bottom, Shader.TileMode.CLAMP)
-            shaderFor = height
+            shaderFor = styleKey
         }
         paint.shader = wall
         canvas.drawRect(0f, 0f, w, h, paint)
@@ -744,6 +1016,7 @@ class RoomBackdrop(context: Context) : View(context) {
         canvas.drawRect(0f, floorY, w, h, paint)
         paint.color = 0x22FFFFFF
         canvas.drawRect(0f, floorY, w, floorY + 3 * d, paint)
+        drawStyle(canvas, style.key, w, h, floorY, d)
         // Ventana: de día, cielo; de noche (o en la pieza), luna y estrellas.
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val night = room == PetRoom.Room.DORMIR || hour >= 20 || hour < 7
@@ -806,8 +1079,9 @@ class RoomBackdrop(context: Context) : View(context) {
                 canvas.drawRoundRect(sx - 26 * d, 50 * d, sx + 8 * d, 62 * d, 6 * d, 6 * d, paint)
                 if (SystemClock.uptimeMillis() < showerUntil) {
                     val t = SystemClock.uptimeMillis() / 1000f
-                    paint.color = 0xCC74C0FC.toInt()
+                    val drops = PetShop.currentShower().drops
                     for (i in 0 until 16) {
+                        paint.color = drops[i % drops.size]
                         val k = ((t * 1.8f) + i * 0.137f) % 1f
                         val dx = sx - 24 * d + (i % 8) * 4 * d - k * 40 * d * ((i % 3) - 1)
                         val dy = 64 * d + k * (floorY - 70 * d)
@@ -872,6 +1146,23 @@ class RoomBackdrop(context: Context) : View(context) {
                 paint.color = 0x55FFFFFF
                 canvas.drawRoundRect(w / 2f - 70 * d, 66 * d, w / 2f - 50 * d, 150 * d, 10 * d, 10 * d, paint)
             }
+            PetRoom.Room.TIENDA -> {
+                // Mostrador con repisas llenas de cosas.
+                paint.color = 0x33000000
+                canvas.drawRoundRect(w * 0.08f, 54 * d, w * 0.92f, floorY - 8 * d, 18 * d, 18 * d, paint)
+                text.textSize = 24 * d
+                val shelves = listOf("🍎🍕🍩🍣", "🌈🫧🎉✨", "🪴🧸📺🎸")
+                shelves.forEachIndexed { i, items ->
+                    val y = 70 * d + i * 42 * d
+                    paint.color = 0xFF8A5530.toInt()
+                    canvas.drawRect(w * 0.12f, y + 30 * d, w * 0.88f, y + 34 * d, paint)
+                    canvas.drawText(items, w / 2f, y + 26 * d, text)
+                }
+                paint.color = 0xFFFFC93C.toInt()
+                canvas.drawRoundRect(w * 0.1f, floorY - 18 * d, w * 0.9f, floorY + 30 * d, 14 * d, 14 * d, paint)
+                paint.color = 0xFFD99A00.toInt()
+                canvas.drawRect(w * 0.1f, floorY + 22 * d, w * 0.9f, floorY + 30 * d, paint)
+            }
             PetRoom.Room.HABLALE -> {
                 // Escenario con micrófono y luces.
                 paint.color = 0x33FFC93C
@@ -888,6 +1179,82 @@ class RoomBackdrop(context: Context) : View(context) {
                 canvas.drawRoundRect(w - 62 * d, 96 * d, w - 42 * d, 126 * d, 10 * d, 10 * d, paint)
             }
         }
+        if (room != PetRoom.Room.TIENDA) drawDecor(canvas, w, floorY, d)
+    }
+
+    /** Detalles del estilo del cuarto (olas en la playa, estrellas en el espacio…). */
+    private fun drawStyle(canvas: Canvas, key: String, w: Float, h: Float, floorY: Float, d: Float) {
+        when (key) {
+            "playa" -> {
+                paint.color = 0xFF2E9AE0.toInt()
+                canvas.drawRect(0f, floorY - 26 * d, w, floorY, paint)
+                paint.color = 0x66FFFFFF
+                var x = 0f
+                while (x < w) {
+                    canvas.drawCircle(x, floorY - 26 * d, 10 * d, paint)
+                    x += 26 * d
+                }
+                text.textSize = 30 * d
+                canvas.drawText("🌴", w - 40 * d, floorY - 30 * d, text)
+            }
+            "espacio" -> {
+                paint.color = 0xFFFFFFFF.toInt()
+                for (i in 0 until 40) {
+                    val sx = (i * 73 % 100) / 100f * w
+                    val sy = (i * 37 % 100) / 100f * floorY
+                    canvas.drawCircle(sx, sy, (1 + i % 3) * 0.8f * d, paint)
+                }
+                text.textSize = 26 * d
+                canvas.drawText("🪐", w - 50 * d, 50 * d, text)
+            }
+            "bosque" -> {
+                text.textSize = 34 * d
+                canvas.drawText("🌲", 30 * d, floorY + 6 * d, text)
+                canvas.drawText("🍄", w - 34 * d, floorY + 4 * d, text)
+            }
+            "dulces" -> {
+                paint.color = 0x55FFFFFF
+                var y = 20 * d
+                while (y < floorY) {
+                    canvas.drawRect(0f, y, w, y + 8 * d, paint)
+                    y += 30 * d
+                }
+                text.textSize = 26 * d
+                canvas.drawText("🍭", w - 34 * d, floorY - 6 * d, text)
+            }
+            "neon" -> {
+                paint.color = 0x66FF2E9A
+                canvas.drawRect(0f, floorY - 4 * d, w, floorY, paint)
+                paint.color = 0x5522D3EE
+                canvas.drawRect(0f, 40 * d, w, 44 * d, paint)
+            }
+            "castillo" -> {
+                paint.color = 0x22000000
+                var y = 0f
+                var row = 0
+                while (y < floorY) {
+                    var x = if (row % 2 == 0) 0f else 20 * d
+                    while (x < w) {
+                        canvas.drawRect(x, y, x + 38 * d, y + 1.5f * d, paint)
+                        x += 40 * d
+                    }
+                    y += 22 * d
+                    row++
+                }
+                text.textSize = 28 * d
+                canvas.drawText("🕯️", w - 30 * d, 140 * d, text)
+            }
+        }
+    }
+
+    /** Los muebles comprados, cada uno en su lugar (encima de lo propio de cada pieza). */
+    private fun drawDecor(canvas: Canvas, w: Float, floorY: Float, d: Float) {
+        text.textSize = 44 * d
+        PetShop.placed(PetShop.Place.WALL_LEFT)?.let { canvas.drawText(it.emoji, 62 * d, 232 * d, text) }
+        PetShop.placed(PetShop.Place.WALL_RIGHT)?.let { canvas.drawText(it.emoji, w - 62 * d, 52 * d, text) }
+        text.textSize = 56 * d
+        PetShop.placed(PetShop.Place.FLOOR_LEFT)?.let { canvas.drawText(it.emoji, 44 * d, floorY + 14 * d, text) }
+        PetShop.placed(PetShop.Place.FLOOR_RIGHT)?.let { canvas.drawText(it.emoji, w - 44 * d, floorY + 14 * d, text) }
     }
 
     private companion object {
@@ -898,6 +1265,7 @@ class RoomBackdrop(context: Context) : View(context) {
             PetRoom.Room.JUGAR to Triple(0xFF1E4A3A.toInt(), 0xFF173A30.toInt(), 0xFF2E6A50.toInt()),
             PetRoom.Room.ARMARIO to Triple(0xFF5A1A4A.toInt(), 0xFF3A1236.toInt(), 0xFF7A2E66.toInt()),
             PetRoom.Room.HABLALE to Triple(0xFF3A2275.toInt(), 0xFF2A1858.toInt(), 0xFF4B2C8F.toInt()),
+            PetRoom.Room.TIENDA to Triple(0xFF4A2E1E.toInt(), 0xFF2E1C12.toInt(), 0xFF6B4A30.toInt()),
         )
     }
 }

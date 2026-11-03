@@ -368,9 +368,9 @@ object Pets {
      * repetir si ya está casi llena, para que no sea un truco de puntos.
      */
     @Synchronized
-    fun care(care: Care): CareResult {
+    fun care(care: Care, paid: Boolean = true): CareResult {
         if (careLevel(care) >= 90) return CareResult.FULL
-        if (care == Care.HAMBRE && !Points.spend(FEED_COST)) return CareResult.NO_POINTS
+        if (care == Care.HAMBRE && paid && !Points.spend(FEED_COST)) return CareResult.NO_POINTS
         prefs.edit()
             .putLong(care.key, System.currentTimeMillis())
             .putInt("pet_bonus", prefs.getInt("pet_bonus", 0) + if (care == Care.HAMBRE) FEED_XP else CARE_XP)

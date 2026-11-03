@@ -179,6 +179,7 @@ object Store {
             Looks.init(context)
             Pets.init(context)
             Wardrobe.init(context)
+            PetShop.init(context)
             Games.init(context)
             Powers.init(context)
             Streaks.init(context)
