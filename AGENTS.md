@@ -71,7 +71,7 @@ Todo el texto de la app está en español (Chile/Latinoamérica, tuteo).
 | `Updater.kt`, `ApkProvider.kt` | Solo en la versión github: se actualiza sola y se pasa por Quick Share. |
 | `Legal.kt` | Términos y privacidad (los textos están en `docs/legal/` y entran como assets) y denuncias. |
 | `CustomAudio.kt` | Importar audios: hasta 1 min y 2 MB, suenan 10 s desde `startMs`. |
-| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 76 sonidos integrados (12 originales y 64 grabaciones CC0 de BigSoundBank, ver `tools/sounds/`) y sus categorías (`Vibes`: risa/fiesta/susto/amor/troll/voz, con color, labio e ícono), enlace para donar, códigos, QR y escáner. |
+| `SoundCheck.kt`, `Sounds.kt`, `Donations.kt`, `Codes.kt`, `Qr.kt`, `ScanActivity.kt` | Revisión del sonido, los 116 sonidos integrados (12 originales y 104 grabaciones CC0 de BigSoundBank, ver `tools/sounds/`; los de broma primero) y sus categorías (`Vibes`: risa/fiesta/susto/amor/troll/voz, con color, labio e ícono), enlace para donar, códigos, QR y escáner. |
 
 ## Protocolo (JSON en el cuerpo de cada mensaje de ntfy)
 

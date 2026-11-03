@@ -584,6 +584,366 @@
    "emoji": "🤖",
    "vibe": "voz",
    "max": 4
+  },
+  {
+   "key": "vibrador",
+   "id": "0022",
+   "slug": "mobile-phone-vibrator-1",
+   "label": "Celular vibrando",
+   "emoji": "📳",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "te_llaman",
+   "id": "0253",
+   "slug": "fixed-telephone-ring-4",
+   "label": "Te llaman",
+   "emoji": "☎️",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "te_colgaron",
+   "id": "2645",
+   "slug": "dial-tone-call-ends",
+   "label": "Te colgaron",
+   "emoji": "📞",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "timbre",
+   "id": "0159",
+   "slug": "doorbell-house-1",
+   "label": "Timbre",
+   "emoji": "🛎️",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "tocan_puerta",
+   "id": "0095",
+   "slug": "door-knock",
+   "label": "Tocan la puerta",
+   "emoji": "✊",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "moscas",
+   "id": "0822",
+   "slug": "many-flies",
+   "label": "Moscas",
+   "emoji": "🦟",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "moscardon",
+   "id": "1000",
+   "slug": "bumblebee-1",
+   "label": "Moscardón",
+   "emoji": "🐝",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "bocinazo",
+   "id": "1048",
+   "slug": "gas-fog-horn-1",
+   "label": "Corneta de barco",
+   "emoji": "🚢",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "bocina_micro",
+   "id": "3594",
+   "slug": "bus-horn",
+   "label": "Pito del micro",
+   "emoji": "🚌",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "bocina_auto",
+   "id": "3438",
+   "slug": "car-honking-at-90-km-h-3",
+   "label": "Auto pitando",
+   "emoji": "🚗",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "error",
+   "id": "1682",
+   "slug": "operation-game-1",
+   "label": "¡Error!",
+   "emoji": "❌",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "incorrecto",
+   "id": "1586",
+   "slug": "buzzer-4",
+   "label": "Respuesta incorrecta",
+   "emoji": "🚫",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "disco_rayado",
+   "id": "2875",
+   "slug": "vinyl-scratch-18",
+   "label": "Disco rayado",
+   "emoji": "💿",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "cachetada",
+   "id": "0597",
+   "slug": "slaps",
+   "label": "Cachetada",
+   "emoji": "🖐️",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "punete",
+   "id": "2460",
+   "slug": "punch-5",
+   "label": "Puñete",
+   "emoji": "👊",
+   "vibe": "troll",
+   "max": 2
+  },
+  {
+   "key": "latigazo",
+   "id": "2961",
+   "slug": "complete-whip-1",
+   "label": "Latigazo",
+   "emoji": "🤠",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "cuac",
+   "id": "0364",
+   "slug": "coin-coin-toy",
+   "label": "Cuac de juguete",
+   "emoji": "🐤",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "chillon",
+   "id": "0879",
+   "slug": "squeaker-toy-2",
+   "label": "Juguete chillón",
+   "emoji": "🧸",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "caja_muu",
+   "id": "0924",
+   "slug": "moo-box",
+   "label": "Caja de vaca",
+   "emoji": "🐮",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "microondas",
+   "id": "1631",
+   "slug": "microwave-bell",
+   "label": "¡Ding! Microondas",
+   "emoji": "🍿",
+   "vibe": "troll",
+   "max": 3
+  },
+  {
+   "key": "pedo_largo",
+   "id": "0111",
+   "slug": "flatulence-1",
+   "label": "Pedo largo",
+   "emoji": "💨",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "pedo_caballo",
+   "id": "1855",
+   "slug": "pony-flatulence-2",
+   "label": "Pedo de caballo",
+   "emoji": "🐴",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "eructazo",
+   "id": "1338",
+   "slug": "eructation",
+   "label": "Eructazo",
+   "emoji": "🤢",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "sonarse",
+   "id": "3308",
+   "slug": "blow-your-nose-1",
+   "label": "Sonarse la nariz",
+   "emoji": "🤧",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "tripas",
+   "id": "3177",
+   "slug": "stomach-gurgling-4",
+   "label": "Tripas que suenan",
+   "emoji": "😖",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "vomito",
+   "id": "2496",
+   "slug": "man-vomiting-1",
+   "label": "Vómito",
+   "emoji": "🤮",
+   "vibe": "troll",
+   "max": 5
+  },
+  {
+   "key": "sorbete",
+   "id": "0508",
+   "slug": "straw-end-of-glass",
+   "label": "Sorbete vacío",
+   "emoji": "🥤",
+   "vibe": "troll",
+   "max": 4
+  },
+  {
+   "key": "gatos_pelea",
+   "id": "0817",
+   "slug": "two-cats-fighting",
+   "label": "Pelea de gatos",
+   "emoji": "😾",
+   "vibe": "troll",
+   "max": 6
+  },
+  {
+   "key": "perro_canta",
+   "id": "2451",
+   "slug": "dog-singing-2",
+   "label": "Perro cantando",
+   "emoji": "🐶",
+   "vibe": "risa",
+   "max": 6
+  },
+  {
+   "key": "idea",
+   "id": "1398",
+   "slug": "idea-1",
+   "label": "¡Idea!",
+   "emoji": "💡",
+   "vibe": "risa",
+   "max": 3
+  },
+  {
+   "key": "resorte",
+   "id": "2284",
+   "slug": "boing-cartoon-8",
+   "label": "Resorte",
+   "emoji": "🌀",
+   "vibe": "risa",
+   "max": 3
+  },
+  {
+   "key": "timbre_bici",
+   "id": "1102",
+   "slug": "bell-bike-5",
+   "label": "Timbre de bici",
+   "emoji": "🚲",
+   "vibe": "risa",
+   "max": 3
+  },
+  {
+   "key": "corneta",
+   "id": "1832",
+   "slug": "pneumatic-horn-double-3",
+   "label": "Corneta de aire",
+   "emoji": "📣",
+   "vibe": "fiesta",
+   "max": 4
+  },
+  {
+   "key": "paparazzi",
+   "id": "2390",
+   "slug": "paparazzi-2",
+   "label": "Paparazzi",
+   "emoji": "📸",
+   "vibe": "fiesta",
+   "max": 5
+  },
+  {
+   "key": "gritos",
+   "id": "1148",
+   "slug": "kids-scream-1",
+   "label": "Niños gritando",
+   "emoji": "😫",
+   "vibe": "susto",
+   "max": 5
+  },
+  {
+   "key": "portazo",
+   "id": "1501",
+   "slug": "door-slamming-4",
+   "label": "Portazo",
+   "emoji": "🚪",
+   "vibe": "susto",
+   "max": 3
+  },
+  {
+   "key": "motosierra",
+   "id": "0982",
+   "slug": "chainsaw-starting",
+   "label": "Motosierra",
+   "emoji": "⚙️",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "flauta_fantasma",
+   "id": "2054",
+   "slug": "ghost-on-the-flute-1",
+   "label": "Flauta fantasma",
+   "emoji": "🎶",
+   "vibe": "susto",
+   "max": 6
+  },
+  {
+   "key": "besote",
+   "id": "2200",
+   "slug": "kisses-4",
+   "label": "Besotes",
+   "emoji": "😘",
+   "vibe": "amor",
+   "max": 3
+  },
+  {
+   "key": "olfateando",
+   "id": "1095",
+   "slug": "man-sniffing",
+   "label": "Olfateando",
+   "emoji": "👃",
+   "vibe": "voz",
+   "max": 4
   }
  ]
 }

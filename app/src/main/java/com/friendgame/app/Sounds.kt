@@ -21,6 +21,47 @@ class Sound(
 
 object Sounds {
     val all = listOf(
+        // Bromas (CC0, BigSoundBank): las más troll van primero.
+        Sound("disco_rayado", "💿", "Disco rayado", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("vibrador", "📳", "Celular vibrando", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("error", "❌", "¡Error!", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("pedo_largo", "💨", "Pedo largo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("te_llaman", "☎️", "Te llaman", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("te_colgaron", "📞", "Te colgaron", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("timbre", "🛎️", "Timbre", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("tocan_puerta", "✊", "Tocan la puerta", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("moscas", "🦟", "Moscas", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("moscardon", "🐝", "Moscardón", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("bocinazo", "🚢", "Corneta de barco", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("bocina_micro", "🚌", "Pito del micro", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("bocina_auto", "🚗", "Auto pitando", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("incorrecto", "🚫", "Respuesta incorrecta", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("cachetada", "🖐️", "Cachetada", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("punete", "👊", "Puñete", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("latigazo", "🤠", "Latigazo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("cuac", "🐤", "Cuac de juguete", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("chillon", "🧸", "Juguete chillón", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("caja_muu", "🐮", "Caja de vaca", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("microondas", "🍿", "¡Ding! Microondas", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("pedo_caballo", "🐴", "Pedo de caballo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("eructazo", "🤢", "Eructazo", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("sonarse", "🤧", "Sonarse la nariz", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("tripas", "😖", "Tripas que suenan", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("vomito", "🤮", "Vómito", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("sorbete", "🥤", "Sorbete vacío", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("gatos_pelea", "😾", "Pelea de gatos", Vibes.TROLL.color, Vibes.TROLL.key, fallback = "pedorreta"),
+        Sound("perro_canta", "🐶", "Perro cantando", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("idea", "💡", "¡Idea!", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("resorte", "🌀", "Resorte", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("timbre_bici", "🚲", "Timbre de bici", Vibes.RISA.color, Vibes.RISA.key, fallback = "pato"),
+        Sound("corneta", "📣", "Corneta de aire", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("paparazzi", "📸", "Paparazzi", Vibes.FIESTA.color, Vibes.FIESTA.key, fallback = "tada"),
+        Sound("gritos", "😫", "Niños gritando", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("portazo", "🚪", "Portazo", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("motosierra", "⚙️", "Motosierra", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("flauta_fantasma", "🎶", "Flauta fantasma", Vibes.SUSTO.color, Vibes.SUSTO.key, fallback = "sirena"),
+        Sound("besote", "😘", "Besotes", Vibes.AMOR.color, Vibes.AMOR.key, fallback = "campana"),
+        Sound("olfateando", "👃", "Olfateando", Vibes.VOZ.color, Vibes.VOZ.key, fallback = "boing"),
         Sound("bocina", "📯", "Bocina", 0xFFFF6B6B.toInt(), Vibes.SUSTO.key),
         Sound("sirena", "🚨", "Sirena", 0xFFFF9F43.toInt(), Vibes.SUSTO.key),
         Sound("alarma", "⏰", "Alarma", 0xFFFECA57.toInt(), Vibes.SUSTO.key),
@@ -158,7 +199,7 @@ object Vibes {
         0xFF48DBFB.toInt(), 0xFF1A9CC2.toInt(), 0xFF7FE6FF.toInt(), true, R.drawable.ic_cat_voz)
 
     /** En el orden de los filtros. */
-    val all = listOf(RISA, FIESTA, SUSTO, AMOR, TROLL, VOZ)
+    val all = listOf(TROLL, RISA, FIESTA, SUSTO, AMOR, VOZ)
     val default = TROLL
 
     fun byKey(key: String?): Vibe = all.firstOrNull { it.key == key } ?: default

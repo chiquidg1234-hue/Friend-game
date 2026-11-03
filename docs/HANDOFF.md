@@ -16,7 +16,7 @@ Apunta a Android 16 (API 36).
 ### Funciones terminadas
 
 - **Sonidos:**
-  - 76 sonidos integrados en 6 categorías: 12 originales y 64 grabaciones reales con licencia CC0 de BigSoundBank (`tools/sounds/`). En Sonar se ven por categoría (4 de cada una y «Ver los N»). Un sonido nuevo viaja con un original de respaldo para las versiones viejas. Más audios propios (grabados o descargados, hasta 1 min y 2 MB).
+  - 116 sonidos integrados en 6 categorías: 12 originales y 104 grabaciones reales con licencia CC0 de BigSoundBank (`tools/sounds/`), con Troll primero (celular vibrando, te llaman, timbre, ¡error!, disco rayado…). En Sonar se ven por categoría (4 de cada una y «Ver los N»). Un sonido nuevo viaja con un original de respaldo para las versiones viejas. Más audios propios (grabados o descargados, hasta 1 min y 2 MB).
   - En un audio largo se elige desde dónde suena.
   - Todo sonido dura como mucho 10 s.
   - Suenan con la pantalla apagada y en silencio, **al volumen máximo y por el altavoz principal** (antes, en algunos celulares salían por el auricular de las llamadas si otra app lo dejaba en modo llamada). Al terminar, el volumen de alarma vuelve a como estaba. Se pide aceptarlo al instalar y al actualizar; quien no acepta no recibe sonidos.
