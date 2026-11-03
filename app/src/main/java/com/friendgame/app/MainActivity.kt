@@ -2,7 +2,6 @@ package com.friendgame.app
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.NotificationManager
 import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
@@ -158,7 +157,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     private var soundQuery = ""
     private var soundFilter = FILTER_ALL
     private var welcome: View? = null
-    private var loudDialog: AlertDialog? = null
+    private var loudDialog: Sheet? = null
 
     private val ui = Handler(Looper.getMainLooper())
     private val io: ExecutorService = Executors.newSingleThreadExecutor()
@@ -1275,11 +1274,18 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private fun openChest() {
         val reward = Quests.openChest() ?: return
-        AlertDialog.Builder(this)
-            .setTitle("🎁 ¡Cofre del día!")
-            .setMessage("${reward.emoji}  ${reward.text}\n\nMañana hay misiones nuevas y otro cofre.")
-            .setPositiveButton("¡Genial!", null)
+        val prize = column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = lipped(Palette.YELLOW, 24, Palette.YELLOW_LIP)
+            setPadding(dp(16), dp(18), dp(16), dp(22))
+            addView(label(reward.emoji, 56f).apply { includeFontPadding = false }, LinearLayout.LayoutParams(WRAP, WRAP))
+            addView(title(reward.text, 20f, Palette.INK).apply { gravity = Gravity.CENTER }, lp(topDp = 8))
+        }
+        Sheet(this).title("🎁 ¡Cofre del día!", "Mañana hay misiones nuevas y otro cofre.")
+            .add(prize, 14)
+            .buttons("¡Genial!", Palette.YELLOW, secondary = null) {}
             .show()
+        if (Anim.enabled()) Anim.confetti(root)
     }
 
     private fun statusPill(): View {
@@ -2053,11 +2059,9 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private fun donate(amount: Int?) {
         if (!Donations.enabled) {
-            AlertDialog.Builder(this)
-                .setTitle("¡Gracias por querer apoyar! 💜")
-                .setMessage("Las donaciones se activan muy pronto. Mientras, la mejor ayuda es pasarle la app a tus amigos.")
-                .setPositiveButton("Pasar la app") { _, _ -> shareApp() }
-                .setNegativeButton("Cerrar", null)
+            Sheet(this).title("¡Gracias por querer apoyar! 💜")
+                .add(sheetText("Las donaciones se activan muy pronto. Mientras, la mejor ayuda es pasarle la app a tus amigos."), 10)
+                .buttons("Pasar la app", secondary = "Cerrar") { shareApp() }
                 .show()
             return
         }
@@ -2402,10 +2406,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         if (message.from != Store.myCode && message.from.isNotEmpty()) {
             options += "🚩 Denunciar a ${message.name}" to { report(message.from, message.name, message.text) }
         }
-        AlertDialog.Builder(this)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet("Mensaje", options, subtitle = message.text.take(80).ifEmpty { null })
     }
 
     // ------------------------------------------------------------------ Retos
@@ -2559,7 +2560,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             }
         }
         refresh()
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        val body = column()
         body.addView(caps("Tipo de reto"), lp(topDp = 4))
         body.addView(kinds, lp())
         body.addView(caps("¿En cuánto tiempo suena?"), lp(topDp = 16))
@@ -2584,14 +2585,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         body.addView(caps("Sonido"), lp(topDp = 16))
         body.addView(soundScroll, lp(topDp = 8))
         body.addView(label("Suena a la vez en el celular de todos los del chat, también en el tuyo.", 12f, Palette.SUB), lp(topDp = 12))
-        AlertDialog.Builder(this)
-            .setTitle("Nuevo reto en «$name»")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Crear reto") { _, _ ->
+        Sheet(this).title("Nuevo reto en «$name»")
+            .add(body, 12)
+            .buttons("Crear reto", secondary = "Cancelar") {
                 val seconds = clockAt?.let { (it - System.currentTimeMillis()) / 1000 } ?: delay
                 createReto(key, kind, sound.key, seconds.coerceIn(Retos.MIN_DELAY_S, Retos.MAX_DELAY_S))
             }
-            .setNegativeButton("Cancelar", null)
             .show()
     }
 
@@ -2623,24 +2622,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         line.addView(minutes, lp(0, WRAP, weight = 1f))
         line.addView(label("min", 18f, Palette.SUB, bold = true), LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = dp(8) })
         val body = padded(line, label("De 1 minuto a 6 horas.", 13f, Palette.SUB))
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("¿En cuánto tiempo suena?")
-            .setView(body)
-            .setPositiveButton("Listo", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val total = (hours.text.toString().toLongOrNull() ?: 0) * 3600 + (minutes.text.toString().toLongOrNull() ?: 0) * 60
-                if (total < 60 || total > Retos.MAX_DELAY_S) {
-                    toast("Elige entre 1 minuto y 6 horas")
-                } else {
-                    onPick(total)
-                    dialog.dismiss()
-                }
+        lateinit var dialog: Sheet
+        dialog = Sheet(this).title("¿En cuánto tiempo suena?", null)
+            .add(body, 12)
+            .buttons("Listo", closeOnPrimary = false) {
+            val total = (hours.text.toString().toLongOrNull() ?: 0) * 3600 + (minutes.text.toString().toLongOrNull() ?: 0) * 60
+            if (total < 60 || total > Retos.MAX_DELAY_S) {
+                toast("Elige entre 1 minuto y 6 horas")
+            } else {
+                onPick(total)
+                dialog.dismiss()
             }
-        }
-        dialog.show()
+            }
+            .show()
     }
 
     /** Elegir la hora exacta del reto (dentro de las próximas 6 horas); [onPick] recibe ese momento. */
@@ -2664,7 +2658,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     private fun cancelReto(reto: Reto) {
-        confirm("¿Cancelar el reto?", "Ya no va a sonar para nadie.") {
+        confirm("¿Cancelar el reto?", "Ya no va a sonar para nadie.", danger = true) {
             val payload = Retos.cancel(this, reto.id) ?: return@confirm
             Chats.info(reto.chat, "Cancelaste el reto")
             runInBackground({ Relay.publishTopic(Chats.topic(reto.chat), payload) }) {}
@@ -2740,7 +2734,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             }
         }
         refresh()
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        val body = column()
         body.addView(
             label(
                 "Si ${friend.name} acepta, durante ese tiempo ninguno de los dos podrá detener, silenciar ni pausar " +
@@ -2758,17 +2752,15 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             ),
             lp(topDp = 12),
         )
-        AlertDialog.Builder(this)
-            .setTitle("🔒 Candado con ${friend.name}")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Proponer") { _, _ ->
+        Sheet(this).title("🔒 Candado con ${friend.name}")
+            .add(body, 12)
+            .buttons("Proponer", secondary = "Cancelar") {
                 val payload = Locks.propose(friend.code, minutes)
                 openChat(Chats.friendKey(friend.code))
                 runInBackground({ Relay.publish(friend.code, payload) }) {
                     toast("🔒 Propuesta enviada. Empieza cuando ${friend.name} acepte.")
                 }
             }
-            .setNegativeButton("Cancelar", null)
             .show()
     }
 
@@ -3141,23 +3133,58 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     private fun soundOptions(sound: Sound) {
         val look = Looks.button(sound.key)
         val name = look.label ?: sound.label
+        val vibe = Vibes.byKey(Looks.vibe(sound.key))
         val target = currentTarget()
-        val options = mutableListOf<Pair<String, () -> Unit>>(
-            "▶️ Escucharlo" to { previewSound(Player.Source.Asset(sound.asset), name, 0, Looks.vibe(sound.key), null) },
-            "🎨 Personalizar botón" to { customizeButton(sound.key, sound.emoji, sound.color, sound.label, editName = true) },
-        )
+        val sheet = Sheet(this)
+            .title(name, "${vibe.emoji} ${vibe.label} · ${if (sound.fallback == null) "sonido original" else "grabación real"}")
+            .header(soundPreview(look.emoji ?: sound.emoji, name, vibe, Looks.swatch(look.swatch)))
+            .option("▶️", "Escucharlo", Palette.OK, "Suena solo en tu celular") {
+                previewSound(Player.Source.Asset(sound.asset), name, 0, vibe.key, null)
+            }
         if (target != null) {
-            options.add(1, "📱 Escuchar como le llega a ${target.name}" to { playTrial(target, Player.Source.Asset(sound.asset), name, sound.key, 0) })
+            sheet.option("📱", "Escuchar como le llega a ${target.name}", Palette.BULLA, "Pantalla completa y volumen de alarma, sin mandarlo") {
+                playTrial(target, Player.Source.Asset(sound.asset), name, sound.key, 0)
+            }
         }
-        options += "🏷️ Categoría: ${Vibes.byKey(Looks.vibe(sound.key)).label}" to { chooseVibe(sound.key) }
+        sheet.option("🎨", "Personalizar botón", Palette.ACCENT, "Emoji, color y nombre") {
+            customizeButton(sound.key, sound.emoji, sound.color, sound.label, editName = true)
+        }
+        sheet.option(vibe.emoji, "Categoría: ${vibe.label}", vibe.color, "Cambia su color, su fondo y cómo reacciona tu mascota") { chooseVibe(sound.key) }
         if (look.emoji != null || look.swatch != null || look.label != null) {
-            options += "↩️ Volver al original" to { Looks.setButton(sound.key, Looks.Look()) }
+            sheet.option("↩️", "Volver al original", Palette.SURFACE2) {
+                Looks.setButton(sound.key, Looks.Look())
+                toast("↩️ «${sound.label}» volvió a ser como antes")
+            }
         }
-        AlertDialog.Builder(this)
-            .setTitle(name)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        sheet.show()
+    }
+
+    /** Tarjeta chica de un sonido para la cabecera de una hoja (emoji grande, nombre y categoría). */
+    private fun soundPreview(emoji: String, name: String, vibe: Vibe, swatch: Looks.Swatch?): View {
+        val color = swatch?.main ?: vibe.color
+        val box = row().apply {
+            background = if (swatch != null) {
+                android.graphics.drawable.LayerDrawable(arrayOf(rounded(Palette.lip(color), 22), swatch.drawable(this@MainActivity, 22))).apply {
+                    setLayerInset(1, 0, 0, 0, dp(4))
+                }
+            } else {
+                lipped(color, 22, vibe.lip)
+            }
+            setPadding(dp(14), dp(12), dp(14), dp(16))
+        }
+        box.addView(label(emoji, 40f).apply {
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        })
+        val texts = column()
+        val ink = if (swatch != null) Palette.INK else vibe.onColor
+        texts.addView(title(name, 20f, ink).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }, lp())
+        texts.addView(label(vibe.label.uppercase(), 12f, ink, bold = true).apply { letterSpacing = 0.12f }, lp(topDp = 2))
+        box.addView(texts, lp(0, WRAP, weight = 1f).apply { marginStart = dp(14) })
+        return box
     }
 
     /**
@@ -3166,16 +3193,15 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
      */
     private fun chooseVibe(key: String) {
         val current = Looks.vibe(key)
-        val labels = Vibes.all.map { "${it.emoji} ${it.label}" + if (it.key == current) "  ✓" else "" }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("¿De qué categoría es este sonido?")
-            .setItems(labels) { _, which ->
-                val vibe = Vibes.all[which]
+        val sheet = Sheet(this).title("¿De qué categoría es?", "Cambia el color del botón, el fondo que aparece y cómo reacciona tu mascota.")
+        Vibes.all.forEach { vibe ->
+            val chosen = vibe.key == current
+            sheet.option(vibe.emoji, vibe.label + if (chosen) "  ✓" else "", vibe.color, vibe.reaction) {
                 Looks.setVibe(key, vibe.key)
                 toast("${vibe.emoji} Categoría: ${vibe.label}")
             }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        }
+        sheet.show()
     }
 
     /** Filas de opciones de [columns] por fila (emojis). */
@@ -3230,13 +3256,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         return scroller
     }
 
-    /** Elige emoji, color y (en los sonidos integrados) nombre de un botón. */
+    /** Elige emoji, color y (en los sonidos integrados) nombre de un botón, con vista previa en vivo. */
     private fun customizeButton(key: String, defaultEmoji: String, defaultColor: Int, defaultLabel: String, editName: Boolean) {
         val current = Looks.button(key)
         var emoji = current.emoji ?: defaultEmoji
         var swatch = Looks.swatch(current.swatch)
+        val vibe = Vibes.byKey(Looks.vibe(key))
         val nameInput = if (editName) {
-            editText(current.label ?: defaultLabel, "Nombre del botón").apply { filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24)) }
+            editText(current.label ?: defaultLabel, "Nombre del botón").apply {
+                filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24))
+                background = rounded(Palette.SURFACE, 16, Palette.LIP)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                contentDescription = "Nombre del botón"
+            }
         } else {
             null
         }
@@ -3247,10 +3279,9 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         refresh = {
             preview.removeAllViews()
             val name = nameInput?.text?.toString()?.trim()?.ifEmpty { null } ?: defaultLabel
-            preview.addView(soundTile(emoji, name, defaultColor, {}, {}, swatch).apply { isClickable = false; isLongClickable = false },
-                FrameLayout.LayoutParams(dp(130), WRAP, Gravity.CENTER_HORIZONTAL))
+            preview.addView(soundPreview(emoji, name, vibe, swatch), FrameLayout.LayoutParams(MATCH, WRAP))
             emojis.removeAllViews()
-            emojis.addView(optionGrid((listOf(defaultEmoji) + Looks.EMOJIS).distinct(), emoji) {
+            emojis.addView(optionGrid((listOf(defaultEmoji) + Looks.EMOJIS).distinct(), emoji, columns = 7) {
                 emoji = it
                 refresh()
             })
@@ -3261,12 +3292,22 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             })
         }
         refresh()
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
-        body.addView(preview, lp())
-        if (nameInput != null) body.addView(nameInput, lp(topDp = 12))
-        body.addView(caps("Emoji"), lp(topDp = 14))
-        body.addView(emojis, lp(topDp = 6))
-        body.addView(button("✏️ Escribir otro emoji", Palette.SURFACE, Palette.TEXT, heightDp = 40, radiusDp = 12, sizeSp = 13f) {
+        nameInput?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(text: android.text.Editable?) {
+                preview.removeAllViews()
+                preview.addView(soundPreview(emoji, text?.toString()?.trim()?.ifEmpty { null } ?: defaultLabel, vibe, swatch), FrameLayout.LayoutParams(MATCH, WRAP))
+            }
+        })
+        val sheet = Sheet(this).title("Personalizar botón", "Así lo ves tú en Sonar.").header(preview)
+        if (nameInput != null) {
+            sheet.section("Nombre")
+            sheet.add(nameInput, 8)
+        }
+        sheet.section("Emoji")
+        sheet.add(emojis, 8)
+        sheet.add(button("✏️ Escribir otro emoji", Palette.SURFACE, Palette.TEXT, heightDp = 42, radiusDp = 14, sizeSp = 13f) {
             textDialog("Tu emoji", "Escribe o pega el emoji que quieras.", "", "😀", "Listo") { typed ->
                 val clean = Looks.cleanEmoji(typed)
                 if (clean == null) {
@@ -3278,23 +3319,18 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                     true
                 }
             }
-        }, lp(topDp = 6))
-        body.addView(caps("Color"), lp(topDp = 14))
-        body.addView(colors, lp(topDp = 6))
-        body.addView(label("Los colores con 🔒 se desbloquean subiendo de nivel.", 12f, Palette.SUB), lp(topDp = 8))
-        AlertDialog.Builder(this)
-            .setTitle("Personalizar botón")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Guardar") { _, _ ->
-                val name = nameInput?.text?.toString()?.trim()?.ifEmpty { null }
-                Looks.setButton(
-                    key,
-                    Looks.Look(emoji.takeIf { it != defaultEmoji }, swatch?.key, name?.takeIf { it != defaultLabel }),
-                )
-                toast("🎨 Botón personalizado")
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }, 8)
+        sheet.section("Color")
+        sheet.add(colors, 8)
+        sheet.add(label("Los colores con 🔒 se desbloquean subiendo de nivel.", 12f, Palette.SUB), 8)
+        sheet.buttons("Guardar") {
+            val name = nameInput?.text?.toString()?.trim()?.ifEmpty { null }
+            Looks.setButton(
+                key,
+                Looks.Look(emoji.takeIf { it != defaultEmoji }, swatch?.key, name?.takeIf { it != defaultLabel }),
+            )
+            toast("🎨 Botón personalizado")
+        }.show()
     }
 
     /** Para audios largos: desde dónde suena (10 segundos desde ahí, también en el celular de tus amigos). */
@@ -3333,18 +3369,13 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         val play = button("Escuchar desde ahí", Palette.SURFACE2, Palette.TEXT, iconRes = R.drawable.ic_nav_sound, heightDp = 44, radiusDp = 14, sizeSp = 14f) {
             Player.preview(this, Player.Source.FromFile(file), custom.label, start)
         }
-        AlertDialog.Builder(this)
-            .setTitle("¿Desde dónde suena «${custom.label}»?")
-            .setView(padded(
-                label("El audio dura ${clockText(duration)}. Elige la parte graciosa: suenan 10 segundos desde ahí, en tu celular y en el de tus amigos.", 14f),
-                text, bar, play,
-            ))
-            .setPositiveButton("Guardar") { _, _ ->
+        Sheet(this).title("¿Desde dónde suena «${custom.label}»?", "El audio dura ${clockText(duration)}. Elige la parte graciosa: suenan 10 segundos desde ahí, en tu celular y en el de tus amigos.")
+            .add(padded(text, bar, play), 12)
+            .buttons("Guardar", onSecondary = { Player.stop() }) {
                 Player.stop()
                 Store.putCustomSound(custom.copy(startMs = start))
                 toast("✂️ Listo: suena desde ${clockText(start.toLong())}")
             }
-            .setNegativeButton("Cancelar") { _, _ -> Player.stop() }
             .show()
     }
 
@@ -3367,12 +3398,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     private fun showPowers() {
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        val body = column()
         body.addView(
             label("Tienes ${Points.balance()} puntos para gastar. Gastarlos no te baja de nivel ni en el ranking.", 13f, Palette.SUB),
             lp(),
         )
-        lateinit var dialog: AlertDialog
+        lateinit var dialog: Sheet
         Powers.ALL.forEach { power ->
             val ready = if (power.key == Powers.DOUBLE) Powers.doubleReady else Powers.armed?.key == power.key
             val item = card(Palette.SURFACE, 18, 12)
@@ -3409,12 +3440,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             label("Los poderes no le quitan el control a nadie: quien recibe siempre puede detener el sonido, silenciar o bloquear.", 12f, Palette.SUB),
             lp(topDp = 12),
         )
-        dialog = AlertDialog.Builder(this)
-            .setTitle("🌟 Poderes")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setNegativeButton("Cerrar", null)
-            .create()
-        dialog.show()
+        dialog = Sheet(this).title("🌟 Poderes")
+            .add(body, 8)
+            .closeButton("Cerrar")
+            .show()
     }
 
     private fun editAvatar() {
@@ -3444,26 +3473,24 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             })
         }
         refresh()
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        val body = column()
         body.addView(preview, lp())
         body.addView(label("Tus amigos lo ven en el chat, el ranking y cuando les suena algo tuyo. «Aa» usa tu inicial.", 12f, Palette.SUB), lp(topDp = 10))
         body.addView(caps("Emoji"), lp(topDp = 14))
         body.addView(emojis, lp(topDp = 6))
         body.addView(caps("Color"), lp(topDp = 14))
         body.addView(colors, lp(topDp = 6))
-        AlertDialog.Builder(this)
-            .setTitle("Tu avatar")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Guardar") { _, _ -> Looks.setMyAvatar(emoji, swatch.key) }
-            .setNegativeButton("Cancelar", null)
+        Sheet(this).title("Tu avatar")
+            .add(body, 12)
+            .buttons("Guardar", secondary = "Cancelar") { Looks.setMyAvatar(emoji, swatch.key) }
             .show()
     }
 
     private fun chooseChatTheme(key: String) {
         val level = Points.level().number
         val current = Looks.chatTheme(key)
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
-        lateinit var dialog: AlertDialog
+        val body = column()
+        lateinit var dialog: Sheet
         Looks.THEMES.forEach { theme ->
             val locked = theme.level > level
             val item = row().apply {
@@ -3496,12 +3523,10 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             body.addView(item, lp(topDp = 8))
         }
         body.addView(label("El tema es solo para ti: cada uno decora su chat como quiere.", 12f, Palette.SUB), lp(topDp = 12))
-        dialog = AlertDialog.Builder(this)
-            .setTitle("🎨 Decorar el chat")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setNegativeButton("Cerrar", null)
-            .create()
-        dialog.show()
+        dialog = Sheet(this).title("🎨 Decorar el chat")
+            .add(body, 8)
+            .closeButton("Cerrar")
+            .show()
     }
 
     // ------------------------------------------------------------------ Mascota
@@ -3857,7 +3882,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             this, clip,
             onShare = { startSafely(Grabacion.shareIntent(clip)) },
             onDelete = {
-                confirm("¿Borrar este video?", if (clip.inGallery) "Se borra también de tu galería." else null) {
+                confirm("¿Borrar este video?", if (clip.inGallery) "Se borra también de tu galería." else null, danger = true) {
                     if (Grabacion.delete(this, clip)) toast("🗑️ Video borrado") else toast("No se pudo borrar: búscalo en tu galería")
                     clipSheet?.close()
                 }
@@ -3944,10 +3969,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             toast("Agrega amigos para mandarles un saludo")
             return
         }
-        AlertDialog.Builder(this)
-            .setTitle("¿A quién le mandas un saludo?")
-            .setItems(friends.map { it.name }.toTypedArray()) { _, which ->
-                val friend = friends[which]
+        val greet = Sheet(this).title("¿A quién le mandas un saludo?", "${Pets.name} le escribe en el chat.")
+        friends.forEach { friend -> greet.option(initial(friend.name), friend.name, Palette.avatar(friend.code)) {
                 val key = Chats.friendKey(friend.code)
                 val trait = Pets.personality()?.trait?.lowercase()
                 val lines = listOfNotNull(
@@ -3960,8 +3983,8 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                     toast("💌 ${Pets.name} saludó a ${friend.name}")
                 }
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
+        greet.show()
     }
 
     private fun petOptions() {
@@ -3974,11 +3997,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             },
             "🔄 Adoptar otra" to { adoptPet() },
         )
-        AlertDialog.Builder(this)
-            .setTitle(Pets.name)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet(Pets.name, options)
     }
 
     private fun adoptPet() {
@@ -4029,14 +4048,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         refresh()
         val warning = if (Pets.current != null) "Tu mascota actual se va y la nueva empieza como huevo." else
             "Empieza como huevo y crece con los puntos que ganes desde hoy."
-        AlertDialog.Builder(this)
-            .setTitle("Adopta una mascota")
-            .setView(padded(choices, nameInput, label(warning, 12f, Palette.SUB)))
-            .setPositiveButton("Adoptar") { _, _ ->
+        Sheet(this).title("Adopta una mascota")
+            .add(padded(choices, nameInput, label(warning, 12f, Palette.SUB)), 12)
+            .buttons("Adoptar", secondary = "Cancelar") {
                 Pets.adopt(chosen, nameInput.text.toString())
                 toast("🥚 ¡Adoptaste a ${Pets.name}! Gana puntos para que crezca.")
             }
-            .setNegativeButton("Cancelar", null)
             .show()
     }
 
@@ -4240,19 +4257,13 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         } else {
             options += "🗑 Quitar de mis compartidos" to { Sonoteca.hide(this, item.id) }
         }
-        AlertDialog.Builder(this)
-            .setTitle(item.label)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet(item.label, options)
     }
 
     /** Denunciar un sonido: se oculta al instante y, si hay correo, se arma el reporte. */
     private fun reportShared(item: SharedSound) {
         val reasons = listOf("Usa música o audio con derechos de autor", "Es ofensivo o de odio", "Es sexual o violento", "Me molesta o me acosa", "Otro motivo")
-        AlertDialog.Builder(this)
-            .setTitle("¿Por qué denuncias «${item.label}»?")
-            .setItems(reasons.toTypedArray()) { _, which ->
+        reasonSheet("¿Por qué denuncias «${item.label}»?", reasons) { which ->
                 Sonoteca.hide(this, item.id)
                 val body = "Denuncia en la Sonoteca de Friend Game\nMotivo: ${reasons[which]}\nSonido: «${item.label}» (${item.id})\n" +
                     "Autor: ${item.authorName} (código ${Codes.pretty(item.author)})\n" +
@@ -4265,9 +4276,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 } else {
                     info("Ocultamos «${item.label}»", "Ya no lo verás. Si quieres, también puedes bloquear a ${item.authorName} desde Amigos.")
                 }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     /** Elige uno de tus audios para compartirlo en la Sonoteca. */
@@ -4277,14 +4286,14 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             info("Primero agrega un audio", "En Sonar → Tus audios, toca Grabar o Subir. Después vuelve aquí para compartirlo.")
             return
         }
-        AlertDialog.Builder(this)
-            .setTitle("¿Qué audio compartes?")
-            .setItems(customs.map { (Looks.button("c:${it.id}").emoji ?: "🎤") + " " + it.label }.toTypedArray()) { _, which ->
-                val custom = customs[which]
-                confirmShare(custom.file(this), custom.label, Looks.button("c:${custom.id}").emoji ?: "🎤", custom.startMs, null)
+        val pick = Sheet(this).title("¿Qué audio compartes?", "Llega a los amigos y grupos que elijas.")
+        customs.forEach { custom ->
+            val emoji = Looks.button("c:${custom.id}").emoji ?: "🎤"
+            pick.option(emoji, custom.label, Vibes.byKey(Looks.vibe("c:${custom.id}")).color) {
+                confirmShare(custom.file(this), custom.label, emoji, custom.startMs, null)
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
+        pick.show()
     }
 
     /**
@@ -4302,7 +4311,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             info("Todavía no tienes con quién compartir", "Agrega amigos o únete a un grupo, y vuelve a intentarlo.")
             return
         }
-        val body = column().apply { setPadding(dp(22), dp(4), dp(22), dp(4)) }
+        val body = column()
         fun check(text: String, checked: Boolean): android.widget.CheckBox = android.widget.CheckBox(this).apply {
             this.text = text
             isChecked = checked
@@ -4329,33 +4338,28 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             false,
         )
         body.addView(rights, lp(topDp = 6))
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Compartir «$label»")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Compartir", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                if (!rights.isChecked) {
-                    toast("Marca la casilla para confirmar que puedes compartirlo.")
-                    return@setOnClickListener
-                }
-                val destinations = (if (allFriends?.isChecked == true) friends.map { Sonoteca.Destination(Relay.topicFor(it.code), null) } else emptyList()) +
-                    groupChecks.filter { it.second.isChecked }.map { Sonoteca.Destination(Relay.groupTopic(it.first.id), it.first.id) }
-                if (destinations.isEmpty()) {
-                    toast("Elige con quién compartirlo.")
-                    return@setOnClickListener
-                }
-                dialog.dismiss()
-                toast("📤 Compartiendo…")
-                var sent = 0
-                runInBackground({ sent = Sonoteca.publish(this, file, label, emoji, startMs, destinations, original) }) {
-                    toast("📤 «$label» compartido" + if (sent > 1) " en $sent lugares" else "")
-                }
+        lateinit var dialog: Sheet
+        dialog = Sheet(this).title("Compartir «$label»", null)
+            .add(body, 12)
+            .buttons("Compartir", closeOnPrimary = false) {
+            if (!rights.isChecked) {
+                toast("Marca la casilla para confirmar que puedes compartirlo.")
+                return@buttons
             }
-        }
-        dialog.show()
+            val destinations = (if (allFriends?.isChecked == true) friends.map { Sonoteca.Destination(Relay.topicFor(it.code), null) } else emptyList()) +
+                groupChecks.filter { it.second.isChecked }.map { Sonoteca.Destination(Relay.groupTopic(it.first.id), it.first.id) }
+            if (destinations.isEmpty()) {
+                toast("Elige con quién compartirlo.")
+                return@buttons
+            }
+            dialog.dismiss()
+            toast("📤 Compartiendo…")
+            var sent = 0
+            runInBackground({ sent = Sonoteca.publish(this, file, label, emoji, startMs, destinations, original) }) {
+                toast("📤 «$label» compartido" + if (sent > 1) " en $sent lugares" else "")
+            }
+            }
+            .show()
     }
 
     private fun buyFreeze() {
@@ -4370,16 +4374,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
 
     private fun showLegal(titleText: String, asset: String, onClose: (() -> Unit)? = null) {
         val text = label(Legal.text(this, asset), 14f).apply {
-            setPadding(dp(22), dp(8), dp(22), dp(8))
             movementMethod = LinkMovementMethod.getInstance()
             setLinkTextColor(Palette.ACCENT_TEXT)
+            setLineSpacing(0f, 1.15f)
         }
-        AlertDialog.Builder(this)
-            .setTitle(titleText)
-            .setView(ScrollView(this).apply { addView(text) })
-            .setPositiveButton("Entendido", null)
-            .setNeutralButton("Abrir en la web") { _, _ -> openUrl(if (asset == Legal.TERMS_ASSET) Legal.TERMS_URL else Legal.PRIVACY_URL) }
-            .setOnDismissListener { onClose?.invoke() }
+        val web = when (asset) {
+            Legal.TERMS_ASSET -> Legal.TERMS_URL
+            Legal.PRIVACY_ASSET -> Legal.PRIVACY_URL
+            else -> null
+        }
+        Sheet(this).title(titleText)
+            .add(text, 10)
+            .buttons("Entendido", Palette.SURFACE2, secondary = if (web != null) "Abrir en la web" else null, onSecondary = { web?.let { openUrl(it) } }) {}
+            .onDismiss { onClose?.invoke() }
             .show()
     }
 
@@ -4390,28 +4397,31 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
      */
     private fun askLoud(turnOn: Boolean = false, then: () -> Unit = {}) {
         if (loudDialog?.isShowing == true) return
-        loudDialog = AlertDialog.Builder(this)
-            .setTitle("🔊 Los sonidos suenan fuerte")
-            .setMessage(
-                "Para que siempre se escuchen, los sonidos de tus amigos suenan al volumen máximo y por el " +
-                    "altavoz principal del celular, aunque esté en silencio o en vibración.\n\n" +
-                    "• Duran como mucho 10 segundos y al terminar el volumen vuelve a como estaba.\n" +
-                    "• Siempre puedes detenerlos, silenciar o bloquear a alguien, o pausar la recepción.\n" +
-                    "• Si no lo aceptas, no te llegan sonidos. Puedes activarlos después en Ajustes.\n\n" +
-                    "Está en los Términos de uso."
-            )
-            .setCancelable(false)
-            .setPositiveButton("Acepto") { _, _ ->
-                Store.loudAccepted = true
-                Store.loudAnswered = true
-                if (turnOn) {
-                    Store.receiving = true
-                    ListenService.start(this)
+        val points = column()
+        listOf(
+            "📢" to "Suenan al volumen máximo y por el altavoz, aunque el celular esté en silencio o en vibración.",
+            "⏱️" to "Duran como mucho 10 segundos y al terminar el volumen vuelve a como estaba.",
+            "✋" to "Siempre puedes detenerlos, silenciar o bloquear a alguien, o pausar la recepción.",
+            "⏸️" to "Si no lo aceptas, no te llegan sonidos. Puedes activarlos después en Ajustes.",
+        ).forEach { (emoji, text) ->
+            points.addView(row().apply {
+                gravity = Gravity.TOP
+                addView(label(emoji, 20f), LinearLayout.LayoutParams(dp(32), WRAP))
+                addView(label(text, 14f, Palette.TEXT), lp(0, WRAP, weight = 1f))
+            }, lp(topDp = 10))
+        }
+        val sheet = Sheet(this).title("🔊 Los sonidos suenan fuerte", "Para que siempre se escuchen los sonidos de tus amigos.")
+            .add(points, 6)
+            .add(label("Leer los términos de uso", 14f, Palette.ACCENT_TEXT, bold = true).apply {
+                setPadding(0, dp(8), 0, dp(4))
+                isClickable = true
+                setOnClickListener {
+                    loudDialog?.dismiss()
+                    showLegal("Términos de uso", Legal.TERMS_ASSET) { askLoud(turnOn, then) }
                 }
-                toast("🔊 Listo: los sonidos suenan al máximo por el altavoz")
-                then()
-            }
-            .setNegativeButton("No recibir sonidos") { _, _ ->
+            }, 10)
+            .notCancelable()
+            .buttons("Acepto", Palette.OK, secondary = "No recibir sonidos", onSecondary = {
                 if (Locks.anyActive() == null) {
                     Store.loudAnswered = true
                     Store.receiving = false
@@ -4423,11 +4433,18 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                     lockBlocks()
                 }
                 then()
+            }) {
+                Store.loudAccepted = true
+                Store.loudAnswered = true
+                if (turnOn) {
+                    Store.receiving = true
+                    ListenService.start(this)
+                }
+                toast("🔊 Listo: los sonidos suenan al máximo por el altavoz")
+                then()
             }
-            .setNeutralButton("Leer términos") { _, _ ->
-                showLegal("Términos de uso", Legal.TERMS_ASSET) { askLoud(turnOn, then) }
-            }
-            .show()
+        loudDialog = sheet
+        sheet.show()
     }
 
     private fun showContact() {
@@ -4437,14 +4454,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             "Puedes dejar un reporte o una idea en la página del proyecto en GitHub (sin datos personales). " +
                 "Para denunciar a alguien usa «Denunciar» en sus opciones: se bloquea al instante."
         }
-        AlertDialog.Builder(this)
-            .setTitle("Ayuda y contacto")
-            .setMessage(message)
-            .setPositiveButton(if (Legal.hasContact()) "Escribir" else "Abrir GitHub") { _, _ ->
+        Sheet(this).title("Ayuda y contacto")
+            .add(sheetText(message), 10)
+            .buttons(if (Legal.hasContact()) "Escribir" else "Abrir GitHub", secondary = "Cerrar") {
                 val email = Legal.reportIntent("Friend Game: ayuda", "")
                 if (email != null) startSafely(email) else openUrl(Legal.ISSUES_URL)
             }
-            .setNegativeButton("Cerrar", null)
             .show()
     }
 
@@ -4473,9 +4488,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     /** Denunciar bloquea al instante y, si hay correo de contacto, arma el correo con los datos. */
     private fun report(code: String, name: String, text: String = "") {
         val reasons = listOf("Me molesta o me acosa", "Manda contenido ofensivo", "Es spam", "Otro motivo")
-        AlertDialog.Builder(this)
-            .setTitle("¿Por qué denuncias a $name?")
-            .setItems(reasons.toTypedArray()) { _, which ->
+        reasonSheet("¿Por qué denuncias a $name?", reasons) { which ->
                 val friend = Store.friend(code)
                 if (friend != null) block(friend) else Store.putFriend(Friend(code, name, Friend.BLOCKED, muted = true))
                 val body = "Denuncia en Friend Game\nMotivo: ${reasons[which]}\nPersona: $name (código ${Codes.pretty(code)})\n" +
@@ -4488,16 +4501,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 } else {
                     info("Bloqueaste a $name", "Ya no te pueden llegar sus sonidos ni sus mensajes. Gracias por avisar.")
                 }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun reportGroup(group: Group) {
         val reasons = listOf("Molestan o acosan", "Contenido ofensivo", "Es spam", "Otro motivo")
-        AlertDialog.Builder(this)
-            .setTitle("¿Por qué denuncias «${group.name}»?")
-            .setItems(reasons.toTypedArray()) { _, which ->
+        reasonSheet("¿Por qué denuncias «${group.name}»?", reasons) { which ->
                 runInBackground({ Groups.leave(group) }) {}
                 val body = "Denuncia en Friend Game\nMotivo: ${reasons[which]}\nGrupo: ${group.name} (${group.id})\n" +
                     "Admin: ${Codes.pretty(group.adminCode)}\nDenuncia hecha por: ${Codes.pretty(Store.myCode)}"
@@ -4508,9 +4517,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 } else {
                     info("Saliste de «${group.name}»", "Ya no te llegarán sus sonidos ni sus mensajes. Gracias por avisar.")
                 }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        }
     }
 
     private fun startSafely(intent: Intent) {
@@ -4562,29 +4569,23 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             }
         }
         refresh()
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Crear comunidad")
-            .setMessage("Hasta ${Group.MAX_MEMBERS} personas con chat, ranking y retos. Los sonidos solo suenan en los retos.")
-            .setView(padded(input, label("Elige un emoji", 13f, Palette.SUB), emojiScroll))
-            .setPositiveButton("Crear", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val name = input.text.toString().trim()
-                if (name.isEmpty()) {
-                    input.error = "Escribe un nombre"
-                    return@setOnClickListener
-                }
-                dialog.dismiss()
-                val group = Groups.create(name, community = true, emoji = emoji)
-                tab = Tab.GROUPS
-                pages.clear()
-                render()
-                showInvite(group)
+        lateinit var dialog: Sheet
+        dialog = Sheet(this).title("Crear comunidad", "Hasta ${Group.MAX_MEMBERS} personas con chat, ranking y retos. Los sonidos solo suenan en los retos.")
+            .add(padded(input, label("Elige un emoji", 13f, Palette.SUB), emojiScroll), 12)
+            .buttons("Crear", closeOnPrimary = false) {
+            val name = input.text.toString().trim()
+            if (name.isEmpty()) {
+                input.error = "Escribe un nombre"
+                return@buttons
             }
-        }
-        dialog.show()
+            dialog.dismiss()
+            val group = Groups.create(name, community = true, emoji = emoji)
+            tab = Tab.GROUPS
+            pages.clear()
+            render()
+            showInvite(group)
+            }
+            .show()
     }
 
     // ------------------------------------------------------------------ Barras y navegación
@@ -5006,15 +5007,21 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         val items = SoundCheck.items(this)
         val text = items.joinToString("\n\n") { (if (it.ok) "✅ " else "⚠️ ") + it.text }
         val allOk = items.all { it.ok }
-        AlertDialog.Builder(this)
-            .setTitle(if (allOk) "Revisión del sonido: todo bien" else "Revisión del sonido")
-            .setMessage(
-                "Debería estar sonando una sirena, igual que cuando te mandan un sonido.\n\n$text" +
-                    if (allOk) "" else "\n\nArregla lo marcado con ⚠️ y vuelve a probar."
-            )
-            .setPositiveButton("Ajustar volumen") { _, _ -> openVolume() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        val check = Sheet(this).title(
+            if (allOk) "Revisión del sonido: todo bien" else "Revisión del sonido",
+            "Debería estar sonando una sirena, igual que cuando te mandan un sonido.",
+        )
+        items.forEach { item ->
+            check.add(row().apply {
+                gravity = Gravity.TOP
+                background = rounded(if (item.ok) Palette.SURFACE else 0xFF3A2410.toInt(), 16)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                addView(label(if (item.ok) "✅" else "⚠️", 18f), LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = dp(10) })
+                addView(label(item.text, 14f, Palette.TEXT), lp(0, WRAP, weight = 1f))
+            }, 8)
+        }
+        if (!allOk) check.add(label("Arregla lo marcado con ⚠️ y vuelve a probar.", 13f, Palette.SUB), 10)
+        check.buttons("Ajustar volumen", secondary = "Cerrar") { openVolume() }.show()
     }
 
     private fun openVolume() {
@@ -5204,11 +5211,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 playTrial(target, Player.Source.FromFile(custom.file(this)), custom.label, "custom", custom.startMs)
             })
         }
-        AlertDialog.Builder(this)
-            .setTitle(custom.label)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet(custom.label, options)
     }
 
     // ------------------------------------------------------------------ Grupos
@@ -5233,7 +5236,6 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         }
         val body = column().apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), dp(8), dp(22), dp(8))
             addView(image, LinearLayout.LayoutParams(size + dp(24), size + dp(24)))
             addView(
                 label(
@@ -5248,15 +5250,12 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 addView(label("Si sacas a alguien, este QR deja de servir y se crea uno nuevo.", 12f, Palette.SUB), lp(topDp = 8))
             }
         }
-        AlertDialog.Builder(this)
-            .setTitle("Invitar a «${group.name}»")
-            .setView(ScrollView(this).apply { addView(body) })
-            .setPositiveButton("Compartir enlace") { _, _ -> shareInvite(group) }
-            .setNeutralButton("Copiar") { _, _ ->
+        Sheet(this).title("Invitar a «${group.name}»")
+            .add(body, 12)
+            .buttons("Compartir enlace", secondary = "Copiar", onSecondary = {
                 copyText("Invitación Friend Game", link)
                 toast("Enlace copiado")
-            }
-            .setNegativeButton("Cerrar", null)
+            }) { shareInvite(group) }
             .show()
     }
 
@@ -5283,25 +5282,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             filters = arrayOf<InputFilter>(InputFilter.LengthFilter(600))
         }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Unirme con un enlace")
-            .setMessage("Pega el enlace de invitación que te mandaron.")
-            .setView(padded(input))
-            .setPositiveButton("Unirme", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val invite = Invites.parse(input.text.toString())
-                if (invite == null) {
-                    input.error = "Ese enlace no es una invitación de Friend Game."
-                } else {
-                    dialog.dismiss()
-                    confirmJoin(invite)
-                }
+        lateinit var dialog: Sheet
+        dialog = Sheet(this).title("Unirme con un enlace", "Pega el enlace de invitación que te mandaron.")
+            .add(padded(input), 12)
+            .buttons("Unirme", closeOnPrimary = false) {
+            val invite = Invites.parse(input.text.toString())
+            if (invite == null) {
+                input.error = "Ese enlace no es una invitación de Friend Game."
+            } else {
+                dialog.dismiss()
+                confirmJoin(invite)
             }
-        }
-        dialog.show()
+            }
+            .show()
     }
 
     private fun confirmJoin(invite: Invites.Invite) {
@@ -5341,23 +5334,19 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 }
             }
             options += "🗑 Cerrar el grupo" to {
-                confirm("¿Cerrar «${group.name}»?", "El grupo desaparece para todos.") {
+                confirm("¿Cerrar «${group.name}»?", "El grupo desaparece para todos.", danger = true) {
                     runInBackground({ Groups.close(group) }) { toast("Grupo cerrado") }
                 }
             }
         } else {
             options += "🚪 Salir del grupo" to {
-                confirm("¿Salir de «${group.name}»?", "Ya no recibirás sus sonidos. Para volver necesitas otra invitación.") {
+                confirm("¿Salir de «${group.name}»?", "Ya no recibirás sus sonidos. Para volver necesitas otra invitación.", danger = true) {
                     runInBackground({ Groups.leave(group) }) { toast("Saliste de «${group.name}»") }
                 }
             }
             options += "🚩 Denunciar el grupo" to { reportGroup(group) }
         }
-        AlertDialog.Builder(this)
-            .setTitle(group.name)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet(group.name, options)
     }
 
     private fun showMembers(group: Group) {
@@ -5367,20 +5356,21 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 (if (member.code == group.adminCode) " · admin" else "") +
                 (if (member.code == Store.myCode) " (tú)" else "")
         }
-        AlertDialog.Builder(this)
-            .setTitle(if (group.isAdmin) "Miembros · toca a alguien para sacarlo" else "Miembros de «${group.name}»")
-            .setItems(labels.toTypedArray()) { _, which ->
-                val member = members[which]
-                if (group.isAdmin && member.code != Store.myCode) confirmKick(group, member)
+        val list = Sheet(this).title("Miembros de «${group.name}»", if (group.isAdmin) "Toca a alguien para sacarlo del grupo." else "${members.size} en el grupo")
+        members.forEachIndexed { i, member ->
+            val kickable = group.isAdmin && member.code != Store.myCode
+            list.option(initial(member.name), labels[i], Palette.avatar(member.code), keepOpen = !kickable) {
+                if (kickable) confirmKick(group, member)
             }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        }
+        list.closeButton("Cerrar").show()
     }
 
     private fun confirmKick(group: Group, member: Member) {
         confirm(
             "¿Sacar a ${member.name} del grupo?",
             "Ya no podrá mandar ni recibir sonidos del grupo. El QR anterior deja de servir: para invitar a más gente, muestra el nuevo.",
+            danger = true,
         ) {
             runInBackground({ Groups.remove(group, member) }) { toast("${member.name} ya no está en «${group.name}»") }
         }
@@ -5450,7 +5440,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
                 options += "✏️ Cambiar nombre" to { renameFriend(friend) }
                 if (lock == null) {
                     options += "👋 Eliminar amigo" to {
-                        confirm("¿Eliminar a ${friend.name}?", "Ya no se podrán mandar sonidos hasta que se vuelvan a agregar.") {
+                        confirm("¿Eliminar a ${friend.name}?", "Ya no se podrán mandar sonidos hasta que se vuelvan a agregar.", danger = true) {
                             if (!lockedWith(friend)) removeFriend(friend)
                         }
                     }
@@ -5470,11 +5460,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             }
             Friend.BLOCKED -> options += "✅ Desbloquear (quitar de la lista)" to { Store.removeFriend(friend.code) }
         }
-        AlertDialog.Builder(this)
-            .setTitle(friend.name)
-            .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        optionSheet(friend.name, options)
     }
 
     private fun renameFriend(friend: Friend) {
@@ -5493,27 +5479,21 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         val nameInput = editText("", "Su nombre (opcional)").apply { filters = arrayOf<InputFilter>(InputFilter.LengthFilter(24)) }
         clipboardCode()?.let { codeInput.setText(Codes.pretty(it)) }
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Agregar amigo")
-            .setMessage("Escribe o pega el código que te pasó. Le llegará una solicitud y, cuando la acepte, se podrán mandar sonidos.")
-            .setView(padded(codeInput, nameInput))
-            .setPositiveButton("Mandar solicitud", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val code = Codes.normalize(codeInput.text.toString())
-                when {
-                    code == null -> codeInput.error = "Ese código no es válido: son 16 letras y números."
-                    code == Store.myCode -> codeInput.error = "Ese es tu propio código 😄"
-                    else -> {
-                        addFriend(code, nameInput.text.toString().trim())
-                        dialog.dismiss()
-                    }
+        lateinit var dialog: Sheet
+        dialog = Sheet(this).title("Agregar amigo", "Escribe o pega el código que te pasó. Le llegará una solicitud y, cuando la acepte, se podrán mandar sonidos.")
+            .add(padded(codeInput, nameInput), 12)
+            .buttons("Mandar solicitud", closeOnPrimary = false) {
+            val code = Codes.normalize(codeInput.text.toString())
+            when {
+                code == null -> codeInput.error = "Ese código no es válido: son 16 letras y números."
+                code == Store.myCode -> codeInput.error = "Ese es tu propio código 😄"
+                else -> {
+                    addFriend(code, nameInput.text.toString().trim())
+                    dialog.dismiss()
                 }
             }
-        }
-        dialog.show()
+            }
+            .show()
     }
 
     private fun addFriend(code: String, typedName: String) {
@@ -5639,7 +5619,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
     }
 
     private fun deleteCustom(custom: CustomSound) {
-        confirm("¿Borrar «${custom.label}»?", null) { CustomAudio.delete(this, custom) }
+        confirm("¿Borrar «${custom.label}»?", null, danger = true) { CustomAudio.delete(this, custom) }
     }
 
     private fun askName() {
@@ -5708,7 +5688,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
             "Grabando… ${(SystemClock.elapsedRealtime() - startedAt) / 1000} s de 8"
         }
         var finished = false
-        lateinit var dialog: AlertDialog
+        lateinit var dialog: Sheet
         fun finish(keep: Boolean) {
             if (finished) return
             finished = true
@@ -5731,17 +5711,30 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         recorder.setOnInfoListener { _, what, _ ->
             if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) ui.post { finish(keep = true) }
         }
-        dialog = AlertDialog.Builder(this)
-            .setTitle("Grabar audio")
-            .setView(padded(status, label("Se detiene sola a los 8 segundos.", 13f, Palette.SUB)))
-            .setCancelable(false)
-            .setPositiveButton("⏹ Listo", null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { finish(keep = true) }
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener { finish(keep = false) }
+        val mic = FrameLayout(this).apply { background = oval(Palette.DANGER) }
+        mic.addView(icon(R.drawable.ic_mic, Palette.TEXT, 40), FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
+        if (Anim.enabled()) {
+            android.animation.ObjectAnimator.ofPropertyValuesHolder(
+                mic,
+                android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.12f),
+                android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.12f),
+            ).apply {
+                duration = 600
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                start()
+            }
         }
+        val center = column().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(mic, LinearLayout.LayoutParams(dp(96), dp(96)))
+            addView(status, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(14) })
+            addView(label("Se detiene sola a los 8 segundos.", 13f, Palette.SUB), LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(4) })
+        }
+        dialog = Sheet(this).title("Grabar audio", "Habla, canta o haz la broma 🎤")
+            .add(center, 18)
+            .notCancelable()
+            .buttons("⏹ Listo", Palette.OK, closeOnPrimary = false, onSecondary = { finish(keep = false) }) { finish(keep = true) }
         cancelRecording = { finish(keep = false) }
         dialog.show()
     }
@@ -5795,6 +5788,7 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         confirm(
             "¿Cambiar tu código?",
             "Se borrarán tus amigos y grupos, y quien tenga tu código viejo ya no podrá escribirte. Útil si tu código llegó a alguien que no querías.",
+            danger = true,
         ) {
             // Los avisos se arman antes de cambiar el código: llevan el código viejo, que es el
             // que conocen tus amigos y los grupos.
@@ -5856,18 +5850,42 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         else Toast.makeText(this, text, Toast.LENGTH_LONG).show()
     }
 
-    private fun info(title: String, message: String) {
-        if (isFinishing || isDestroyed) return
-        AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("Entendido", null).show()
+    /**
+     * Menú de opciones en una hoja. Cada texto empieza con su emoji («🚫 Bloquear»); las que
+     * borran, bloquean o denuncian van en rojo, y las demás toman un color cada una.
+     */
+    private fun optionSheet(title: String, options: List<Pair<String, () -> Unit>>, subtitle: String? = null, header: View? = null) {
+        val sheet = Sheet(this).title(title, subtitle)
+        if (header != null) sheet.header(header)
+        val colors = intArrayOf(Palette.ACCENT, Palette.BULLA, Palette.YELLOW, Palette.OK, 0xFFA29BFE.toInt(), Palette.CUSTOM)
+        val dangerous = setOf("🚫", "🚩", "👋", "✖️", "🗑️", "❌", "🚪")
+        options.forEachIndexed { i, (text, action) ->
+            val space = text.indexOf(' ')
+            val lead = if (space in 1..8 && !text[0].isLetterOrDigit()) text.substring(0, space) else "•"
+            val rest = if (lead == "•") text else text.substring(space + 1)
+            sheet.option(lead, rest, colors[i % colors.size], danger = lead in dangerous) { action() }
+        }
+        sheet.show()
     }
 
-    private fun confirm(title: String, message: String?, onYes: () -> Unit) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("Sí") { _, _ -> onYes() }
-            .setNegativeButton("Cancelar", null)
-            .show()
+    /** Elige un motivo (denuncias). */
+    private fun reasonSheet(title: String, reasons: List<String>, onPick: (Int) -> Unit) {
+        val sheet = Sheet(this).title(title, "Lo bloqueamos al instante. Si hay correo de contacto, se arma un correo con los datos.")
+        reasons.forEachIndexed { i, reason -> sheet.option("🚩", reason, Palette.DANGER) { onPick(i) } }
+        sheet.show()
+    }
+
+    private fun info(title: String, message: String) {
+        if (isFinishing || isDestroyed) return
+        Sheet(this).title(title).add(sheetText(message), 10).closeButton().show()
+    }
+
+    /** Pregunta antes de algo que no se deshace. [danger]: el botón va en rojo (borrar, salir, bloquear). */
+    private fun confirm(title: String, message: String?, danger: Boolean = false, yes: String = "Sí", onYes: () -> Unit) {
+        if (isFinishing || isDestroyed) return
+        val sheet = Sheet(this).title(title)
+        if (!message.isNullOrEmpty()) sheet.add(sheetText(message, Palette.SUB), 10)
+        sheet.buttons(yes, if (danger) Palette.DANGER else Palette.ACCENT) { onYes() }.show()
     }
 
     private fun editText(value: String, hint: String): EditText = EditText(this).apply {
@@ -5875,14 +5893,20 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         this.hint = hint
         setSingleLine(true)
         setSelection(text.length)
+        textSize = 17f
+        setTextColor(Palette.TEXT)
+        setHintTextColor(Palette.MUTED_TEXT)
+        typeface = Fonts.body(context, 700)
+        background = rounded(Palette.SURFACE, 16, Palette.LIP)
+        setPadding(dp(16), dp(12), dp(16), dp(12))
     }
 
     private fun padded(vararg views: View): View = column().apply {
-        setPadding(dp(22), dp(8), dp(22), 0)
+        setPadding(0, dp(4), 0, 0)
         views.forEach { addView(it, lp()) }
     }
 
-    /** Diálogo con un campo de texto; [onSave] devuelve true para cerrarlo. */
+    /** Hoja con un campo de texto; [onSave] devuelve true para cerrarla. */
     private fun textDialog(
         title: String,
         message: String?,
@@ -5890,29 +5914,29 @@ class MainActivity : Activity(), Store.Listener, Grabacion.Listener {
         hint: String,
         okText: String,
         onSave: (String) -> Boolean,
-    ): AlertDialog {
+    ): Sheet {
         val input = editText(value, hint).apply {
             filters = arrayOf<InputFilter>(InputFilter.LengthFilter(if (hint.startsWith("http")) 200 else 24))
+            contentDescription = hint
         }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setView(padded(input))
-            .setPositiveButton(okText, null)
-            .setNegativeButton("Cancelar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val error = label("", 13f, Palette.DANGER_TEXT, bold = true).apply { visibility = View.GONE }
+        lateinit var sheet: Sheet
+        sheet = Sheet(this).title(title, message)
+            .add(input, 14)
+            .add(error, 6)
+            .buttons(okText, closeOnPrimary = false) {
                 val text = input.text.toString().trim()
                 if (text.isEmpty()) {
-                    input.error = "Escribe algo"
+                    error.text = "Escribe algo"
+                    error.visibility = View.VISIBLE
                 } else if (onSave(text)) {
-                    dialog.dismiss()
+                    sheet.dismiss()
                 }
             }
-        }
-        dialog.show()
-        return dialog
+            .show()
+        input.requestFocus()
+        sheet.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        return sheet
     }
 
     private fun goEdgeToEdge() {
