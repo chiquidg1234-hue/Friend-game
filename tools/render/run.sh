@@ -63,6 +63,8 @@ package com.friendgame.app;
 public final class BuildConfig { public static final String DONATE_URL = ""; public static final String CONTACT_EMAIL = ""; public static final boolean STORE_BUILD = false; }
 J
 javac -nowarn -cp "$AA" -d "$BUILD/classes" "$BUILD"/stubs/com/friendgame/app/*.java $(find "$HERE/stubs" -name '*.java')
+# El compilador necesita más memoria que sus 512 MB de fábrica (MainActivity es grande).
+export JAVA_OPTS="${JAVA_OPTS:--Xmx3g -Xss4m}"
 LIBS=$(ls -1 "$CACHE"/libs/*.jar | tr '\n' ':')
 "$CACHE/kotlinc/bin/kotlinc" -nowarn -jvm-target 17 -cp "$AA:$CACHE/zxing.jar:$BUILD/classes:$LIBS" -d "$BUILD/classes" \
   "$REPO"/app/src/main/java/com/friendgame/app/*.kt "$HERE"/src/*.kt

@@ -42,7 +42,7 @@ class Hojas {
         }
     }
 
-    private fun fonts() {
+    fun fonts() {
         val cacheField = Fonts::class.java.getDeclaredField("cache").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST")
         val cache = cacheField.get(Fonts) as HashMap<String, android.graphics.Typeface>

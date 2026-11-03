@@ -110,6 +110,9 @@ class PetView(context: Context) : View(context) {
             invalidate()
         }
 
+    /** Está jugando: no se duerme aunque sea de noche. */
+    var awake = false
+
     /** Luz apagada en su pieza: se duerme aunque sea de día. */
     var sleepy = false
         set(value) {
@@ -341,7 +344,7 @@ class PetView(context: Context) : View(context) {
         if (!live) action = Act.NONE
         val level = if (live) (audioLevel?.invoke() ?: 0f).coerceIn(0f, 1f) else 0f
         val quiet = level < 0.03f && !listening
-        val asleep = action == Act.NONE && stage > 0 && quiet && (sleepy || (live && sleeping(now)))
+        val asleep = action == Act.NONE && stage > 0 && quiet && (sleepy || (live && !awake && sleeping(now)))
         val sad = action == Act.NONE && quiet && !asleep && mood != Pets.Mood.HAPPY
         val dt = if (lastFrame == 0L) 0f else ((now - lastFrame) / 1000f).coerceIn(0f, 0.05f)
         lastFrame = now

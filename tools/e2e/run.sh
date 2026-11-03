@@ -613,6 +613,16 @@ check "Abre los minijuegos" $UI tap "Minijuegos"
 check "Muestra Atrapa la comida" $UI wait "Atrapa la comida" 10
 check "Muestra Bulla dice" $UI see "Bulla dice"
 shot "minijuegos"
+check "Muestra la carrera con el autito" $UI see "Carrera con tu autito"
+check "Muestra Memoria" $UI see "Memoria. Da vuelta"
+check "Muestra el Topo chistoso" $UI see "Topo chistoso"
+check "Empieza la carrera" $UI tap "Carrera con tu autito"
+check "La carrera está andando" $UI wait "desliza a los lados para cambiar de carril" 5
+adb shell input swipe 700 1500 300 1500 150
+sleep 2
+shot "carrera"
+check "Sale de la carrera" $UI tap "Salir del juego"
+check "Vuelve a la lista de juegos" $UI wait "Atrapa la comida" 5
 adb shell input keyevent 4
 sleep 1
 check "Atrás vuelve a la pieza" $UI see "Mandarle un saludo a un amigo"

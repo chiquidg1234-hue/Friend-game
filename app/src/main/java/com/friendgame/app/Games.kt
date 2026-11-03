@@ -35,6 +35,9 @@ object Games {
         JUMP("salto", "☁️", "Salto a las nubes", "Salta de nube en nube: toca a la izquierda o a la derecha para moverte.", 0xFF48DBFB.toInt(), true, " m"),
         SIMON("dice", "🎵", "Bulla dice", "Repite la secuencia de sonidos. Cada ronda, uno más.", 0xFFB44CFF.toInt(), false, " rondas"),
         BUBBLES("burbujas", "🔵", "Revienta burbujas", "Toca las burbujas antes de que se escapen. Tienes 30 segundos.", 0xFF3DDC97.toInt(), true, ""),
+        CAR("carrera", "🏎️", "Carrera con tu autito", "Tu mascota maneja: cambia de carril, salta y junta estrellas.", 0xFFFF4D4D.toInt(), false, ""),
+        MEMORY("memoria", "🃏", "Memoria", "Da vuelta las cartas y encuentra las parejas. ¡Rápido!", 0xFFA29BFE.toInt(), true, ""),
+        MOLE("topo", "🐹", "Topo chistoso", "Toca a los topos que asoman. ¡Ojo con las bombas! 30 segundos.", 0xFFFFC93C.toInt(), true, ""),
     }
 
     private lateinit var prefs: SharedPreferences
@@ -97,6 +100,9 @@ class GamesScreen(context: Context, private val species: String, private val onC
             this.species = this@GamesScreen.species
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             outfit = Wardrobe.outfit()
+            skin = PetShop.skin
+            eyeColor = PetShop.eyes
+            awake = true
             postDelayed({ dance(3f) }, 300)
         }, LinearLayout.LayoutParams(context.dp(84), context.dp(84)))
         hello.addView(context.label("¡Jugar me sube la alegría! Y tú ganas puntos.", 14f, Palette.TEXT, bold = true).apply {
@@ -140,6 +146,9 @@ class GamesScreen(context: Context, private val species: String, private val onC
             Games.Kind.JUMP -> JumpGame(context, species)
             Games.Kind.SIMON -> SimonGame(context, species)
             Games.Kind.BUBBLES -> BubbleGame(context, species)
+            Games.Kind.CAR -> CarGame(context, species)
+            Games.Kind.MEMORY -> MemoryGame(context, species)
+            Games.Kind.MOLE -> MoleGame(context, species)
         }
         view.onOver = { score -> finished(kind, score) }
         game = view
@@ -164,6 +173,9 @@ class GamesScreen(context: Context, private val species: String, private val onC
         panel.addView(PetView(context).apply {
             this.species = this@GamesScreen.species
             outfit = Wardrobe.outfit()
+            skin = PetShop.skin
+            eyeColor = PetShop.eyes
+            awake = true
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
             post { if (score > 0) celebrate() else surprise() }
         }, LinearLayout.LayoutParams(context.dp(130), context.dp(130)))
@@ -210,7 +222,107 @@ abstract class GameView(context: Context, species: String) : FrameLayout(context
     protected val pet = PetView(context).apply {
         this.species = species
         outfit = Wardrobe.outfit()
+        skin = PetShop.skin
+        eyeColor = PetShop.eyes
+        awake = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    /** Un efecto corto: un texto que sube («+3») o una chispa que vuela. */
+    private class Fx(var x: Float, var y: Float, val vx: Float, val vy: Float, val text: String?, val color: Int, var life: Float)
+
+    private val fx = ArrayList<Fx>()
+    private val fxPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fxText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = Fonts.display(context, 700)
+    }
+    private var sky: android.graphics.Shader? = null
+    private var skyFor = 0
+
+    /** «+3» que sube y se desvanece donde pasó algo. */
+    protected fun popText(x: Float, y: Float, label: String, color: Int = Palette.YELLOW) {
+        if (fx.size < 60) fx += Fx(x, y, 0f, -70 * d, label, color, 0.8f)
+    }
+
+    /** Chispas que saltan para los lados (al atrapar o reventar algo). */
+    protected fun burst(x: Float, y: Float, color: Int, count: Int = 8) {
+        if (!Anim.enabled()) return
+        repeat(count) { i ->
+            val a = i * (2 * Math.PI / count) + Random.nextDouble() * 0.5
+            val v = (90 + Random.nextInt(90)) * d
+            if (fx.size < 60) fx += Fx(x, y, (kotlin.math.cos(a) * v).toFloat(), (kotlin.math.sin(a) * v).toFloat(), null, color, 0.45f)
+        }
+    }
+
+    /** Fondo con degradado de arriba [top] a abajo [bottom] (se arma una vez por tamaño). */
+    protected fun drawSky(canvas: Canvas, top: Int, bottom: Int) {
+        val key = height * 31 + top * 7 + bottom
+        if (sky == null || skyFor != key) {
+            sky = android.graphics.LinearGradient(0f, 0f, 0f, height.toFloat(), top, bottom, android.graphics.Shader.TileMode.CLAMP)
+            skyFor = key
+        }
+        // Opaco: el último efecto pudo dejar la pintura casi transparente.
+        fxPaint.color = 0xFFFFFFFF.toInt()
+        fxPaint.shader = sky
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fxPaint)
+        fxPaint.shader = null
+    }
+
+    private var starField: FloatArray? = null
+    private var starFor = 0
+
+    /** Estrellitas fijas en el cielo (se calculan una vez por tamaño), con un titileo suave. */
+    protected fun drawStars(canvas: Canvas, count: Int = 36, maxY: Float = height * 0.7f) {
+        val key = width * 31 + height
+        val field = starField?.takeIf { it.size == count * 3 && starFor == key } ?: FloatArray(count * 3).also { f ->
+            starFor = key
+            val r = Random(7)
+            for (i in 0 until count) {
+                f[i * 3] = r.nextFloat() * width
+                f[i * 3 + 1] = r.nextFloat() * maxY
+                f[i * 3 + 2] = (1f + r.nextFloat() * 1.6f) * d
+            }
+            starField = f
+        }
+        val t = SystemClock.uptimeMillis() / 1000f
+        for (i in 0 until count) {
+            val tw = if (Anim.enabled()) 0.55f + 0.45f * kotlin.math.sin(t * 2f + i) else 0.8f
+            fxPaint.color = 0xFFFFFFFF.toInt()
+            fxPaint.alpha = (200 * tw).toInt()
+            canvas.drawCircle(field[i * 3], field[i * 3 + 1], field[i * 3 + 2], fxPaint)
+        }
+        fxPaint.alpha = 255
+    }
+
+    private fun stepFx(dt: Float) {
+        val it = fx.iterator()
+        while (it.hasNext()) {
+            val f = it.next()
+            f.life -= dt
+            if (f.life <= 0f) {
+                it.remove()
+                continue
+            }
+            f.x += f.vx * dt
+            f.y += f.vy * dt
+        }
+    }
+
+    private fun paintFx(canvas: Canvas) {
+        fx.forEach { f ->
+            val alpha = (255 * (f.life / 0.8f).coerceIn(0f, 1f)).toInt()
+            if (f.text != null) {
+                fxText.color = f.color
+                fxText.alpha = alpha
+                fxText.textSize = 24f * d
+                canvas.drawText(f.text, f.x, f.y, fxText)
+            } else {
+                fxPaint.color = f.color
+                fxPaint.alpha = (255 * (f.life / 0.45f).coerceIn(0f, 1f)).toInt()
+                canvas.drawCircle(f.x, f.y, 4f * d, fxPaint)
+            }
+        }
     }
 
     init {
@@ -244,8 +356,10 @@ abstract class GameView(context: Context, species: String) : FrameLayout(context
         val dt = if (last == 0L) 0f else ((now - last) / 1000f).coerceAtMost(0.05f)
         last = now
         if (running && width > 0) step(dt)
+        stepFx(dt)
         paint(canvas)
-        if (running) postInvalidateOnAnimation()
+        paintFx(canvas)
+        if (running || fx.isNotEmpty()) postInvalidateOnAnimation()
     }
 
     override fun onDetachedFromWindow() {
@@ -281,7 +395,6 @@ class CatchGame(context: Context, species: String) : GameView(context, species) 
     private val foods = listOf("🍩", "🍎", "🍕", "🥕", "🍪", "🍓", "🌽")
 
     init {
-        setBackgroundColor(0xFF1E1240.toInt())
         addView(pet, LayoutParams((104 * d).toInt(), (104 * d).toInt()))
         contentDescription = "Atrapa la comida: arrastra el dedo para mover a tu mascota"
         setOnTouchListener { _, e ->
@@ -321,9 +434,13 @@ class CatchGame(context: Context, species: String) : GameView(context, species) 
                     lives--
                     shake = 0.3f
                     pet.scare(0.8f)
+                    popText(item.x, item.y, "💥", Palette.DANGER_TEXT)
+                    burst(item.x, item.y, Palette.DANGER, 12)
                     if (lives <= 0) end()
                 } else {
                     score += item.points
+                    popText(item.x, item.y - 10 * d, "+${item.points}", if (item.points > 1) Palette.YELLOW else Palette.TEXT)
+                    burst(item.x, item.y, if (item.points > 1) Palette.YELLOW else Palette.ACCENT_TEXT)
                     if (item.points > 1) pet.celebrate() else if (score % 5 == 0) pet.cheer()
                 }
             } else if (item.y > height + 20 * d) {
@@ -334,11 +451,23 @@ class CatchGame(context: Context, species: String) : GameView(context, species) 
     }
 
     override fun paint(canvas: Canvas) {
+        drawSky(canvas, 0xFF2B1B5E.toInt(), 0xFF5A2E6E.toInt())
+        drawStars(canvas)
+        // Luna y cerros al fondo.
+        paint.color = 0xFFFFF3B0.toInt()
+        canvas.drawCircle(width * 0.18f, height * 0.22f, 26 * d, paint)
+        paint.color = 0xFF2B1B5E.toInt()
+        canvas.drawCircle(width * 0.18f + 11 * d, height * 0.22f - 7 * d, 22 * d, paint)
+        paint.color = 0xFF3A2470.toInt()
+        canvas.drawCircle(width * 0.15f, height + 60 * d, 180 * d, paint)
+        canvas.drawCircle(width * 0.85f, height + 90 * d, 220 * d, paint)
         val off = if (shake > 0f) sin(shake * 80f) * 8f * d else 0f
         canvas.save()
         canvas.translate(off, 0f)
-        paint.color = 0xFF2A1858.toInt()
-        canvas.drawRect(0f, height - 24 * d, width.toFloat(), height.toFloat(), paint)
+        paint.color = 0xFF3DDC97.toInt()
+        canvas.drawRect(-20 * d, height - 24 * d, width + 20 * d, height.toFloat(), paint)
+        paint.color = 0xFF1FA56B.toInt()
+        canvas.drawRect(-20 * d, height - 24 * d, width + 20 * d, height - 20 * d, paint)
         text.textSize = 34f * d
         items.forEach { canvas.drawText(it.emoji, it.x, it.y + 12 * d, text) }
         canvas.restore()
@@ -361,7 +490,6 @@ class JumpGame(context: Context, species: String) : GameView(context, species) {
     private val cloudPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF2F7FF.toInt() }
 
     init {
-        setBackgroundColor(0xFF1B3A74.toInt())
         addView(pet, LayoutParams((84 * d).toInt(), (84 * d).toInt()))
         contentDescription = "Salto a las nubes: toca a la izquierda o a la derecha para moverte"
         setOnTouchListener { _, e ->
@@ -441,6 +569,19 @@ class JumpGame(context: Context, species: String) : GameView(context, species) {
     }
 
     override fun paint(canvas: Canvas) {
+        // El cielo se oscurece al subir: de día, atardecer y después el espacio con estrellas.
+        val k = (score / 600f).coerceIn(0f, 1f)
+        drawSky(canvas, blend(0xFF5FB6FF.toInt(), 0xFF0B0B2E.toInt(), k), blend(0xFFBEE6FF.toInt(), 0xFF3A1E5C.toInt(), k))
+        if (k > 0.3f) {
+            paint.color = 0xFFFFFFFF.toInt()
+            paint.alpha = ((k - 0.3f) / 0.7f * 255).toInt()
+            for (i in 0 until 30) {
+                val sx = (i * 73 % 100) / 100f * width
+                val sy = ((i * 37 % 100) / 100f * height - camera * 0.1f) % height
+                canvas.drawCircle(sx, if (sy < 0) sy + height else sy, (1 + i % 3) * d * 0.8f, paint)
+            }
+            paint.alpha = 255
+        }
         clouds.forEach { c ->
             val y = c.y - camera
             canvas.drawRoundRect(c.x, y, c.x + c.w, y + 18 * d, 9 * d, 9 * d, cloudPaint)
@@ -448,6 +589,11 @@ class JumpGame(context: Context, species: String) : GameView(context, species) {
             canvas.drawCircle(c.x + c.w * 0.62f, y, 16 * d, cloudPaint)
         }
         hud(canvas, "${score} m")
+    }
+
+    private fun blend(a: Int, b: Int, k: Float): Int {
+        fun ch(shift: Int) = (((a shr shift) and 0xFF) + ((((b shr shift) and 0xFF) - ((a shr shift) and 0xFF)) * k)).toInt()
+        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
     }
 
     private companion object {
@@ -472,7 +618,6 @@ class SimonGame(context: Context, species: String) : GameView(context, species) 
     private val files = listOf("pato", "tada", "campana", "boing")
 
     init {
-        setBackgroundColor(0xFF1E1240.toInt())
         files.forEachIndexed { i, key ->
             sounds[i] = try {
                 context.assets.openFd("sounds/$key.ogg").use { pool.load(it, 1) }
@@ -560,6 +705,7 @@ class SimonGame(context: Context, species: String) : GameView(context, species) 
     override fun step(dt: Float) = Unit
 
     override fun paint(canvas: Canvas) {
+        drawSky(canvas, 0xFF2A1858.toInt(), 0xFF150C2C.toInt())
         text.color = Palette.SUB
         text.textSize = 15f * d
         canvas.drawText(if (showing) "Escucha y mira…" else if (sequence.isEmpty()) "¡Prepárate!" else "¡Tu turno!", width / 2f, 96f * d, text)
@@ -593,7 +739,6 @@ class BubbleGame(context: Context, species: String) : GameView(context, species)
     private val rect = RectF()
 
     init {
-        setBackgroundColor(0xFF0B2A4A.toInt())
         addView(pet, LayoutParams((110 * d).toInt(), (110 * d).toInt(), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         contentDescription = "Revienta burbujas: toca las burbujas que suben"
         setOnTouchListener { _, e ->
@@ -602,6 +747,7 @@ class BubbleGame(context: Context, species: String) : GameView(context, species)
                 if (hit != null) {
                     hit.pop = 0f
                     score += if (hit.gold) 3 else 1
+                    popText(hit.x, hit.y, if (hit.gold) "+3" else "+1", if (hit.gold) Palette.YELLOW else Palette.TEXT)
                     if (hit.gold) pet.celebrate() else if (score % 6 == 0) pet.cheer()
                 }
             }
@@ -637,6 +783,7 @@ class BubbleGame(context: Context, species: String) : GameView(context, species)
     }
 
     override fun paint(canvas: Canvas) {
+        drawSky(canvas, 0xFF0B2A4A.toInt(), 0xFF1A5C8F.toInt())
         bubbles.forEach { b ->
             if (b.pop >= 0f) {
                 val k = b.pop / 0.25f
